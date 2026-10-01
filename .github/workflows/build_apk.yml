@@ -33,11 +33,40 @@ jobs:
           cp /tmp/main.dart lib/main.dart
           cp /tmp/pubspec.yaml pubspec.yaml
           
-          # حذف الملفات الحديثة التي تسبب التعارض
+          # مسح الملفات التي تسبب التعارض
           rm -f android/build.gradle
           rm -f android/settings.gradle
           
-          # كتابة ملف build.gradle بالشكل الكلاسيكي المطابق لمتطلبات المكتبات
+          # كتابة ملف settings.gradle بالطريقة الحديثة المدعومة من Flutter 3.19+ لحل مشكلة الـ Plugin
+          cat << 'EOF' > android/settings.gradle
+          pluginManagement {
+              def flutterSdkPath = {
+                  def properties = new Properties()
+                  file("local.properties").withInputStream { properties.load(it) }
+                  def flutterSdkPath = properties.getProperty("flutter.sdk")
+                  assert flutterSdkPath != null, "flutter.sdk not set in local.properties"
+                  return flutterSdkPath
+              }()
+          
+              includeBuild("$flutterSdkPath/packages/flutter_tools/gradle")
+          
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          
+          plugins {
+              id "dev.flutter.flutter-plugin-loader" version "1.0.0"
+              id "com.android.application" version "7.3.0" apply false
+              id "org.jetbrains.kotlin.android" version "1.9.24" apply false
+          }
+          
+          include ":app"
+          EOF
+          
+          # كتابة ملف build.gradle لدعم خدمات جوجل (Firebase) والـ Kotlin
           cat << 'EOF' > android/build.gradle
           buildscript {
               ext.kotlin_version = '1.9.24'
@@ -46,8 +75,6 @@ jobs:
                   mavenCentral()
               }
               dependencies {
-                  classpath 'com.android.tools.build:gradle:7.3.0'
-                  classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
                   classpath 'com.google.gms:google-services:4.3.15'
               }
           }
@@ -67,18 +94,6 @@ jobs:
           tasks.register("clean", Delete) {
               delete rootProject.buildDir
           }
-          EOF
-          
-          # كتابة ملف settings.gradle ليتوافق مع الملف السابق
-          cat << 'EOF' > android/settings.gradle
-          include ':app'
-          def localPropertiesFile = new File(rootProject.projectDir, "local.properties")
-          def properties = new Properties()
-          assert localPropertiesFile.exists()
-          localPropertiesFile.withReader("UTF-8") { reader -> properties.load(reader) }
-          def flutterSdkPath = properties.getProperty("flutter.sdk")
-          assert flutterSdkPath != null, "flutter.sdk not set in local.properties"
-          apply from: "$flutterSdkPath/packages/flutter_tools/gradle/app_plugin_loader.gradle"
           EOF
           
           # رفع إصدار SDK ليتوافق مع فلاتر
