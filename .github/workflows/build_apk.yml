@@ -37,7 +37,7 @@ jobs:
           rm -f android/build.gradle
           rm -f android/settings.gradle
           
-          # كتابة ملف settings.gradle بالطريقة الحديثة المدعومة من Flutter 3.19+ لحل مشكلة الـ Plugin
+          # كتابة ملف settings.gradle بالطريقة الحديثة
           cat << 'EOF' > android/settings.gradle
           pluginManagement {
               def flutterSdkPath = {
@@ -66,7 +66,7 @@ jobs:
           include ":app"
           EOF
           
-          # كتابة ملف build.gradle لدعم خدمات جوجل (Firebase) والـ Kotlin
+          # كتابة ملف build.gradle
           cat << 'EOF' > android/build.gradle
           buildscript {
               ext.kotlin_version = '1.9.24'
@@ -96,12 +96,15 @@ jobs:
           }
           EOF
           
-          # رفع إصدار SDK ليتوافق مع فلاتر
+          # رفع إصدار SDK
           sed -i 's/compileSdkVersion = .*/compileSdkVersion = 34/' android/app/build.gradle || true
           sed -i 's/targetSdkVersion = .*/targetSdkVersion = 34/' android/app/build.gradle || true
 
       - name: Install dependencies
         run: flutter pub get
+
+      - name: Fix Code Typo Automatically
+        run: find lib -type f -name "*.dart" -exec sed -i 's/MainAxisAlignment.between/MainAxisAlignment.spaceBetween/g' {} +
 
       - name: Build APK
         run: flutter build apk --release --no-tree-shake-icons
