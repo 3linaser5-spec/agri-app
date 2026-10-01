@@ -32,11 +32,13 @@ jobs:
           flutter create --org com.dahshory.agri --project-name agri_app .
           cp /tmp/main.dart lib/main.dart
           cp /tmp/pubspec.yaml pubspec.yaml
-          sed -i 's/compileSdkVersion = .*/compileSdkVersion = 34/' android/app/build.gradle || true
-          sed -i 's/targetSdkVersion = .*/targetSdkVersion = 34/' android/app/build.gradle || true
-          sed -i 's/ext.kotlin_version = .*/ext.kotlin_version = '\''1.9.22'\''/' android/build.gradle || true
-          sed -i 's/org.jetbrains.kotlin.android" version ".*"/org.jetbrains.kotlin.android" version "1.9.22"/' android/settings.gradle || true
-
+          
+          # فرض إصدار كوتلن حديث في إعدادات Gradle الجديدة
+          sed -i 's/id "org.jetbrains.kotlin.android" version ".*"/id "org.jetbrains.kotlin.android" version "1.9.24"/' android/settings.gradle || true
+          
+          # إجبار النظام على إضافة السطر الناقص للحزم القديمة في بداية الملف
+          sed -i '1s/^/buildscript { ext.kotlin_version = "1.9.24" }\n/' android/build.gradle
+          
       - name: Install dependencies
         run: flutter pub get
 
