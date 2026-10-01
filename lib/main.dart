@@ -4,10 +4,13 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
   runApp(const AgriConsultantApp());
 }
 
@@ -60,7 +63,6 @@ class _AuthScreenState extends State<AuthScreen> {
 
     try {
       final userDoc = FirebaseFirestore.instance.collection('users').doc(phone);
-
       if (isLogin) {
         final snapshot = await userDoc.get();
         if (snapshot.exists && snapshot.data()?['password'] == password) {
@@ -185,7 +187,6 @@ class _AuthScreenState extends State<AuthScreen> {
 class MainNavigationScreen extends StatefulWidget {
   final String userName;
   final String userPhone;
-
   const MainNavigationScreen({super.key, required this.userName, required this.userPhone});
 
   @override
@@ -328,9 +329,8 @@ class _AiScannerScreenState extends State<AiScannerScreen> {
     }
   }
 
-  // إرسال مباشر للواتساب الخاص بك
   Future<void> _sendToEngineerWhatsApp() async {
-    const engineerPhone = "+201126920209"; // رقمك
+    const engineerPhone = "+201126920209"; 
     final message = """
 السلام عليكم يا بشمهندس علي، معي استشارة زراعية:
 🌱 *اسم المزارع:* ${widget.userName}
@@ -339,7 +339,6 @@ class _AiScannerScreenState extends State<AiScannerScreen> {
 📋 *تشخيص المستشار الذكي:*
 $_diagnosis
 """;
-
     final url = "https://wa.me/$engineerPhone?text=${Uri.encodeComponent(message)}";
     final uri = Uri.parse(url);
 
@@ -373,7 +372,9 @@ $_diagnosis
     });
 
     try {
-      const apiKey = "YOUR_GEMINI_API_KEY";
+      // هنا الكود بيسحب المفتاح السري من الخزنة بدون ما ينكشف
+      const apiKey = String.fromEnvironment('GEMINI_API_KEY'); 
+      
       final model = GenerativeModel(model: 'gemini-1.5-flash', apiKey: apiKey);
       final prompt = """
 أنت مستشار زراعي خبير تعمل تحت إشراف وتوجيهات المهندس علي الدهشوري.
@@ -385,7 +386,6 @@ $_diagnosis
       final res = await model.generateContent([Content.text(prompt)]);
       final answer = res.text ?? "تعذر استخراج التشخيص.";
 
-      // حفظ السؤال في Firebase لتظهر في لوحة التحكم الإدارية
       await FirebaseFirestore.instance.collection('ai_queries').add({
         'userId': widget.userPhone,
         'userName': widget.userName,
@@ -453,8 +453,6 @@ $_diagnosis
                     const Divider(height: 18),
                     Text(_diagnosis, style: const TextStyle(fontSize: 13, height: 1.6)),
                     const SizedBox(height: 14),
-
-                    // استماع صوتي
                     ElevatedButton.icon(
                       onPressed: () => _toggleVoicePlayback(_diagnosis),
                       icon: Icon(
@@ -472,8 +470,6 @@ $_diagnosis
                       ),
                     ),
                     const SizedBox(height: 10),
-
-                    // إرسال واتساب لرقمك
                     ElevatedButton.icon(
                       onPressed: _sendToEngineerWhatsApp,
                       icon: const Icon(Icons.chat, color: Colors.white),
