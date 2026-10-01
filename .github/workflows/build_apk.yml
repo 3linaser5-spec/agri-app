@@ -2,7 +2,7 @@ name: Build Flutter APK
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, "رئيسي" ]
   workflow_dispatch:
 
 jobs:
@@ -34,6 +34,8 @@ jobs:
           cp /tmp/pubspec.yaml pubspec.yaml
           sed -i 's/compileSdkVersion = .*/compileSdkVersion = 34/' android/app/build.gradle || true
           sed -i 's/targetSdkVersion = .*/targetSdkVersion = 34/' android/app/build.gradle || true
+          sed -i 's/ext.kotlin_version = .*/ext.kotlin_version = '\''1.9.22'\''/' android/build.gradle || true
+          sed -i 's/org.jetbrains.kotlin.android" version ".*"/org.jetbrains.kotlin.android" version "1.9.22"/' android/settings.gradle || true
 
       - name: Install dependencies
         run: flutter pub get
