@@ -82,6 +82,7 @@ jobs:
               repositories {
                   google()
                   mavenCentral()
+                  gradlePluginPortal()
               }
           }
           rootProject.buildDir = '../build'
@@ -96,9 +97,37 @@ jobs:
           }
           EOF
           
-          # رفع إصدار SDK
+          # رفع إصدار SDK لحل مشكلة المكتبات
           sed -i 's/compileSdkVersion = .*/compileSdkVersion = 34/' android/app/build.gradle || true
           sed -i 's/targetSdkVersion = .*/targetSdkVersion = 34/' android/app/build.gradle || true
+          sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 23/' android/app/build.gradle || true
+          sed -i 's/minSdkVersion = flutter.minSdkVersion/minSdkVersion = 23/' android/app/build.gradle || true
+
+      - name: Fix pubspec.yaml SDK constraint Automatically
+        run: |
+          cat << 'EOF' > fix_pubspec.dart
+          import 'dart:io';
+          void main() {
+            var file = File('pubspec.yaml');
+            var lines = file.readAsLinesSync();
+            bool hasEnv = false;
+            bool hasSdk = false;
+            for (var line in lines) {
+              if (line.trim().startsWith('environment:')) hasEnv = true;
+              if (line.trim().startsWith('sdk:')) hasSdk = true;
+            }
+            if (!hasSdk) {
+              if (hasEnv) {
+                int idx = lines.indexWhere((l) => l.trim().startsWith('environment:'));
+                lines.insert(idx + 1, '  sdk: ">=3.3.0 <4.0.0"');
+              } else {
+                lines.addAll(['', 'environment:', '  sdk: ">=3.3.0 <4.0.0"']);
+              }
+              file.writeAsStringSync(lines.join('\n'));
+            }
+          }
+          EOF
+          dart run fix_pubspec.dart
 
       - name: Install dependencies
         run: flutter pub get
