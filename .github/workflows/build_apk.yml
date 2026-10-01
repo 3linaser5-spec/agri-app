@@ -40,7 +40,8 @@ jobs:
         run: flutter pub get
 
       - name: Build APK
-        run: flutter build apk --release --no-tree-shake-icons
+        # السطر ده هو اللي بياخد المفتاح من الخزنة ويدخله في التطبيق وقت البناء
+        run: flutter build apk --release --no-tree-shake-icons --dart-define=GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
