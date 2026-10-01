@@ -22,7 +22,7 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.22.2'
+          flutter-version: '3.19.6'
           channel: 'stable'
 
       - name: Setup Android Project
@@ -33,11 +33,57 @@ jobs:
           cp /tmp/main.dart lib/main.dart
           cp /tmp/pubspec.yaml pubspec.yaml
           
-          # حقن إصدار كوتلن بالقوة في بداية الملف للمكتبات القديمة
-          sed -i '1s/^/buildscript { ext.kotlin_version = "1.9.24" }\n/' android/build.gradle
+          # حذف الملفات الحديثة التي تسبب التعارض
+          rm -f android/build.gradle
+          rm -f android/settings.gradle
           
-          # تحديث الإصدار في النظام الحديث
-          sed -i 's/id "org.jetbrains.kotlin.android" version ".*" apply false/id "org.jetbrains.kotlin.android" version "1.9.24" apply false/' android/settings.gradle || true
+          # كتابة ملف build.gradle بالشكل الكلاسيكي المطابق لمتطلبات المكتبات
+          cat << 'EOF' > android/build.gradle
+          buildscript {
+              ext.kotlin_version = '1.9.24'
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+              dependencies {
+                  classpath 'com.android.tools.build:gradle:7.3.0'
+                  classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+                  classpath 'com.google.gms:google-services:4.3.15'
+              }
+          }
+          allprojects {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.buildDir = '../build'
+          subprojects {
+              project.buildDir = "${rootProject.buildDir}/${project.name}"
+          }
+          subprojects {
+              project.evaluationDependsOn(':app')
+          }
+          tasks.register("clean", Delete) {
+              delete rootProject.buildDir
+          }
+          EOF
+          
+          # كتابة ملف settings.gradle ليتوافق مع الملف السابق
+          cat << 'EOF' > android/settings.gradle
+          include ':app'
+          def localPropertiesFile = new File(rootProject.projectDir, "local.properties")
+          def properties = new Properties()
+          assert localPropertiesFile.exists()
+          localPropertiesFile.withReader("UTF-8") { reader -> properties.load(reader) }
+          def flutterSdkPath = properties.getProperty("flutter.sdk")
+          assert flutterSdkPath != null, "flutter.sdk not set in local.properties"
+          apply from: "$flutterSdkPath/packages/flutter_tools/gradle/app_plugin_loader.gradle"
+          EOF
+          
+          # رفع إصدار SDK ليتوافق مع فلاتر
+          sed -i 's/compileSdkVersion = .*/compileSdkVersion = 34/' android/app/build.gradle || true
+          sed -i 's/targetSdkVersion = .*/targetSdkVersion = 34/' android/app/build.gradle || true
 
       - name: Install dependencies
         run: flutter pub get
