@@ -22,7 +22,7 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.19.6'
+          flutter-version: '3.22.2'
           channel: 'stable'
 
       - name: Setup Android Project
@@ -33,8 +33,11 @@ jobs:
           cp /tmp/main.dart lib/main.dart
           cp /tmp/pubspec.yaml pubspec.yaml
           
-          # تحديث إصدار كوتلن بشكل آمن داخل النظام المتوافق
-          sed -i 's/ext.kotlin_version = .*/ext.kotlin_version = "1.9.22"/' android/build.gradle || true
+          # حقن إصدار كوتلن بالقوة في بداية الملف للمكتبات القديمة
+          sed -i '1s/^/buildscript { ext.kotlin_version = "1.9.24" }\n/' android/build.gradle
+          
+          # تحديث الإصدار في النظام الحديث
+          sed -i 's/id "org.jetbrains.kotlin.android" version ".*" apply false/id "org.jetbrains.kotlin.android" version "1.9.24" apply false/' android/settings.gradle || true
 
       - name: Install dependencies
         run: flutter pub get
