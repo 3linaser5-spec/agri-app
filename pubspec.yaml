@@ -27,6 +27,13 @@ jobs:
 
       - name: Setup Android Project
         run: |
+          # إصلاح ملف pubspec.yaml فوراً قبل أي أمر آخر
+          if ! grep -q "environment:" pubspec.yaml; then
+            echo "" >> pubspec.yaml
+            echo "environment:" >> pubspec.yaml
+            echo "  sdk: '>=3.3.0 <4.0.0'" >> pubspec.yaml
+          fi
+          
           cp lib/main.dart /tmp/main.dart
           cp pubspec.yaml /tmp/pubspec.yaml
           flutter create --org com.dahshory.agri --project-name agri_app .
@@ -82,6 +89,7 @@ jobs:
               repositories {
                   google()
                   mavenCentral()
+                  gradlePluginPortal()
               }
           }
           rootProject.buildDir = '../build'
@@ -96,7 +104,7 @@ jobs:
           }
           EOF
           
-          # رفع إصدار SDK والحد الأدنى للأندرويد لحل مشكلة المكتبات الحديثة
+          # رفع إصدار SDK لحل مشكلة المكتبات
           sed -i 's/compileSdkVersion = .*/compileSdkVersion = 34/' android/app/build.gradle || true
           sed -i 's/targetSdkVersion = .*/targetSdkVersion = 34/' android/app/build.gradle || true
           sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 23/' android/app/build.gradle || true
