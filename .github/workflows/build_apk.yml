@@ -27,24 +27,15 @@ jobs:
 
       - name: Setup Android Project
         run: |
-          # إصلاح ملف pubspec.yaml فوراً قبل أي أمر آخر
-          if ! grep -q "environment:" pubspec.yaml; then
-            echo "" >> pubspec.yaml
-            echo "environment:" >> pubspec.yaml
-            echo "  sdk: '>=3.3.0 <4.0.0'" >> pubspec.yaml
-          fi
-          
           cp lib/main.dart /tmp/main.dart
           cp pubspec.yaml /tmp/pubspec.yaml
           flutter create --org com.dahshory.agri --project-name agri_app .
           cp /tmp/main.dart lib/main.dart
           cp /tmp/pubspec.yaml pubspec.yaml
           
-          # مسح الملفات التي تسبب التعارض
           rm -f android/build.gradle
           rm -f android/settings.gradle
           
-          # كتابة ملف settings.gradle بالطريقة الحديثة
           cat << 'EOF' > android/settings.gradle
           pluginManagement {
               def flutterSdkPath = {
@@ -73,7 +64,6 @@ jobs:
           include ":app"
           EOF
           
-          # كتابة ملف build.gradle
           cat << 'EOF' > android/build.gradle
           buildscript {
               ext.kotlin_version = '1.9.24'
@@ -104,7 +94,6 @@ jobs:
           }
           EOF
           
-          # رفع إصدار SDK لحل مشكلة المكتبات
           sed -i 's/compileSdkVersion = .*/compileSdkVersion = 34/' android/app/build.gradle || true
           sed -i 's/targetSdkVersion = .*/targetSdkVersion = 34/' android/app/build.gradle || true
           sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 23/' android/app/build.gradle || true
