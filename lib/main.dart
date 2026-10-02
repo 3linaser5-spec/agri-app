@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:image_picker/image_picker.dart';
@@ -427,7 +426,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
   }
 }
 
-// ---------------- 4. شاشة الفحص بالكاميرا + الصوت ----------------
+// ---------------- 4. شاشة الفحص بالكاميرا + الصوت عبر الاتصال المباشر ----------------
 class AiScannerScreen extends StatefulWidget {
   final String userName;
   final String userPhone;
@@ -498,7 +497,7 @@ $_diagnosis
     try {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تعذر فتح تطبيق الواتساب، تأكد من تثبيته')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تعذر فتح تطبيق الواتساب')));
     }
   }
 
@@ -526,10 +525,9 @@ $_diagnosis
     });
 
     try {
-      const apiKey = "AQ.Ab8RN6LCnJxwm9EYrmcpesabXdBU-hkkn25pz6mKQGbx3T-9Fw"; 
-      
-      final model = GenerativeModel(model: 'gemini-1.5-flash', apiKey: apiKey);
-      
+      const apiKey = "AQ.Ab8RN6LCnJxwm9EYrmcpesabXdBU-hkkn25pz6mKQGbx3T-9Fw";
+      final url = Uri.parse('https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$apiKey');
+
       final promptText = """
 أنت مستشار زراعي خبير تعمل تحت إشراف وتوجيهات المهندس علي الدهشوري.
 سؤال المزارع: ${question.isEmpty ? "قم بفحص هذه الصورة وتحديد المشكلة الزراعية" : question}
@@ -537,25 +535,50 @@ $_diagnosis
 اذكر اسم المرض، العلاج المقترح، وجرعة الرش ونصيحة التسميد والري بالعامية.
 """;
 
-      final parts = <Part>[TextPart(promptText)];
+      List<Map<String, dynamic>> parts = [
+        {"text": promptText}
+      ];
+
       if (_imageFile != null) {
-        final imageBytes = await _imageFile!.readAsBytes();
-        parts.add(DataPart('image/jpeg', imageBytes));
+        final bytes = await _imageFile!.readAsBytes();
+        final base64Image = base64Encode(bytes);
+        parts.add({
+          "inline_data": {
+            "mime_type": "image/jpeg",
+            "data": base64Image
+          }
+        });
       }
 
-      final res = await model.generateContent([Content.multi(parts)]);
-      final answer = res.text ?? "تعذر استخراج التشخيص.";
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          "contents": [
+            {
+              "parts": parts
+            }
+          ]
+        }),
+      );
 
-      await FirebaseFirestore.instance.collection('ai_queries').add({
-        'userId': widget.userPhone,
-        'userName': widget.userName,
-        'question': question,
-        'hasImage': _imageFile != null,
-        'aiDiagnosis': answer,
-        'timestamp': FieldValue.serverTimestamp(),
-      });
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final answer = data['candidates'][0]['content']['parts'][0]['text'] ?? "تعذر استخراج التشخيص.";
 
-      setState(() => _diagnosis = answer);
+        await FirebaseFirestore.instance.collection('ai_queries').add({
+          'userId': widget.userPhone,
+          'userName': widget.userName,
+          'question': question,
+          'hasImage': _imageFile != null,
+          'aiDiagnosis': answer,
+          'timestamp': FieldValue.serverTimestamp(),
+        });
+
+        setState(() => _diagnosis = answer);
+      } else {
+        setState(() => _diagnosis = "خطأ من السيرفر (${response.statusCode}): ${response.body}");
+      }
     } catch (e) {
       setState(() => _diagnosis = "سبب الخطأ: $e");
     } finally {
@@ -795,7 +818,7 @@ class ArticleDetailScreen extends StatelessWidget {
                 children: [
                   const Icon(Icons.access_time, size: 16, color: Colors.grey),
                   const SizedBox(width: 6),
-                  Text('مدة القراءة: ${article['readTime']}', style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                  Text('مدة القراءة: ${article['readText'] ?? article['readTime']}', style: const TextStyle(color: Colors.grey, fontSize: 13)),
                 ],
               ),
               const Divider(height: 30, thickness: 1),
