@@ -25,7 +25,7 @@ jobs:
           flutter-version: '3.19.6'
           channel: 'stable'
 
-      - name: Setup Android Project
+      - name: Setup Android Project and Permissions
         run: |
           cp lib/main.dart /tmp/main.dart
           cp pubspec.yaml /tmp/pubspec.yaml
@@ -35,6 +35,9 @@ jobs:
           
           rm -f android/build.gradle
           rm -f android/settings.gradle
+          
+          # إضافة صلاحيات الكاميرا والإنترنت والموقع في ملف الأندرويد 
+          sed -i 's/<application/<uses-permission android:name="android.permission.INTERNET"\/>\n    <uses-permission android:name="android.permission.CAMERA"\/>\n    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"\/>\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"\/>\n    <application/' android/app/src/main/AndroidManifest.xml
           
           cat << 'EOF' > android/settings.gradle
           pluginManagement {
@@ -101,7 +104,7 @@ jobs:
 
       - name: Add Missing Packages Automatically
         run: |
-          flutter pub add cloud_firestore google_generative_ai flutter_tts url_launcher firebase_core
+          flutter pub add cloud_firestore google_generative_ai flutter_tts url_launcher firebase_core image_picker geolocator http
           sed -i '1i import "package:cloud_firestore/cloud_firestore.dart";' lib/main.dart
 
       - name: Install dependencies
