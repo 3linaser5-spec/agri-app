@@ -99,9 +99,9 @@ jobs:
           sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 23/' android/app/build.gradle || true
           sed -i 's/minSdkVersion = flutter.minSdkVersion/minSdkVersion = 23/' android/app/build.gradle || true
 
-      - name: Fix Firestore Errors Automatically
+      - name: Add Missing Packages Automatically
         run: |
-          flutter pub add cloud_firestore
+          flutter pub add cloud_firestore google_generative_ai flutter_tts url_launcher firebase_core
           sed -i '1i import "package:cloud_firestore/cloud_firestore.dart";' lib/main.dart
 
       - name: Install dependencies
