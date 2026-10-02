@@ -385,10 +385,12 @@ class _HomeDashboardState extends State<HomeDashboard> {
                     color: const Color(0xFF25D366),
                     title: 'الدعم الفني',
                     onTap: () async {
-                      const engineerPhone = "+201126920209"; 
-                      final uri = Uri.parse("https://wa.me/$engineerPhone");
-                      if (await canLaunchUrl(uri)) {
+                      // تم حل مشكلة عدم فتح الواتساب هنا بتخطي فحص canLaunchUrl
+                      final uri = Uri.parse("https://wa.me/201126920209");
+                      try {
                         await launchUrl(uri, mode: LaunchMode.externalApplication);
+                      } catch (e) {
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('حدث خطأ أثناء فتح الواتساب')));
                       }
                     }
                   ),
@@ -484,7 +486,7 @@ class _AiScannerScreenState extends State<AiScannerScreen> {
   }
 
   Future<void> _sendToEngineerWhatsApp() async {
-    const engineerPhone = "+201126920209"; 
+    const engineerPhone = "201126920209"; 
     final message = """
 السلام عليكم يا بشمهندس علي، معي استشارة زراعية:
 🌱 *اسم المزارع:* ${widget.userName}
@@ -492,11 +494,13 @@ class _AiScannerScreenState extends State<AiScannerScreen> {
 📋 *تشخيص المستشار الذكي:*
 $_diagnosis
 """;
-    final url = "https://wa.me/$engineerPhone?text=${Uri.encodeComponent(message)}";
-    final uri = Uri.parse(url);
-
-    if (await canLaunchUrl(uri)) {
+    
+    // تم حل مشكلة عدم فتح الواتساب بتخطي فحص canLaunchUrl وإجبار الفتح
+    final uri = Uri.parse("https://wa.me/$engineerPhone?text=${Uri.encodeComponent(message)}");
+    try {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تعذر فتح تطبيق الواتساب، تأكد من تثبيته')));
     }
   }
 
@@ -524,7 +528,9 @@ $_diagnosis
     });
 
     try {
-      const apiKey = String.fromEnvironment('GEMINI_API_KEY'); 
+      // المفتاح السري اللي انت بعته تم إضافته هنا
+      const apiKey = "AQ.Ab8RN6JdgTMj0Iz2PqyF6zmTduDaBf7ZVfaTSbZlCXn-oAxQNA"; 
+      
       final model = GenerativeModel(model: 'gemini-1.5-flash', apiKey: apiKey);
       
       final promptText = """
@@ -554,7 +560,8 @@ $_diagnosis
 
       setState(() => _diagnosis = answer);
     } catch (e) {
-      setState(() => _diagnosis = "خطأ في الاتصال. تأكد من الإنترنت.");
+      // تعديل الرسالة لتظهر الخطأ الحقيقي لو حصل مشكلة
+      setState(() => _diagnosis = "سبب الخطأ: $e");
     } finally {
       setState(() => _loading = false);
     }
@@ -673,7 +680,7 @@ $_diagnosis
   }
 }
 
-// ---------------- 5. المقالات والتسميد ----------------
+// ---------------- 5. المقالات (أصبحت قابلة للفتح ومتعددة) ----------------
 class ArticlesAndGuidesScreen extends StatelessWidget {
   const ArticlesAndGuidesScreen({super.key});
 
