@@ -63,10 +63,13 @@ class _AuthScreenState extends State<AuthScreen> {
 
     try {
       final userDoc = FirebaseFirestore.instance.collection('users').doc(phone);
+      
       if (isLogin) {
-        final snapshot = await userDoc.get();
+        // تم إضافة حد زمني (Timeout) لمنع التعليق
+        final snapshot = await userDoc.get().timeout(const Duration(seconds: 10));
+        
         if (snapshot.exists && snapshot.data()?['password'] == password) {
-          await userDoc.update({'lastLogin': FieldValue.serverTimestamp()});
+          userDoc.update({'lastLogin': FieldValue.serverTimestamp()});
           _navigateToMain(snapshot.data()?['name'] ?? 'مزارع', phone);
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -74,21 +77,27 @@ class _AuthScreenState extends State<AuthScreen> {
           );
         }
       } else {
+        // تم إضافة حد زمني (Timeout) لمنع التعليق
         await userDoc.set({
           'name': name,
           'phone': phone,
           'password': password,
           'createdAt': FieldValue.serverTimestamp(),
           'lastLogin': FieldValue.serverTimestamp(),
-        });
+        }).timeout(const Duration(seconds: 10));
+        
         _navigateToMain(name, phone);
       }
     } catch (e) {
+      // إظهار رسالة عند ضعف الإنترنت أو انتهاء الوقت
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('حدث خطأ: $e')),
+        const SnackBar(content: Text('ضعف في الاتصال بالشبكة، يرجى المحاولة مرة أخرى.')),
       );
     } finally {
-      setState(() => _isLoading = false);
+      // إيقاف مؤشر التحميل بأمان
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -372,7 +381,6 @@ $_diagnosis
     });
 
     try {
-      // هنا الكود بيسحب المفتاح السري من الخزنة بدون ما ينكشف
       const apiKey = String.fromEnvironment('GEMINI_API_KEY'); 
       
       final model = GenerativeModel(model: 'gemini-1.5-flash', apiKey: apiKey);
