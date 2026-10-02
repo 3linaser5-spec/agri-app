@@ -1,126 +1,22 @@
-name: Build Flutter APK
+name: agri_app
+description: A new Flutter project.
+publish_to: 'none'
+version: 1.0.0+1
 
-on:
-  push:
-    branches: [ main, "رئيسي" ]
-  workflow_dispatch:
+environment:
+  sdk: '>=3.3.0 <4.0.0'
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
+dependencies:
+  flutter:
+    sdk: flutter
+  firebase_core: any
+  cupertino_icons: ^1.0.2
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^2.0.0
 
-      - name: Set up Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'zulu'
-          java-version: '17'
-
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.19.6'
-          channel: 'stable'
-
-      - name: Setup Android Project
-        run: |
-          # إصلاح ملف pubspec.yaml فوراً قبل أي أمر آخر
-          if ! grep -q "environment:" pubspec.yaml; then
-            echo "" >> pubspec.yaml
-            echo "environment:" >> pubspec.yaml
-            echo "  sdk: '>=3.3.0 <4.0.0'" >> pubspec.yaml
-          fi
-          
-          cp lib/main.dart /tmp/main.dart
-          cp pubspec.yaml /tmp/pubspec.yaml
-          flutter create --org com.dahshory.agri --project-name agri_app .
-          cp /tmp/main.dart lib/main.dart
-          cp /tmp/pubspec.yaml pubspec.yaml
-          
-          # مسح الملفات التي تسبب التعارض
-          rm -f android/build.gradle
-          rm -f android/settings.gradle
-          
-          # كتابة ملف settings.gradle بالطريقة الحديثة
-          cat << 'EOF' > android/settings.gradle
-          pluginManagement {
-              def flutterSdkPath = {
-                  def properties = new Properties()
-                  file("local.properties").withInputStream { properties.load(it) }
-                  def flutterSdkPath = properties.getProperty("flutter.sdk")
-                  assert flutterSdkPath != null, "flutter.sdk not set in local.properties"
-                  return flutterSdkPath
-              }()
-          
-              includeBuild("$flutterSdkPath/packages/flutter_tools/gradle")
-          
-              repositories {
-                  google()
-                  mavenCentral()
-                  gradlePluginPortal()
-              }
-          }
-          
-          plugins {
-              id "dev.flutter.flutter-plugin-loader" version "1.0.0"
-              id "com.android.application" version "7.3.0" apply false
-              id "org.jetbrains.kotlin.android" version "1.9.24" apply false
-          }
-          
-          include ":app"
-          EOF
-          
-          # كتابة ملف build.gradle
-          cat << 'EOF' > android/build.gradle
-          buildscript {
-              ext.kotlin_version = '1.9.24'
-              repositories {
-                  google()
-                  mavenCentral()
-              }
-              dependencies {
-                  classpath 'com.google.gms:google-services:4.3.15'
-              }
-          }
-          allprojects {
-              repositories {
-                  google()
-                  mavenCentral()
-                  gradlePluginPortal()
-              }
-          }
-          rootProject.buildDir = '../build'
-          subprojects {
-              project.buildDir = "${rootProject.buildDir}/${project.name}"
-          }
-          subprojects {
-              project.evaluationDependsOn(':app')
-          }
-          tasks.register("clean", Delete) {
-              delete rootProject.buildDir
-          }
-          EOF
-          
-          # رفع إصدار SDK لحل مشكلة المكتبات
-          sed -i 's/compileSdkVersion = .*/compileSdkVersion = 34/' android/app/build.gradle || true
-          sed -i 's/targetSdkVersion = .*/targetSdkVersion = 34/' android/app/build.gradle || true
-          sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 23/' android/app/build.gradle || true
-          sed -i 's/minSdkVersion = flutter.minSdkVersion/minSdkVersion = 23/' android/app/build.gradle || true
-
-      - name: Install dependencies
-        run: flutter pub get
-
-      - name: Fix Code Typo Automatically
-        run: find lib -type f -name "*.dart" -exec sed -i 's/MainAxisAlignment.between/MainAxisAlignment.spaceBetween/g' {} +
-
-      - name: Build APK
-        run: flutter build apk --release --no-tree-shake-icons
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-release
-          path: build/app/outputs/flutter-apk/app-release.apk
+flutter:
+  uses-material-design: true
+  
