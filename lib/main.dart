@@ -526,7 +526,8 @@ $_diagnosis
 
     try {
       const apiKey = "AQ.Ab8RN6LCnJxwm9EYrmcpesabXdBU-hkkn25pz6mKQGbx3T-9Fw";
-      final url = Uri.parse('https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$apiKey');
+      // استخدام الإصدار المحدث لتجنب مشاكل المصادقة المعقدة
+      final url = Uri.parse('https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=$apiKey');
 
       final promptText = """
 أنت مستشار زراعي خبير تعمل تحت إشراف وتوجيهات المهندس علي الدهشوري.
