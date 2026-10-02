@@ -385,7 +385,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
                     color: const Color(0xFF25D366),
                     title: 'الدعم الفني',
                     onTap: () async {
-                      // تم حل مشكلة عدم فتح الواتساب هنا بتخطي فحص canLaunchUrl
                       final uri = Uri.parse("https://wa.me/201126920209");
                       try {
                         await launchUrl(uri, mode: LaunchMode.externalApplication);
@@ -495,7 +494,6 @@ class _AiScannerScreenState extends State<AiScannerScreen> {
 $_diagnosis
 """;
     
-    // تم حل مشكلة عدم فتح الواتساب بتخطي فحص canLaunchUrl وإجبار الفتح
     final uri = Uri.parse("https://wa.me/$engineerPhone?text=${Uri.encodeComponent(message)}");
     try {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
@@ -528,8 +526,7 @@ $_diagnosis
     });
 
     try {
-      // المفتاح السري اللي انت بعته تم إضافته هنا
-      const apiKey = "AQ.Ab8RN6JdgTMj0Iz2PqyF6zmTduDaBf7ZVfaTSbZlCXn-oAxQNA"; 
+      const apiKey = "AQ.Ab8RN6LCnJxwm9EYrmcpesabXdBU-hkkn25pz6mKQGbx3T-9Fw"; 
       
       final model = GenerativeModel(model: 'gemini-1.5-flash', apiKey: apiKey);
       
@@ -560,7 +557,6 @@ $_diagnosis
 
       setState(() => _diagnosis = answer);
     } catch (e) {
-      // تعديل الرسالة لتظهر الخطأ الحقيقي لو حصل مشكلة
       setState(() => _diagnosis = "سبب الخطأ: $e");
     } finally {
       setState(() => _loading = false);
@@ -680,7 +676,7 @@ $_diagnosis
   }
 }
 
-// ---------------- 5. المقالات (أصبحت قابلة للفتح ومتعددة) ----------------
+// ---------------- 5. المقالات والتسميد ----------------
 class ArticlesAndGuidesScreen extends StatelessWidget {
   const ArticlesAndGuidesScreen({super.key});
 
