@@ -27,6 +27,13 @@ jobs:
 
       - name: Setup Android Project
         run: |
+          # إصلاح ملف pubspec.yaml فوراً قبل أي أمر آخر
+          if ! grep -q "environment:" pubspec.yaml; then
+            echo "" >> pubspec.yaml
+            echo "environment:" >> pubspec.yaml
+            echo "  sdk: '>=3.3.0 <4.0.0'" >> pubspec.yaml
+          fi
+          
           cp lib/main.dart /tmp/main.dart
           cp pubspec.yaml /tmp/pubspec.yaml
           flutter create --org com.dahshory.agri --project-name agri_app .
@@ -102,32 +109,6 @@ jobs:
           sed -i 's/targetSdkVersion = .*/targetSdkVersion = 34/' android/app/build.gradle || true
           sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 23/' android/app/build.gradle || true
           sed -i 's/minSdkVersion = flutter.minSdkVersion/minSdkVersion = 23/' android/app/build.gradle || true
-
-      - name: Fix pubspec.yaml SDK constraint Automatically
-        run: |
-          cat << 'EOF' > fix_pubspec.dart
-          import 'dart:io';
-          void main() {
-            var file = File('pubspec.yaml');
-            var lines = file.readAsLinesSync();
-            bool hasEnv = false;
-            bool hasSdk = false;
-            for (var line in lines) {
-              if (line.trim().startsWith('environment:')) hasEnv = true;
-              if (line.trim().startsWith('sdk:')) hasSdk = true;
-            }
-            if (!hasSdk) {
-              if (hasEnv) {
-                int idx = lines.indexWhere((l) => l.trim().startsWith('environment:'));
-                lines.insert(idx + 1, '  sdk: ">=3.3.0 <4.0.0"');
-              } else {
-                lines.addAll(['', 'environment:', '  sdk: ">=3.3.0 <4.0.0"']);
-              }
-              file.writeAsStringSync(lines.join('\n'));
-            }
-          }
-          EOF
-          dart run fix_pubspec.dart
 
       - name: Install dependencies
         run: flutter pub get
