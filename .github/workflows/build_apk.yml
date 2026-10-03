@@ -97,15 +97,23 @@ jobs:
           }
           EOF
           
+          # تفعيل إضافة جوجل للخدمات في ملف التطبيق
+          echo "apply plugin: 'com.google.gms.google-services'" >> android/app/build.gradle
+          
           sed -i 's/compileSdkVersion = .*/compileSdkVersion = 34/' android/app/build.gradle || true
           sed -i 's/targetSdkVersion = .*/targetSdkVersion = 34/' android/app/build.gradle || true
           sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 23/' android/app/build.gradle || true
           sed -i 's/minSdkVersion = flutter.minSdkVersion/minSdkVersion = 23/' android/app/build.gradle || true
 
+      - name: Create google-services.json
+        run: echo '${{ secrets.GOOGLE_SERVICES_JSON }}' > android/app/google-services.json
+
       - name: Add Missing Packages Automatically
         run: |
-          flutter pub add cloud_firestore google_generative_ai flutter_tts url_launcher firebase_core image_picker geolocator http
+          flutter pub add cloud_firestore google_generative_ai flutter_tts url_launcher firebase_core image_picker geolocator http firebase_auth firebase_app_check
           sed -i '1i import "package:cloud_firestore/cloud_firestore.dart";' lib/main.dart
+          sed -i '1i import "package:firebase_core/firebase_core.dart";' lib/main.dart
+          sed -i '1i import "package:firebase_app_check/firebase_app_check.dart";' lib/main.dart
 
       - name: Install dependencies
         run: flutter pub get
