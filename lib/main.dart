@@ -15,14 +15,20 @@ import 'utils/validators.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
-
-  // تفعيل الحماية App Check
-  await FirebaseAppCheck.instance.activate(
-    androidProvider: AndroidProvider.debug,
-  );
+  
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    
+    // تفعيل الحماية App Check (معلقة مؤقتاً عشان التطبيق يفتح)
+    // await FirebaseAppCheck.instance.activate(
+    //   androidProvider: AndroidProvider.debug,
+    // );
+    
+  } catch (e) {
+    debugPrint("Firebase initialization error: $e");
+  }
 
   runApp(const AgriConsultantApp());
 }
