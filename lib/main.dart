@@ -561,7 +561,7 @@ $_diagnosis
     super.dispose();
   }
 
-  // ✅ دالة الإرسال بعد التعديل والإكمال
+  // ✅ دالة الإرسال بعد التعديل والإكمال (مع خاصية إعادة المحاولة)
   Future<void> _submit() async {
     final question = _questionCtrl.text.trim();
     if (question.isEmpty && _imageFile == null) {
@@ -584,44 +584,64 @@ $_diagnosis
       _diagnosis = "";
     });
 
-    try {
-      // ✅ 2. التعديل هنا: استخدام نموذج gemini-3.8-flash
-      final model = GenerativeModel(
-        model: 'gemini-3.8-flash', 
-        apiKey: _apiKey,
-      );
+    // ✅ 2. إعدادات إعادة المحاولة (Retry Logic) لتفادي أخطاء الضغط 503
+    int maxRetries = 3;
+    int attempt = 0;
+    bool success = false;
 
-      final prompt = """
+    while (attempt < maxRetries && !success) {
+      try {
+        attempt++;
+        
+        // ✅ 3. استخدام نموذج gemini-3.8-flash
+        final model = GenerativeModel(
+          model: 'gemini-3.8-flash', 
+          apiKey: _apiKey,
+        );
+
+        final prompt = """
 أنت مهندس زراعي خبير ومستشار زراعي مصري.
 قم بتشخيص الحالة التالية وقدم توصياتك الزراعية باللغة العربية وباللهجة المصرية المبسطة.
 سؤال المزارع: $question
 """;
 
-      List<Part> parts = [TextPart(prompt)];
+        List<Part> parts = [TextPart(prompt)];
 
-      // لو فيه صورة مرفقة، نضيفها للطلب
-      if (_imageFile != null) {
-        final imageBytes = await _imageFile!.readAsBytes();
-        parts.add(DataPart('image/jpeg', imageBytes));
+        // لو فيه صورة مرفقة، نضيفها للطلب
+        if (_imageFile != null) {
+          final imageBytes = await _imageFile!.readAsBytes();
+          parts.add(DataPart('image/jpeg', imageBytes));
+        }
+
+        final response = await model.generateContent([
+          Content.multi(parts)
+        ]);
+
+        setState(() {
+          _diagnosis = response.text ?? 'لم يتمكن الذكاء الاصطناعي من تقديم تشخيص.';
+        });
+        
+        success = true; // لو وصلنا هنا يبقى الطلب نجح
+
+      } catch (e) {
+        // لو ده آخر محاولة، نعرض الخطأ للمستخدم
+        if (attempt >= maxRetries) {
+          setState(() {
+            _diagnosis = 'عذراً، خدمة الذكاء الاصطناعي مشغولة حالياً بسبب الضغط العالي.\nبرجاء المحاولة مرة أخرى بعد قليل.';
+          });
+          // طباعة الخطأ الحقيقي في الـ Console للمطور
+          print("❌ فشل الاتصال بالذكاء الاصطناعي بعد $attempt محاولات. الخطأ: $e");
+        } else {
+          // نستنى ثانيتين ونحاول تاني
+          print("⚠️ المحاولة رقم $attempt فشلت (ضغط على السيرفر). جاري إعادة المحاولة...");
+          await Future.delayed(const Duration(seconds: 2));
+        }
       }
-
-      final response = await model.generateContent([
-        Content.multi(parts)
-      ]);
-
-      setState(() {
-        _diagnosis = response.text ?? 'لم يتمكن الذكاء الاصطناعي من تقديم تشخيص.';
-      });
-    } catch (e) {
-      // ✅ 3. تحسين رسالة الخطأ لتكون أوضح
-      setState(() {
-        _diagnosis = 'حدث خطأ أثناء الاتصال بالذكاء الاصطناعي.\nتأكد من أن اسم النموذج صحيح وأن مفتاح API فعال.\nتفاصيل الخطأ: $e';
-      });
-    } finally {
-      setState(() {
-        _loading = false;
-      });
     }
+
+    setState(() {
+      _loading = false;
+    });
   }
 
   @override
