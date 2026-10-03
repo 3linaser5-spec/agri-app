@@ -21,13 +21,20 @@ class AuthService {
         password: password,
       );
 
-      // 2. تخزين بيانات المستخدم الإضافية في Firestore (بدون الباسورد!)
+      // ✅ 2. حفظ الاسم في حساب المستخدم نفسه عشان يفضل موجود بعد إعادة فتح التطبيق
+      await credential.user!.updateDisplayName(name);
+      
+      // ✅ 3. إعادة تحميل بيانات المستخدم عشان الاسم يتحدث فوراً
+      await credential.user!.reload();
+
+      // ✅ 4. تخزين بيانات المستخدم الإضافية في Firestore
       await _db.collection('users').doc(credential.user!.uid).set({
         'uid': credential.user!.uid,
         'name': name,
         'phone': phone,
         'createdAt': FieldValue.serverTimestamp(),
       });
+      
       return null; // نجاح
     } on FirebaseAuthException catch (e) {
       return _mapError(e.code); // تحويل الخطأ إلى رسالة عربية
