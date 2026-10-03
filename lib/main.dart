@@ -14,6 +14,7 @@ import 'package:google_generative_ai/google_generative_ai.dart';
 import 'firebase_options.dart';
 import 'services/auth_service.dart';
 import 'services/offline_service.dart';
+import 'services/notification_service.dart';
 import 'utils/validators.dart';
 
 void main() async {
@@ -23,6 +24,17 @@ void main() async {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
+
+    // ✅ تهيئة الإشعارات
+    try {
+      await NotificationService.initialize();
+      await NotificationService.subscribeToPestAlerts();
+      final token = await NotificationService.getToken();
+      debugPrint("🔑 FCM Token: $token");
+    } catch (e) {
+      debugPrint("خطأ في تهيئة الإشعارات: $e");
+    }
+
   } catch (e) {
     debugPrint("Firebase initialization error: $e");
   }
