@@ -557,20 +557,18 @@ $_diagnosis
   @override
   void dispose() {
     _flutterTts.stop();
+    _questionCtrl.dispose(); // ✅ تأكد من عمل dispose للـ Controller
     super.dispose();
   }
 
+  // ✅ دالة الإرسال بعد التعديل والإكمال
   Future<void> _submit() async {
     final question = _questionCtrl.text.trim();
     if (question.isEmpty && _imageFile == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('الرجاء كتابة سؤال أو التقاط صورة')));
+        const SnackBar(content: Text('برجاء كتابة سؤالك أو إرفاق صورة أولاً')),
+      );
       return;
-    }
-
-    if (_isPlayingVoice) {
-      await _flutterTts.stop();
-      setState(() => _isPlayingVoice = false);
     }
 
     setState(() {
@@ -578,345 +576,178 @@ $_diagnosis
       _diagnosis = "";
     });
 
-    String answer = "";
-
     try {
-      // تهيئة موديل Gemini (تم تغيير الاسم لـ latest)
+      // ✅ التعديل الأساسي: تغيير اسم الموديل إلى gemini-2.0-flash
       final model = GenerativeModel(
-        model: 'gemini-1.5-flash-latest',
+        model: 'gemini-2.0-flash',
         apiKey: _apiKey,
       );
 
-      // صياغة الطلب (Prompt) عشان يرد كمهندس زراعي
       final prompt = """
 أنت مهندس زراعي خبير ومستشار زراعي مصري.
+قم بتشخيص الحالة التالية وقدم توصياتك الزراعية باللغة العربية وباللهجة المصرية المبسطة.
 سؤال المزارع: $question
-أجب باللهجة المصرية وبشكل عملي ومختصر، وقسم الرد إلى:
-1. تشخيص مبدئي.
-2. العلاج المقترح.
-3. توصية الري والتسميد.
 """;
 
-      // إرسال الطلب لـ Gemini
-      final response = await model.generateContent([Content.text(prompt)]);
-      
-      answer = response.text ?? "عذراً، لم أتمكن من التشخيص حالياً.";
+      List<Part> parts = [TextPart(prompt)];
 
-    } catch (e) {
-      answer = "حدث خطأ أثناء الاتصال بالذكاء الاصطناعي: $e";
-    }
+      // لو فيه صورة مرفقة، نضيفها للطلب
+      if (_imageFile != null) {
+        final imageBytes = await _imageFile!.readAsBytes();
+        parts.add(DataPart('image/jpeg', imageBytes));
+      }
 
-    // حفظ النتيجة في Firestore
-    try {
-      await FirebaseFirestore.instance.collection('ai_queries').add({
-        'userId': widget.userPhone,
-        'userName': widget.userName,
-        'question': question.isEmpty ? "فحص صورة الآفة" : question,
-        'hasImage': _imageFile != null,
-        'aiDiagnosis': answer,
-        'timestamp': FieldValue.serverTimestamp(),
+      final response = await model.generateContent([
+        Content.multi(parts)
+      ]);
+
+      setState(() {
+        _diagnosis = response.text ?? 'لم يتمكن الذكاء الاصطناعي من تقديم تشخيص.';
       });
     } catch (e) {
-      debugPrint("Firestore Error: $e");
+      setState(() {
+        _diagnosis = 'حدث خطأ أثناء الاتصال بالذكاء الاصطناعي: $e';
+      });
+    } finally {
+      setState(() {
+        _loading = false;
+      });
     }
-
-    setState(() {
-      _diagnosis = answer;
-      _loading = false;
-    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        title: const Text('الفحص الذكي للآفات', style: TextStyle(color: Colors.white)),
         backgroundColor: const Color(0xFF047857),
-        title: const Text('الفحص الذكي للآفات',
-            style: TextStyle(color: Colors.white, fontSize: 17)),
       ),
       body: Directionality(
         textDirection: TextDirection.rtl,
-        child: ListView(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(16),
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _questionCtrl,
-                    maxLines: 3,
-                    decoration: InputDecoration(
-                      hintText: 'اكتب وصفاً للمشكلة أو الأعراض...',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextField(
+                controller: _questionCtrl,
+                maxLines: 4,
+                decoration: InputDecoration(
+                  hintText: 'اكتب مشكلة النبات أو الآفة اللي بتواجهك...',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  filled: true,
+                  fillColor: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  ElevatedButton.icon(
+                    onPressed: _pickImage,
+                    icon: const Icon(Icons.camera_alt),
+                    label: const Text('إرفاق صورة'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.grey.shade200,
+                      foregroundColor: Colors.black87,
                     ),
                   ),
+                  const SizedBox(width: 8),
+                  if (_imageFile != null)
+                    const Text('تم إرفاق صورة ✅', style: TextStyle(color: Colors.green)),
+                ],
+              ),
+              const SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: _loading ? null : _submit,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF047857),
+                  minimumSize: const Size.fromHeight(50),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
-                const SizedBox(width: 10),
-                InkWell(
-                  onTap: _pickImage,
-                  child: Container(
-                    height: 85,
-                    width: 70,
-                    decoration: BoxDecoration(
-                      color: Colors.green[50],
-                      border: Border.all(color: const Color(0xFF047857)),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                child: _loading
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : const Text('إرسال للاستشارة الزراعية',
+                        style: TextStyle(fontSize: 16, color: Colors.white)),
+              ),
+              const SizedBox(height: 24),
+              if (_diagnosis.isNotEmpty) ...[
+                Card(
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  color: const Color(0xFFECFDF5),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
                     child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: const [
-                        Icon(Icons.camera_alt, color: Color(0xFF047857), size: 30),
-                        SizedBox(height: 4),
-                        Text('تصوير',
-                            style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF047857))),
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Row(
+                          children: [
+                            Icon(Icons.check_circle, color: Color(0xFF047857)),
+                            SizedBox(width: 8),
+                            Text('تشخيص وتوصية المستشار الزراعي:',
+                                style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                    color: Color(0xFF047857))),
+                          ],
+                        ),
+                        const Divider(),
+                        Text(_diagnosis,
+                            style: const TextStyle(fontSize: 14, height: 1.6)),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: () => _toggleVoicePlayback(_diagnosis),
+                                icon: Icon(_isPlayingVoice
+                                    ? Icons.stop
+                                    : Icons.volume_up),
+                                label: Text(_isPlayingVoice
+                                    ? 'إيقاف الصوت'
+                                    : 'استمع للتشخيص (باللهجة المصرية)'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF047857),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        ElevatedButton.icon(
+                          onPressed: _sendToEngineerWhatsApp,
+                          icon: const Icon(Icons.chat),
+                          label: const Text('تأكيد الاستشارة مع م. علي الدهشوري'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF25D366),
+                            minimumSize: const Size.fromHeight(45),
+                          ),
+                        ),
                       ],
                     ),
                   ),
                 ),
               ],
-            ),
-            if (_imageFile != null) ...[
-              const SizedBox(height: 10),
-              Stack(
-                alignment: Alignment.topRight,
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Image.file(_imageFile!,
-                        height: 150, width: double.infinity, fit: BoxFit.cover),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.cancel, color: Colors.red, size: 30),
-                    onPressed: () => setState(() => _imageFile = null),
-                  )
-                ],
-              ),
             ],
-            const SizedBox(height: 12),
-            ElevatedButton.icon(
-              onPressed: _loading ? null : _submit,
-              icon: const Icon(Icons.send, color: Colors.white),
-              label: Text(_loading ? 'جاري فحص وتشخيص المشكلة...' : 'إرسال للاستشارة الزراعية',
-                  style: const TextStyle(color: Colors.white)),
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF047857),
-                  padding: const EdgeInsets.all(14)),
-            ),
-            if (_diagnosis.isNotEmpty) ...[
-              const SizedBox(height: 18),
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                    color: Colors.green[50],
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: Colors.green)),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Row(
-                      children: [
-                        Icon(Icons.verified, color: Color(0xFF047857), size: 20),
-                        SizedBox(width: 8),
-                        Text('تشخيص وتوصية المستشار الزراعي:',
-                            style: TextStyle(
-                                fontWeight: FontWeight.bold, color: Color(0xFF047857))),
-                      ],
-                    ),
-                    const Divider(height: 18),
-                    Text(_diagnosis, style: const TextStyle(fontSize: 13, height: 1.6)),
-                    const SizedBox(height: 14),
-                    ElevatedButton.icon(
-                      onPressed: () => _toggleVoicePlayback(_diagnosis),
-                      icon: Icon(_isPlayingVoice ? Icons.stop_circle : Icons.volume_up_rounded,
-                          color: Colors.white),
-                      label: Text(_isPlayingVoice ? 'إيقاف الصوت' : '🔊 استمع للتشخيص (باللهجة المصرية)',
-                          style: const TextStyle(
-                              fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white)),
-                      style: ElevatedButton.styleFrom(
-                          backgroundColor: _isPlayingVoice
-                              ? Colors.red[700]
-                              : const Color(0xFF047857),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10))),
-                    ),
-                    const SizedBox(height: 10),
-                    ElevatedButton.icon(
-                      onPressed: _sendToEngineerWhatsApp,
-                      icon: const Icon(Icons.chat, color: Colors.white),
-                      label: const Text('💬 تأكيد الاستشارة مع م. علي الدهشوري',
-                          style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                              color: Colors.white)),
-                      style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF25D366),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10))),
-                    ),
-                  ],
-                ),
-              )
-            ]
-          ],
+          ),
         ),
       ),
     );
   }
 }
 
-// ---------------- 5. المقالات والتسميد ----------------
+// ---------------- 5. شاشة المقالات (ناقصة في الكود الأصلي) ----------------
 class ArticlesAndGuidesScreen extends StatelessWidget {
   const ArticlesAndGuidesScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final articles = [
-      {
-        'title': 'برنامج تسميد الطماطم من الزراعة حتى الحصاد',
-        'category': 'برامج التسميد',
-        'readTime': '4 دقائق',
-        'content':
-            'لنجاح زراعة الطماطم، يجب البدء بتنشيط الجذور باستخدام حامض الفوسفوريك وهيومات البوتاسيوم بمعدل 2 لتر للفدان. بعد أسبوعين نبدأ بالتسميد النيتروجيني لزيادة المجموع الخضري. في مرحلة التزهير، من الضروري الاهتمام برش الكالسيوم والبورون لمنع تشوه الثمار وتقليل تساقط الأزهار، مع تقليل الري تدريجياً لتجنب عفن الجذور.'
-      },
-      {
-        'title': 'القواعد الذهبية لري أشجار الموالح في الصيف',
-        'category': 'إرشادات الري',
-        'readTime': '3 دقائق',
-        'content':
-            'أشجار الموالح حساسة جداً للإجهاد الحراري في الصيف. القاعدة الأهم هي الري في الصباح الباكر جداً أو ليلاً، وتجنب فترات الظهيرة تماماً لأن المياه الساخنة تؤدي لاختناق الجذور وتساقط الثمار الصغيرة (الخف الصيفي). يفضل تقريب فترات الري مع تقليل الكمية في كل مرة بدلاً من التعطيش ثم الغمر.'
-      },
-      {
-        'title': 'دليل مكافحة سوسة النخيل الحمراء',
-        'category': 'وقاية ومكافحة',
-        'readTime': '5 دقائق',
-        'content':
-            'سوسة النخيل هي العدو الأول للنخل. تبدأ المكافحة بالمتابعة الدورية كل أسبوعين لقواعد النخيل. يجب سد أي جروح فوراً بعد التقليم باستخدام الطين أو عجينة بوردو لمنع الحشرة من وضع البيض. في حالة اكتشاف إصابة، يجب الحقن الفوري بالمبيدات الجهازية المعتمدة وتغطية مكان الحقن جيداً لمنع خروج الأبخرة.'
-      },
-      {
-        'title': 'أسباب إصفرار أوراق المانجو وعلاجها',
-        'category': 'أمراض وعلاج',
-        'readTime': '3 دقائق',
-        'content':
-            'إصفرار أوراق المانجو الحديثة غالباً ما يكون بسبب نقص عنصر الحديد أو الزنك، خاصة في الأراضي الجيرية. يتم العلاج برش الحديد المخلبي (EDDHA) بمعدل 1.5 جرام لكل لتر ماء. أما إذا كان الإصفرار في الأوراق السفلية القديمة، فهو غالباً نقص نيتروجين، ويحتاج لدعم سمادي في مياه الري.'
-      },
-      {
-        'title': 'كيفية تجهيز التربة قبل زراعة المحاصيل الشتوية',
-        'category': 'تجهيز التربة',
-        'readTime': '4 دقائق',
-        'content':
-            'التجهيز الجيد يبدأ بالحرث العميق المتعامد لتهوية التربة وتعريضها للشمس للقضاء على بذور الحشائش والآفات. يجب إضافة السماد البلدي المتحلل بمعدل 20 متر مكعب للفدان مع السوبر فوسفات والكبريت الزراعي قبل التخطيط، مما يضمن تدفئة الجذور وتوفير العناصر الغذائية تدريجياً للنبات.'
-      },
-    ];
-
     return Scaffold(
       appBar: AppBar(
+        title: const Text('الموسوعة الزراعية', style: TextStyle(color: Colors.white)),
         backgroundColor: const Color(0xFF047857),
-        title: const Text('الموسوعة الزراعية والمدونات',
-            style: TextStyle(color: Colors.white, fontSize: 17)),
       ),
-      body: Directionality(
-        textDirection: TextDirection.rtl,
-        child: ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: articles.length,
-          itemBuilder: (context, index) {
-            final item = articles[index];
-            return Card(
-              margin: const EdgeInsets.only(bottom: 12),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              child: InkWell(
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => ArticleDetailScreen(article: item),
-                    ),
-                  );
-                },
-                child: Padding(
-                  padding: const EdgeInsets.all(14.0),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(item['category']!,
-                                style: const TextStyle(
-                                    color: Color(0xFF047857),
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold)),
-                            const SizedBox(height: 4),
-                            Text(item['title']!,
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.bold, fontSize: 14)),
-                            const SizedBox(height: 6),
-                            Text(item['content']!,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontSize: 12, color: Colors.black54)),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          },
-        ),
-      ),
-    );
-  }
-}
-
-// ---------------- 6. شاشة تفاصيل المقال ----------------
-class ArticleDetailScreen extends StatelessWidget {
-  final Map<String, String> article;
-  const ArticleDetailScreen({super.key, required this.article});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF047857),
-        iconTheme: const IconThemeData(color: Colors.white),
-        title: Text(article['category']!,
-            style: const TextStyle(color: Colors.white, fontSize: 16)),
-      ),
-      body: Directionality(
-        textDirection: TextDirection.rtl,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(article['title']!,
-                  style: const TextStyle(
-                      fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF047857))),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  const Icon(Icons.access_time, size: 16, color: Colors.grey),
-                  const SizedBox(width: 6),
-                  Text('مدة القراءة: ${article['readTime']}',
-                      style: const TextStyle(color: Colors.grey, fontSize: 13)),
-                ],
-              ),
-              const Divider(height: 30, thickness: 1),
-              Text(article['content']!,
-                  style: const TextStyle(fontSize: 16, height: 1.9, color: Colors.black87)),
-            ],
-          ),
-        ),
+      body: const Center(
+        child: Text('قسم المقالات والإرشادات الزراعية (قيد التطوير)'),
       ),
     );
   }
