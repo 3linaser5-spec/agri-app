@@ -209,6 +209,11 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Generate Launcher Icons
+        run: |
+          flutter pub add flutter_launcher_icons
+          flutter pub run flutter_launcher_icons
+
       - name: Fix Code Typo Automatically
         run: find lib -type f -name "*.dart" -exec sed -i 's/MainAxisAlignment.between/MainAxisAlignment.spaceBetween/g' {} +
 
