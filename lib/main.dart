@@ -57,7 +57,6 @@ class AuthWrapper extends StatelessWidget {
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
         
-        // 1. لسه بيفحص الحالة
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
             body: Center(
@@ -66,7 +65,6 @@ class AuthWrapper extends StatelessWidget {
           );
         }
 
-        // 2. لو المستخدم مسجل دخول
         if (snapshot.hasData && snapshot.data != null) {
           final user = snapshot.data!;
           
@@ -83,7 +81,6 @@ class AuthWrapper extends StatelessWidget {
           );
         }
 
-        // 3. لو مش مسجل دخول
         return const AuthScreen();
       },
     );
@@ -300,17 +297,15 @@ class _HomeDashboardState extends State<HomeDashboard> {
     _fetchWeatherByLocation();
   }
 
-  // ✅ دالة جلب الطقس بعد التعديل (GPS محسّن)
+  // ✅ دالة جلب الطقس مع GPS محسّن
   Future<void> _fetchWeatherByLocation() async {
     try {
-      // 1. نتأكد إن GPS مفعّل في الموبايل الأول
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
         setState(() => weatherStatusText = "⚠️ برجاء تشغيل GPS في هاتفك");
         return;
       }
 
-      // 2. نتحقق من صلاحيات الموقع
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
@@ -325,17 +320,14 @@ class _HomeDashboardState extends State<HomeDashboard> {
         return;
       }
 
-      // 3. نجيب الموقع الحالي بأعلى دقة مع مهلة زمنية
       Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.best,
         timeLimit: const Duration(seconds: 20),
       );
 
-      // 4. نطبع الإحداثيات والدقة في الـ Console
       debugPrint("📍 الإحداثيات: ${position.latitude}, ${position.longitude}");
       debugPrint("🎯 الدقة: ${position.accuracy} متر");
 
-      // 5. نجيب الطقس من Open-Meteo
       final url = Uri.parse(
           'https://api.open-meteo.com/v1/forecast?latitude=${position.latitude}&longitude=${position.longitude}&current=temperature_2m,relative_humidity_2m');
 
@@ -558,16 +550,62 @@ class _AiScannerScreenState extends State<AiScannerScreen> {
     });
   }
 
+  // ✅ دالة جديدة: تعرض للمستخدم خيار الكاميرا أو المعرض
   Future<void> _pickImage() async {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Wrap(
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16.0),
+              child: Text(
+                'اختر مصدر الصورة',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.camera_alt, color: Color(0xFF047857), size: 30),
+              title: const Text('التقاط صورة بالكاميرا'),
+              onTap: () async {
+                Navigator.pop(context);
+                await _pickFromSource(ImageSource.camera);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library, color: Color(0xFF047857), size: 30),
+              title: const Text('اختيار من المعرض'),
+              onTap: () async {
+                Navigator.pop(context);
+                await _pickFromSource(ImageSource.gallery);
+              },
+            ),
+            const SizedBox(height: 10),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ✅ دالة مساعدة: تختار الصورة من المصدر اللي المستخدم اختاره
+  Future<void> _pickFromSource(ImageSource source) async {
     try {
-      final XFile? pickedFile =
-          await _picker.pickImage(source: ImageSource.camera, imageQuality: 80);
+      final XFile? pickedFile = await _picker.pickImage(
+        source: source,
+        imageQuality: 80,
+      );
       if (pickedFile != null) {
         setState(() => _imageFile = File(pickedFile.path));
       }
     } catch (e) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('تعذر فتح الكاميرا')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تعذر فتح الكاميرا أو المعرض')),
+        );
+      }
     }
   }
 
