@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // ✅ التعديل 1
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:image_picker/image_picker.dart';
@@ -21,12 +22,6 @@ void main() async {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
-    
-    // تفعيل الحماية App Check (معلقة مؤقتاً عشان التطبيق يفتح)
-    // await FirebaseAppCheck.instance.activate(
-    //   androidProvider: AndroidProvider.debug,
-    // );
-    
   } catch (e) {
     debugPrint("Firebase initialization error: $e");
   }
@@ -47,7 +42,52 @@ class AgriConsultantApp extends StatelessWidget {
         useMaterial3: true,
         fontFamily: 'Cairo',
       ),
-      home: const AuthScreen(),
+      home: const AuthWrapper(), // ✅ التعديل 2
+    );
+  }
+}
+
+// ---------------- 0. التحقق من حالة تسجيل الدخول (جديد) ----------------
+class AuthWrapper extends StatelessWidget {
+  const AuthWrapper({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, snapshot) {
+        
+        // 1. لسه بيفحص الحالة
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            body: Center(
+              child: CircularProgressIndicator(color: Color(0xFF047857)),
+            ),
+          );
+        }
+
+        // 2. لو المستخدم مسجل دخول
+        if (snapshot.hasData && snapshot.data != null) {
+          final user = snapshot.data!;
+          
+          // استخراج رقم الموبايل من الإيميل الوهمي
+          String phone = "غير معروف";
+          if (user.email != null && user.email!.contains('@')) {
+            phone = user.email!.split('@').first;
+          }
+
+          // الاسم من displayName
+          String name = user.displayName ?? "مزارع";
+
+          return MainNavigationScreen(
+            userName: name,
+            userPhone: phone,
+          );
+        }
+
+        // 3. لو مش مسجل دخول
+        return const AuthScreen();
+      },
     );
   }
 }
@@ -99,21 +139,7 @@ class _AuthScreenState extends State<AuthScreen> {
       return;
     }
 
-    // نجاح - نروح للشاشة الرئيسية
-    final displayName = isLogin
-        ? 'مزارع'
-        : _nameController.text.trim();
-
-    _navigateToMain(displayName, _phoneController.text.trim());
-  }
-
-  void _navigateToMain(String name, String phone) {
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (_) => MainNavigationScreen(userName: name, userPhone: phone),
-      ),
-    );
+    // نجاح - AuthWrapper هيحدث نفسه تلقائياً
   }
 
   @override
@@ -492,7 +518,6 @@ class _AiScannerScreenState extends State<AiScannerScreen> {
   File? _imageFile;
   final ImagePicker _picker = ImagePicker();
 
-  // قراءة مفتاح API الخاص بـ Gemini من إعدادات البناء
   final String _apiKey = const String.fromEnvironment('GEMINI_API_KEY');
 
   @override
@@ -561,7 +586,6 @@ $_diagnosis
     super.dispose();
   }
 
-  // ✅ دالة الإرسال بعد التعديل والإكمال (مع خاصية إعادة المحاولة)
   Future<void> _submit() async {
     final question = _questionCtrl.text.trim();
     if (question.isEmpty && _imageFile == null) {
@@ -571,7 +595,6 @@ $_diagnosis
       return;
     }
 
-    // ✅ 1. التأكد من وجود مفتاح الـ API قبل الإرسال
     if (_apiKey.isEmpty) {
       setState(() {
         _diagnosis = 'خطأ في الإعدادات: مفتاح API (GEMINI_API_KEY) غير موجود.\nيرجى التأكد من تمرير المفتاح أثناء عملية البناء (Build) باستخدام --dart-define.';
@@ -584,7 +607,6 @@ $_diagnosis
       _diagnosis = "";
     });
 
-    // ✅ 2. إعدادات إعادة المحاولة (Retry Logic) لتفادي أخطاء الضغط 503
     int maxRetries = 3;
     int attempt = 0;
     bool success = false;
@@ -593,7 +615,6 @@ $_diagnosis
       try {
         attempt++;
         
-        // ✅ 3. استخدام نموذج gemini-3.8-flash
         final model = GenerativeModel(
           model: 'gemini-3.8-flash', 
           apiKey: _apiKey,
@@ -607,7 +628,6 @@ $_diagnosis
 
         List<Part> parts = [TextPart(prompt)];
 
-        // لو فيه صورة مرفقة، نضيفها للطلب
         if (_imageFile != null) {
           final imageBytes = await _imageFile!.readAsBytes();
           parts.add(DataPart('image/jpeg', imageBytes));
@@ -621,19 +641,16 @@ $_diagnosis
           _diagnosis = response.text ?? 'لم يتمكن الذكاء الاصطناعي من تقديم تشخيص.';
         });
         
-        success = true; // لو وصلنا هنا يبقى الطلب نجح
+        success = true;
 
       } catch (e) {
-        // لو ده آخر محاولة، نعرض الخطأ للمستخدم
         if (attempt >= maxRetries) {
           setState(() {
             _diagnosis = 'عذراً، خدمة الذكاء الاصطناعي مشغولة حالياً بسبب الضغط العالي.\nبرجاء المحاولة مرة أخرى بعد قليل.';
           });
-          // طباعة الخطأ الحقيقي في الـ Console للمطور
           print("❌ فشل الاتصال بالذكاء الاصطناعي بعد $attempt محاولات. الخطأ: $e");
         } else {
-          // نستنى ثانيتين ونحاول تاني
-          print("⚠️ المحاولة رقم $attempt فشلت (ضغط على السيرفر). جاري إعادة المحاولة...");
+          print("⚠️ المحاولة رقم $attempt فشلت. جاري إعادة المحاولة...");
           await Future.delayed(const Duration(seconds: 2));
         }
       }
