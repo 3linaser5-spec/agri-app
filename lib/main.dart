@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // ✅ التعديل 1
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:image_picker/image_picker.dart';
@@ -36,18 +36,18 @@ class AgriConsultantApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'المستشار الزراعي',
+      title: 'نباتي',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF047857)),
         useMaterial3: true,
         fontFamily: 'Cairo',
       ),
-      home: const AuthWrapper(), // ✅ التعديل 2
+      home: const AuthWrapper(),
     );
   }
 }
 
-// ---------------- 0. التحقق من حالة تسجيل الدخول (جديد) ----------------
+// ---------------- 0. التحقق من حالة تسجيل الدخول ----------------
 class AuthWrapper extends StatelessWidget {
   const AuthWrapper({super.key});
 
@@ -70,13 +70,11 @@ class AuthWrapper extends StatelessWidget {
         if (snapshot.hasData && snapshot.data != null) {
           final user = snapshot.data!;
           
-          // استخراج رقم الموبايل من الإيميل الوهمي
           String phone = "غير معروف";
           if (user.email != null && user.email!.contains('@')) {
             phone = user.email!.split('@').first;
           }
 
-          // الاسم من displayName
           String name = user.displayName ?? "مزارع";
 
           return MainNavigationScreen(
@@ -92,7 +90,7 @@ class AuthWrapper extends StatelessWidget {
   }
 }
 
-// ---------------- 1. تسجيل الدخول (محمي بـ Firebase Auth) ----------------
+// ---------------- 1. تسجيل الدخول ----------------
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
 
@@ -138,8 +136,6 @@ class _AuthScreenState extends State<AuthScreen> {
       );
       return;
     }
-
-    // نجاح - AuthWrapper هيحدث نفسه تلقائياً
   }
 
   @override
@@ -164,14 +160,17 @@ class _AuthScreenState extends State<AuthScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.eco, size: 70, color: Color(0xFF047857)),
+                  const Icon(Icons.eco, size: 80, color: Color(0xFF047857)),
                   const SizedBox(height: 10),
                   const Text(
-                    'المستشار الزراعي الذكي',
-                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF047857)),
+                    'نباتي',
+                    style: TextStyle(fontSize: 34, fontWeight: FontWeight.bold, color: Color(0xFF047857)),
                   ),
-                  const Text('إشراف واستشارة: م. علي الدهشوري',
-                      style: TextStyle(color: Colors.black54, fontSize: 13)),
+                  const Text('مستشارك الزراعي الذكي',
+                      style: TextStyle(color: Colors.black54, fontSize: 14, fontWeight: FontWeight.w500)),
+                  const SizedBox(height: 4),
+                  const Text('إشراف: م. علي الدهشوري',
+                      style: TextStyle(color: Color(0xFF047857), fontSize: 12)),
                   const SizedBox(height: 30),
                   if (!isLogin) ...[
                     TextFormField(
@@ -301,8 +300,17 @@ class _HomeDashboardState extends State<HomeDashboard> {
     _fetchWeatherByLocation();
   }
 
+  // ✅ دالة جلب الطقس بعد التعديل (GPS محسّن)
   Future<void> _fetchWeatherByLocation() async {
     try {
+      // 1. نتأكد إن GPS مفعّل في الموبايل الأول
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        setState(() => weatherStatusText = "⚠️ برجاء تشغيل GPS في هاتفك");
+        return;
+      }
+
+      // 2. نتحقق من صلاحيات الموقع
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
@@ -312,8 +320,22 @@ class _HomeDashboardState extends State<HomeDashboard> {
         }
       }
 
-      Position position =
-          await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+      if (permission == LocationPermission.deniedForever) {
+        setState(() => weatherStatusText = "⚠️ تم رفض صلاحية الموقع نهائياً، برجاء تفعيلها من الإعدادات");
+        return;
+      }
+
+      // 3. نجيب الموقع الحالي بأعلى دقة مع مهلة زمنية
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.best,
+        timeLimit: const Duration(seconds: 20),
+      );
+
+      // 4. نطبع الإحداثيات والدقة في الـ Console
+      debugPrint("📍 الإحداثيات: ${position.latitude}, ${position.longitude}");
+      debugPrint("🎯 الدقة: ${position.accuracy} متر");
+
+      // 5. نجيب الطقس من Open-Meteo
       final url = Uri.parse(
           'https://api.open-meteo.com/v1/forecast?latitude=${position.latitude}&longitude=${position.longitude}&current=temperature_2m,relative_humidity_2m');
 
@@ -330,7 +352,8 @@ class _HomeDashboardState extends State<HomeDashboard> {
         setState(() => weatherStatusText = "تعذر جلب بيانات الطقس حالياً");
       }
     } catch (e) {
-      setState(() => weatherStatusText = "برجاء تشغيل الـ GPS (الموقع) في هاتفك");
+      debugPrint("❌ خطأ في جلب الموقع: $e");
+      setState(() => weatherStatusText = "⚠️ برجاء تشغيل GPS والانتظار قليلاً");
     }
   }
 
@@ -374,7 +397,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
           children: [
             Text('مرحباً بك، ${widget.userName}',
                 style: const TextStyle(color: Colors.white, fontSize: 16)),
-            const Text('مستشارك الزراعي بإشراف م. علي الدهشوري',
+            const Text('نباتي - مستشارك الزراعي الذكي',
                 style: TextStyle(color: Color(0xFFFDE68A), fontSize: 11)),
           ],
         ),
