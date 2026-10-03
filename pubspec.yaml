@@ -1,5 +1,5 @@
 name: agri_app
-description: A new Flutter project.
+description: تطبيق نباتي - المستشار الزراعي الذكي
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -9,14 +9,50 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  firebase_core: any
   cupertino_icons: ^1.0.2
+
+  # Firebase
+  firebase_core: ^3.0.0
+  firebase_auth: ^5.0.0
+  cloud_firestore: ^5.0.0
+  firebase_app_check: ^0.3.0
+  firebase_storage: ^12.0.0
+  firebase_messaging: ^15.0.0
+
+  # AI & Networking
+  google_generative_ai: ^0.4.0
+  http: ^1.2.0
+
+  # الأجهزة والوسائط
+  image_picker: ^1.0.7
+  geolocator: ^12.0.0
+
+  # أدوات مساعدة
+  url_launcher: ^6.2.5
+  flutter_tts: ^4.0.2
+
+  # Offline Support
+  connectivity_plus: ^6.0.0
+  sqflite: ^2.3.0
+  path: ^1.9.0
+
+  # Notifications
+  flutter_local_notifications: ^17.0.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^2.0.0
+  flutter_lints: ^3.0.0
+  flutter_launcher_icons: ^0.13.1
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/icon/app_icon.png"
+  min_sdk_android: 21
 
 flutter:
   uses-material-design: true
   
+  assets:
+    - assets/icon/
