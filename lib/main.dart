@@ -9,6 +9,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:google_generative_ai/google_generative_ai.dart';
 import 'firebase_options.dart';
 import 'services/auth_service.dart';
 import 'utils/validators.dart';
@@ -491,6 +492,9 @@ class _AiScannerScreenState extends State<AiScannerScreen> {
   File? _imageFile;
   final ImagePicker _picker = ImagePicker();
 
+  // قراءة مفتاح API الخاص بـ Gemini من إعدادات البناء
+  final String _apiKey = const String.fromEnvironment('GEMINI_API_KEY');
+
   @override
   void initState() {
     super.initState();
@@ -574,32 +578,47 @@ $_diagnosis
       _diagnosis = "";
     });
 
-    await Future.delayed(const Duration(seconds: 2));
-
     String answer = "";
-    final qLower = question.toLowerCase();
 
-    if (qLower.contains('سوسة') || qLower.contains('نخيل')) {
-      answer =
-          "تشخيص الإصابة: احتمال إصابة بسوسة النخيل الحمراء.\nالعلاج المقترح: الحقن الفوري بالمبيدات الجهازية المعتمدة وتغطية مكان الحقن جيداً لمنع خروج الأبخرة، مع إزالة النخيل التالف تماماً.\nتوصية الري والتسميد: تقليل الري المؤقت حول الجذور المصابة ورش سلفات البوتاسيوم لرفع المناعة.";
-    } else if (qLower.contains('طماطم') ||
-        qLower.contains('إصفرار') ||
-        qLower.contains('مرض')) {
-      answer =
-          "تشخيص الإصابة: نقص عناصر صغرى (حديد/زنك) أو بداية إجهاد حراري.\nالعلاج المقترح: رش مركب مخلبي حديد وزنك في الصباح الباكر، وتنظيم الري.\nتوصية الري والتسميد: إضافة حامض الفوسفوريك وهيومات البوتاسيوم لتنشيط الجذور.";
-    } else {
-      answer =
-          "تشخيص المستشار الزراعي (بإشراف م. علي الدهشوري):\nبناءً على الفحص والأعراض، يُنصح بالاهتمام بالتهوية الجيدة للنباتات وتقليل التزاحم.\nالعلاج المقترح: استخدام مبيد وقائي آمن وفحص التربة للتأكد من رطوبتها المناسبة.\nتوصية الري والتسميد: الري حصرياً في الصباح الباكر أو الغروب لتفادي احتراق الأوراق.";
+    try {
+      // تهيئة موديل Gemini
+      final model = GenerativeModel(
+        model: 'gemini-1.5-flash',
+        apiKey: _apiKey,
+      );
+
+      // صياغة الطلب (Prompt) عشان يرد كمهندس زراعي
+      final prompt = """
+أنت مهندس زراعي خبير ومستشار زراعي مصري.
+سؤال المزارع: $question
+أجب باللهجة المصرية وبشكل عملي ومختصر، وقسم الرد إلى:
+1. تشخيص مبدئي.
+2. العلاج المقترح.
+3. توصية الري والتسميد.
+""";
+
+      // إرسال الطلب لـ Gemini
+      final response = await model.generateContent([Content.text(prompt)]);
+      
+      answer = response.text ?? "عذراً، لم أتمكن من التشخيص حالياً.";
+
+    } catch (e) {
+      answer = "حدث خطأ أثناء الاتصال بالذكاء الاصطناعي: $e";
     }
 
-    await FirebaseFirestore.instance.collection('ai_queries').add({
-      'userId': widget.userPhone,
-      'userName': widget.userName,
-      'question': question.isEmpty ? "فحص صورة الآفة" : question,
-      'hasImage': _imageFile != null,
-      'aiDiagnosis': answer,
-      'timestamp': FieldValue.serverTimestamp(),
-    });
+    // حفظ النتيجة في Firestore
+    try {
+      await FirebaseFirestore.instance.collection('ai_queries').add({
+        'userId': widget.userPhone,
+        'userName': widget.userName,
+        'question': question.isEmpty ? "فحص صورة الآفة" : question,
+        'hasImage': _imageFile != null,
+        'aiDiagnosis': answer,
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint("Firestore Error: $e");
+    }
 
     setState(() {
       _diagnosis = answer;
