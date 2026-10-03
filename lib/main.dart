@@ -581,9 +581,9 @@ $_diagnosis
     String answer = "";
 
     try {
-      // تهيئة موديل Gemini
+      // تهيئة موديل Gemini (تم تغيير الاسم لـ latest)
       final model = GenerativeModel(
-        model: 'gemini-1.5-flash',
+        model: 'gemini-1.5-flash-latest',
         apiKey: _apiKey,
       );
 
