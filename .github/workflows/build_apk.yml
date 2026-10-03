@@ -93,48 +93,89 @@ jobs:
           }
           EOF
 
-      - name: Add Signing Config to build.gradle
+      - name: Replace app build.gradle with signed version
         run: |
-          cd android/app
-          
-          cat << 'EOF' > patch_signing.py
-          import re
-          
-          with open('build.gradle', 'r') as f:
-              content = f.read()
-          
-          keystore_loader = '''def keystoreProperties = new Properties()
+          cat << 'GRADLE_EOF' > android/app/build.gradle
+          plugins {
+              id "com.android.application"
+              id "kotlin-android"
+              id "dev.flutter.flutter-gradle-plugin"
+              id "com.google.gms.google-services"
+          }
+
+          def keystoreProperties = new Properties()
           def keystorePropertiesFile = rootProject.file('key.properties')
           if (keystorePropertiesFile.exists()) {
               keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
           }
-          
-          '''
-          content = keystore_loader + content
-          
-          signing_block = '''    signingConfigs {
-                      release {
-                          keyAlias keystoreProperties['keyAlias']
-                          keyPassword keystoreProperties['keyPassword']
-                          storeFile file(keystoreProperties['storeFile'])
-                          storePassword keystoreProperties['storePassword']
-                      }
+
+          def localProperties = new Properties()
+          def localPropertiesFile = rootProject.file('local.properties')
+          if (localPropertiesFile.exists()) {
+              localPropertiesFile.withReader('UTF-8') { reader ->
+                  localProperties.load(reader)
+              }
+          }
+
+          def flutterVersionCode = localProperties.getProperty('flutter.versionCode')
+          if (flutterVersionCode == null) {
+              flutterVersionCode = '1'
+          }
+
+          def flutterVersionName = localProperties.getProperty('flutter.versionName')
+          if (flutterVersionName == null) {
+              flutterVersionName = '1.0'
+          }
+
+          android {
+              namespace "com.dahshory.agri.agri_app"
+              compileSdk 34
+
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_1_8
+                  targetCompatibility JavaVersion.VERSION_1_8
+              }
+
+              kotlinOptions {
+                  jvmTarget = '1.8'
+              }
+
+              sourceSets {
+                  main.java.srcDirs += 'src/main/kotlin'
+              }
+
+              defaultConfig {
+                  applicationId "com.dahshory.agri.agri_app"
+                  minSdkVersion 23
+                  targetSdkVersion 34
+                  versionCode flutterVersionCode.toInteger()
+                  versionName flutterVersionName
+              }
+
+              signingConfigs {
+                  release {
+                      keyAlias keystoreProperties['keyAlias']
+                      keyPassword keystoreProperties['keyPassword']
+                      storeFile file(keystoreProperties['storeFile'])
+                      storePassword keystoreProperties['storePassword']
                   }
-          
-                  buildTypes {'''
-          
-          content = re.sub(r'buildTypes\s*\{', signing_block, content, count=1)
-          
-          content = content.replace('signingConfig signingConfigs.debug', 'signingConfig signingConfigs.release')
-          
-          with open('build.gradle', 'w') as f:
-              f.write(content)
-          
-          print('--- PATCHED BUILD.GRADLE ---')
-          print(content)
-          EOF
-          
-          python3 patch_signing.py
+              }
+
+              buildTypes {
+                  release {
+                      signingConfig signingConfigs.release
+                      minifyEnabled false
+                      shrinkResources false
+                  }
+              }
+          }
+
+          flutter {
+              source '../..'
+          }
+          GRADLE_EOF
+          echo "--- BUILD.GRADLE REPLACED ---"
+          cat android/app/build.gradle
 
       - name: Create google-services.json
         run: |
@@ -157,7 +198,6 @@ jobs:
           storeFile=agri-release-key.jks
           EOF
           echo "--- key.properties created ---"
-          cat android/key.properties
 
       - name: Add Missing Packages Automatically
         run: |
