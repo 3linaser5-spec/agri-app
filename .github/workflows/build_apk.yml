@@ -36,7 +36,6 @@ jobs:
           rm -f android/build.gradle
           rm -f android/settings.gradle
           
-          # إضافة صلاحيات الكاميرا والإنترنت والموقع في ملف الأندرويد 
           sed -i 's/<application/<uses-permission android:name="android.permission.INTERNET"\/>\n    <uses-permission android:name="android.permission.CAMERA"\/>\n    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"\/>\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"\/>\n    <application/' android/app/src/main/AndroidManifest.xml
           
           cat << 'EOF' > android/settings.gradle
@@ -48,22 +47,19 @@ jobs:
                   assert flutterSdkPath != null, "flutter.sdk not set in local.properties"
                   return flutterSdkPath
               }()
-          
               includeBuild("$flutterSdkPath/packages/flutter_tools/gradle")
-          
               repositories {
                   google()
                   mavenCentral()
                   gradlePluginPortal()
               }
           }
-          
           plugins {
               id "dev.flutter.flutter-plugin-loader" version "1.0.0"
               id "com.android.application" version "7.3.0" apply false
               id "org.jetbrains.kotlin.android" version "1.9.24" apply false
+              id "com.google.gms.google-services" version "4.3.15" apply false
           }
-          
           include ":app"
           EOF
           
@@ -96,22 +92,72 @@ jobs:
               delete rootProject.buildDir
           }
           EOF
+
+      - name: Add Signing Config to build.gradle
+        run: |
+          cd android/app
           
-          # تفعيل إضافة جوجل للخدمات في ملف التطبيق
-          echo "apply plugin: 'com.google.gms.google-services'" >> android/app/build.gradle
+          cat << 'EOF' > patch_signing.py
+          import re
           
-          sed -i 's/compileSdkVersion = .*/compileSdkVersion = 34/' android/app/build.gradle || true
-          sed -i 's/targetSdkVersion = .*/targetSdkVersion = 34/' android/app/build.gradle || true
-          sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 23/' android/app/build.gradle || true
-          sed -i 's/minSdkVersion = flutter.minSdkVersion/minSdkVersion = 23/' android/app/build.gradle || true
+          with open('build.gradle', 'r') as f:
+              content = f.read()
+          
+          keystore_loader = '''def keystoreProperties = new Properties()
+          def keystorePropertiesFile = rootProject.file('key.properties')
+          if (keystorePropertiesFile.exists()) {
+              keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+          }
+          
+          '''
+          content = keystore_loader + content
+          
+          signing_block = '''    signingConfigs {
+                      release {
+                          keyAlias keystoreProperties['keyAlias']
+                          keyPassword keystoreProperties['keyPassword']
+                          storeFile file(keystoreProperties['storeFile'])
+                          storePassword keystoreProperties['storePassword']
+                      }
+                  }
+          
+                  buildTypes {'''
+          
+          content = re.sub(r'buildTypes\s*\{', signing_block, content, count=1)
+          
+          content = content.replace('signingConfig signingConfigs.debug', 'signingConfig signingConfigs.release')
+          
+          with open('build.gradle', 'w') as f:
+              f.write(content)
+          
+          print('--- PATCHED BUILD.GRADLE ---')
+          print(content)
+          EOF
+          
+          python3 patch_signing.py
 
       - name: Create google-services.json
         run: |
           echo '${{ secrets.GOOGLE_SERVICES_JSON }}' | base64 -d > android/app/google-services.json
-          echo "--- FILE SIZE ---"
+          echo "--- google-services.json SIZE ---"
           wc -c android/app/google-services.json
-          echo "--- FIRST 100 CHARS ---"
-          head -c 100 android/app/google-services.json
+
+      - name: Decode Keystore
+        run: |
+          echo '${{ secrets.KEYSTORE_BASE64 }}' | base64 -d > android/app/agri-release-key.jks
+          echo "--- KEYSTORE SIZE ---"
+          wc -c android/app/agri-release-key.jks
+
+      - name: Create key.properties
+        run: |
+          cat << EOF > android/key.properties
+          storePassword=${{ secrets.KEYSTORE_PASSWORD }}
+          keyPassword=${{ secrets.KEY_PASSWORD }}
+          keyAlias=${{ secrets.KEY_ALIAS }}
+          storeFile=agri-release-key.jks
+          EOF
+          echo "--- key.properties created ---"
+          cat android/key.properties
 
       - name: Add Missing Packages Automatically
         run: |
@@ -126,7 +172,7 @@ jobs:
       - name: Fix Code Typo Automatically
         run: find lib -type f -name "*.dart" -exec sed -i 's/MainAxisAlignment.between/MainAxisAlignment.spaceBetween/g' {} +
 
-      - name: Build APK
+      - name: Build Signed APK
         run: flutter build apk --release --no-tree-shake-icons --dart-define=GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
 
       - name: Upload APK
