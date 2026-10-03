@@ -13,6 +13,7 @@ import 'dart:convert';
 import 'package:google_generative_ai/google_generative_ai.dart';
 import 'firebase_options.dart';
 import 'services/auth_service.dart';
+import 'services/offline_service.dart';
 import 'utils/validators.dart';
 
 void main() async {
@@ -297,7 +298,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
     _fetchWeatherByLocation();
   }
 
-  // ✅ دالة جلب الطقس مع GPS محسّن
   Future<void> _fetchWeatherByLocation() async {
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -326,7 +326,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
       );
 
       debugPrint("📍 الإحداثيات: ${position.latitude}, ${position.longitude}");
-      debugPrint("🎯 الدقة: ${position.accuracy} متر");
 
       final url = Uri.parse(
           'https://api.open-meteo.com/v1/forecast?latitude=${position.latitude}&longitude=${position.longitude}&current=temperature_2m,relative_humidity_2m');
@@ -466,6 +465,23 @@ class _HomeDashboardState extends State<HomeDashboard> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: _buildQuickActionCard(
+                      icon: Icons.history,
+                      color: const Color(0xFFF59E0B),
+                      title: 'سجل التشخيصات',
+                      onTap: () {
+                        Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (context) => const HistoryScreen()));
+                      }),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildQuickActionCard(
                       icon: Icons.chat,
                       color: const Color(0xFF25D366),
                       title: 'الدعم الفني',
@@ -479,6 +495,8 @@ class _HomeDashboardState extends State<HomeDashboard> {
                         }
                       }),
                 ),
+                const SizedBox(width: 12),
+                const Expanded(child: SizedBox()),
               ],
             ),
             const SizedBox(height: 24),
@@ -550,7 +568,6 @@ class _AiScannerScreenState extends State<AiScannerScreen> {
     });
   }
 
-  // ✅ دالة جديدة: تعرض للمستخدم خيار الكاميرا أو المعرض
   Future<void> _pickImage() async {
     showModalBottomSheet(
       context: context,
@@ -590,7 +607,6 @@ class _AiScannerScreenState extends State<AiScannerScreen> {
     );
   }
 
-  // ✅ دالة مساعدة: تختار الصورة من المصدر اللي المستخدم اختاره
   Future<void> _pickFromSource(ImageSource source) async {
     try {
       final XFile? pickedFile = await _picker.pickImage(
@@ -663,6 +679,21 @@ $_diagnosis
       return;
     }
 
+    final hasInternet = await OfflineService.hasInternet();
+    if (!hasInternet) {
+      setState(() {
+        _diagnosis = '⚠️ لا يوجد اتصال بالإنترنت حالياً.\nتم حفظ سؤالك وسيتم إرساله تلقائياً عند عودة الاتصال.';
+      });
+      await OfflineService.saveDiagnosis(
+        userName: widget.userName,
+        userPhone: widget.userPhone,
+        question: question,
+        imagePath: _imageFile?.path,
+        diagnosis: 'في انتظار الاتصال بالإنترنت...',
+      );
+      return;
+    }
+
     setState(() {
       _loading = true;
       _diagnosis = "";
@@ -702,6 +733,14 @@ $_diagnosis
           _diagnosis = response.text ?? 'لم يتمكن الذكاء الاصطناعي من تقديم تشخيص.';
         });
         
+        await OfflineService.saveDiagnosis(
+          userName: widget.userName,
+          userPhone: widget.userPhone,
+          question: question,
+          imagePath: _imageFile?.path,
+          diagnosis: _diagnosis,
+        );
+        
         success = true;
 
       } catch (e) {
@@ -728,6 +767,17 @@ $_diagnosis
       appBar: AppBar(
         title: const Text('الفحص الذكي للآفات', style: TextStyle(color: Colors.white)),
         backgroundColor: const Color(0xFF047857),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.history, color: Colors.white),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const HistoryScreen()),
+              );
+            },
+          ),
+        ],
       ),
       body: Directionality(
         textDirection: TextDirection.rtl,
@@ -842,7 +892,153 @@ $_diagnosis
   }
 }
 
-// ---------------- 5. شاشة المقالات ----------------
+// ---------------- 5. شاشة سجل التشخيصات ----------------
+class HistoryScreen extends StatefulWidget {
+  const HistoryScreen({super.key});
+
+  @override
+  State<HistoryScreen> createState() => _HistoryScreenState();
+}
+
+class _HistoryScreenState extends State<HistoryScreen> {
+  List<Map<String, dynamic>> _items = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadHistory();
+  }
+
+  Future<void> _loadHistory() async {
+    final items = await OfflineService.getAllDiagnoses();
+    if (mounted) {
+      setState(() {
+        _items = items;
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('سجل التشخيصات', style: TextStyle(color: Colors.white)),
+        backgroundColor: const Color(0xFF047857),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.delete_sweep, color: Colors.white),
+            onPressed: () async {
+              final confirm = await showDialog<bool>(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text('مسح السجل'),
+                  content: const Text('هل أنت متأكد من مسح كل السجل؟'),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      child: const Text('إلغاء'),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.pop(context, true),
+                      child: const Text('مسح', style: TextStyle(color: Colors.red)),
+                    ),
+                  ],
+                ),
+              );
+              if (confirm == true) {
+                await OfflineService.clearAll();
+                _loadHistory();
+              }
+            },
+          ),
+        ],
+      ),
+      body: Directionality(
+        textDirection: TextDirection.rtl,
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : _items.isEmpty
+                ? const Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.history, size: 80, color: Colors.grey),
+                        SizedBox(height: 16),
+                        Text('لا يوجد سجل حتى الآن',
+                            style: TextStyle(fontSize: 16, color: Colors.grey)),
+                      ],
+                    ),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: _items.length,
+                    itemBuilder: (context, index) {
+                      final item = _items[index];
+                      final date = item['createdAt']?.toString() ?? '';
+                      String dateFormatted = date;
+                      try {
+                        final dt = DateTime.parse(date);
+                        dateFormatted = "${dt.day}/${dt.month}/${dt.year} - ${dt.hour}:${dt.minute}";
+                      } catch (_) {}
+
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  const Icon(Icons.eco, color: Color(0xFF047857)),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      item['question']?.toString() ?? '',
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.bold, fontSize: 14),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const Divider(),
+                              Text(
+                                item['diagnosis']?.toString() ?? '',
+                                style: const TextStyle(fontSize: 13, height: 1.5),
+                                maxLines: 4,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 8),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(dateFormatted,
+                                      style: const TextStyle(
+                                          fontSize: 11, color: Colors.grey)),
+                                  if (item['isSynced'] == 0)
+                                    const Text('⏳ في انتظار المزامنة',
+                                        style: TextStyle(
+                                            fontSize: 11, color: Colors.orange)),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+      ),
+    );
+  }
+}
+
+// ---------------- 6. شاشة المقالات ----------------
 class ArticlesAndGuidesScreen extends StatelessWidget {
   const ArticlesAndGuidesScreen({super.key});
 
