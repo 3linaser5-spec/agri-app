@@ -557,7 +557,7 @@ $_diagnosis
   @override
   void dispose() {
     _flutterTts.stop();
-    _questionCtrl.dispose(); // ✅ تأكد من عمل dispose للـ Controller
+    _questionCtrl.dispose(); 
     super.dispose();
   }
 
@@ -571,15 +571,23 @@ $_diagnosis
       return;
     }
 
+    // ✅ 1. التأكد من وجود مفتاح الـ API قبل الإرسال
+    if (_apiKey.isEmpty) {
+      setState(() {
+        _diagnosis = 'خطأ في الإعدادات: مفتاح API (GEMINI_API_KEY) غير موجود.\nيرجى التأكد من تمرير المفتاح أثناء عملية البناء (Build) باستخدام --dart-define.';
+      });
+      return;
+    }
+
     setState(() {
       _loading = true;
       _diagnosis = "";
     });
 
     try {
-      // ✅ التعديل الأساسي: تغيير اسم الموديل إلى gemini-2.0-flash
+      // ✅ 2. التعديل هنا: استخدام نموذج gemini-3.8-flash
       final model = GenerativeModel(
-        model: 'gemini-2.0-flash',
+        model: 'gemini-3.8-flash', 
         apiKey: _apiKey,
       );
 
@@ -605,8 +613,9 @@ $_diagnosis
         _diagnosis = response.text ?? 'لم يتمكن الذكاء الاصطناعي من تقديم تشخيص.';
       });
     } catch (e) {
+      // ✅ 3. تحسين رسالة الخطأ لتكون أوضح
       setState(() {
-        _diagnosis = 'حدث خطأ أثناء الاتصال بالذكاء الاصطناعي: $e';
+        _diagnosis = 'حدث خطأ أثناء الاتصال بالذكاء الاصطناعي.\nتأكد من أن اسم النموذج صحيح وأن مفتاح API فعال.\nتفاصيل الخطأ: $e';
       });
     } finally {
       setState(() {
@@ -735,7 +744,7 @@ $_diagnosis
   }
 }
 
-// ---------------- 5. شاشة المقالات (ناقصة في الكود الأصلي) ----------------
+// ---------------- 5. شاشة المقالات ----------------
 class ArticlesAndGuidesScreen extends StatelessWidget {
   const ArticlesAndGuidesScreen({super.key});
 
