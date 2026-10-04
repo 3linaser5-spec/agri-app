@@ -1,9 +1,11 @@
 import 'dart:io';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:image_picker/image_picker.dart';
@@ -42,8 +44,46 @@ void main() async {
   runApp(const AgriConsultantApp());
 }
 
-class AgriConsultantApp extends StatelessWidget {
+// ---------------- AgriConsultantApp مع مراقبة الشبكة ----------------
+class AgriConsultantApp extends StatefulWidget {
   const AgriConsultantApp({super.key});
+
+  @override
+  State<AgriConsultantApp> createState() => _AgriConsultantAppState();
+}
+
+class _AgriConsultantAppState extends State<AgriConsultantApp> {
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
+
+  @override
+  void initState() {
+    super.initState();
+    _setupConnectivityListener();
+  }
+
+  // ✅ مراقبة حالة الشبكة لمزامنة التشخيصات المعلقة
+  void _setupConnectivityListener() {
+    _connectivitySub = Connectivity()
+        .onConnectivityChanged
+        .listen((List<ConnectivityResult> results) async {
+      final hasNet = !results.contains(ConnectivityResult.none);
+      if (hasNet) {
+        debugPrint("🌐 عاد الاتصال بالإنترنت، جاري المزامنة...");
+        final synced = await OfflineService.syncPendingDiagnoses();
+        if (synced > 0) {
+          debugPrint("✅ تمت مزامنة $synced تشخيص");
+        }
+      } else {
+        debugPrint("📴 انقطع الاتصال بالإنترنت");
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _connectivitySub?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -932,6 +972,31 @@ class _HistoryScreenState extends State<HistoryScreen> {
     }
   }
 
+  // ✅ دالة مسح تشخيص واحد
+  Future<void> _deleteOne(int id) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('مسح التشخيص'),
+        content: const Text('هل أنت متأكد من مسح هذا التشخيص؟'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('إلغاء'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('مسح', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true) {
+      await OfflineService.deleteDiagnosis(id);
+      _loadHistory();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1033,10 +1098,26 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                   Text(dateFormatted,
                                       style: const TextStyle(
                                           fontSize: 11, color: Colors.grey)),
-                                  if (item['isSynced'] == 0)
-                                    const Text('⏳ في انتظار المزامنة',
-                                        style: TextStyle(
-                                            fontSize: 11, color: Colors.orange)),
+                                  // ✅ زر المسح + حالة المزامنة
+                                  Row(
+                                    children: [
+                                      if (item['isSynced'] == 0)
+                                        const Padding(
+                                          padding: EdgeInsets.only(left: 8),
+                                          child: Text('⏳ في انتظار المزامنة',
+                                              style: TextStyle(
+                                                  fontSize: 11, color: Colors.orange)),
+                                        ),
+                                      IconButton(
+                                        icon: const Icon(Icons.delete,
+                                            color: Colors.red, size: 20),
+                                        onPressed: () =>
+                                            _deleteOne(item['id'] as int),
+                                        padding: EdgeInsets.zero,
+                                        constraints: const BoxConstraints(),
+                                      ),
+                                    ],
+                                  ),
                                 ],
                               ),
                             ],
