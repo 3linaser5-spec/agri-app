@@ -13,6 +13,11 @@ import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:dio/dio.dart';
+import 'package:open_filex/open_filex.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:path_provider/path_provider.dart';
 import 'dart:convert';
 import 'package:google_generative_ai/google_generative_ai.dart';
 import 'firebase_options.dart';
@@ -47,6 +52,307 @@ void main() async {
   runApp(const AgriConsultantApp());
 }
 
+// ---------------- VersionService ----------------
+class VersionService {
+  static const String versionUrl =
+      "https://raw.githubusercontent.com/3linaser5-spec/agri-app/main/version.json";
+
+  static Future<Map<String, dynamic>?> fetchVersionInfo() async {
+    try {
+      final response = await http
+          .get(Uri.parse(versionUrl))
+          .timeout(const Duration(seconds: 10));
+      if (response.statusCode == 200) {
+        return json.decode(response.body) as Map<String, dynamic>;
+      }
+      return null;
+    } catch (e) {
+      debugPrint("❌ خطأ في قراءة معلومات النسخة: $e");
+      return null;
+    }
+  }
+
+  static Future<Map<String, dynamic>?> checkUpdate() async {
+    try {
+      final info = await fetchVersionInfo();
+      if (info == null) return null;
+
+      final packageInfo = await PackageInfo.fromPlatform();
+      final currentVersion = packageInfo.version;
+
+      final latestVersion = info['latest_version'] as String? ?? currentVersion;
+      final minVersion = info['min_version'] as String? ?? currentVersion;
+
+      final hasNewVersion = _compareVersions(latestVersion, currentVersion) > 0;
+      final isMandatory = _compareVersions(currentVersion, minVersion) < 0;
+
+      if (hasNewVersion || isMandatory) {
+        return {
+          'mandatory': isMandatory,
+          'version': latestVersion,
+          'downloadUrl': info['download_url'] ?? '',
+          'changelog': info['changelog'] ?? '',
+        };
+      }
+      return null;
+    } catch (e) {
+      debugPrint("❌ خطأ في فحص التحديث: $e");
+      return null;
+    }
+  }
+
+  static int _compareVersions(String v1, String v2) {
+    final a = v1.split('.').map((e) => int.tryParse(e) ?? 0).toList();
+    final b = v2.split('.').map((e) => int.tryParse(e) ?? 0).toList();
+    final len = a.length > b.length ? a.length : b.length;
+    for (int i = 0; i < len; i++) {
+      final x = i < a.length ? a[i] : 0;
+      final y = i < b.length ? b[i] : 0;
+      if (x != y) return x - y;
+    }
+    return 0;
+  }
+
+  static Future<void> downloadAndInstall({
+    required String url,
+    required Function(double progress) onProgress,
+    required Function(String filePath) onComplete,
+    required Function(String error) onError,
+  }) async {
+    try {
+      if (Platform.isAndroid) {
+        final installStatus = await Permission.requestInstallPackages.status;
+        if (!installStatus.isGranted) {
+          await Permission.requestInstallPackages.request();
+        }
+      }
+
+      final dir = await getExternalStorageDirectory();
+      final filePath = "${dir!.path}/app-release.apk";
+
+      final oldFile = File(filePath);
+      if (await oldFile.exists()) {
+        await oldFile.delete();
+      }
+
+      final dio = Dio();
+      await dio.download(
+        url,
+        filePath,
+        onReceiveProgress: (received, total) {
+          if (total > 0) {
+            onProgress(received / total);
+          }
+        },
+      );
+
+      onComplete(filePath);
+      await OpenFilex.open(filePath);
+    } catch (e) {
+      onError(e.toString());
+    }
+  }
+}
+
+// ---------------- UpdateDialog ----------------
+class UpdateDialog extends StatefulWidget {
+  final String version;
+  final String changelog;
+  final String downloadUrl;
+  final bool mandatory;
+
+  const UpdateDialog({
+    super.key,
+    required this.version,
+    required this.changelog,
+    required this.downloadUrl,
+    required this.mandatory,
+  });
+
+  @override
+  State<UpdateDialog> createState() => _UpdateDialogState();
+}
+
+class _UpdateDialogState extends State<UpdateDialog> {
+  bool _downloading = false;
+  double _progress = 0.0;
+  String? _error;
+
+  Future<void> _startDownload() async {
+    setState(() {
+      _downloading = true;
+      _progress = 0.0;
+      _error = null;
+    });
+
+    await VersionService.downloadAndInstall(
+      url: widget.downloadUrl,
+      onProgress: (progress) {
+        if (mounted) setState(() => _progress = progress);
+      },
+      onComplete: (filePath) {
+        if (mounted) {
+          setState(() => _downloading = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✅ تم التحميل! اتبع تعليمات التثبيت.'),
+              backgroundColor: Color(0xFF047857),
+              duration: Duration(seconds: 4),
+            ),
+          );
+        }
+      },
+      onError: (error) {
+        if (mounted) {
+          setState(() {
+            _downloading = false;
+            _error = "فشل التحميل. تأكد من الإنترنت وحاول مرة أخرى.";
+          });
+        }
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return WillPopScope(
+      onWillPop: () async => !widget.mandatory && !_downloading,
+      child: Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF047857).withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.system_update_alt,
+                    color: Color(0xFF047857)),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  widget.mandatory ? 'تحديث إجباري متاح' : 'تحديث جديد متاح',
+                  style: const TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('الإصدار الجديد: ${widget.version}',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF047857))),
+                const SizedBox(height: 12),
+                const Text('التغييرات:',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 6),
+                Text(widget.changelog,
+                    style: const TextStyle(fontSize: 13, height: 1.6)),
+                const SizedBox(height: 16),
+                if (_downloading) ...[
+                  const Text('جاري التحميل...',
+                      style: TextStyle(
+                          fontSize: 13, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: LinearProgressIndicator(
+                      value: _progress,
+                      minHeight: 10,
+                      backgroundColor: Colors.grey.shade200,
+                      color: const Color(0xFF047857),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Center(
+                    child: Text('${(_progress * 100).toStringAsFixed(0)}%',
+                        style: const TextStyle(
+                            fontSize: 13, fontWeight: FontWeight.bold)),
+                  ),
+                ],
+                if (_error != null) ...[
+                  const SizedBox(height: 10),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.error_outline,
+                            color: Colors.red, size: 20),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(_error!,
+                              style: const TextStyle(
+                                  fontSize: 12, color: Colors.red)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                if (widget.mandatory && !_downloading) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: const [
+                        Icon(Icons.warning_amber_rounded,
+                            color: Colors.red, size: 20),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'هذا التحديث ضروري لاستمرار استخدام التطبيق',
+                            style: TextStyle(fontSize: 12, color: Colors.red),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            if (!widget.mandatory && !_downloading)
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('لاحقاً',
+                    style: TextStyle(color: Colors.grey)),
+              ),
+            if (!_downloading)
+              ElevatedButton.icon(
+                onPressed: _startDownload,
+                icon: const Icon(Icons.download),
+                label: const Text('تحميل وتثبيت'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF047857),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 // ---------------- ThemeController ----------------
 class ThemeController {
   static final ValueNotifier<ThemeMode> themeMode =
@@ -76,11 +382,13 @@ class AgriConsultantApp extends StatefulWidget {
 
 class _AgriConsultantAppState extends State<AgriConsultantApp> {
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
+  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
 
   @override
   void initState() {
     super.initState();
     _setupConnectivityListener();
+    Future.delayed(const Duration(seconds: 3), () => _checkForUpdate());
   }
 
   void _setupConnectivityListener() {
@@ -92,10 +400,28 @@ class _AgriConsultantAppState extends State<AgriConsultantApp> {
         debugPrint("🌐 عاد الاتصال بالإنترنت، جاري المزامنة...");
         final synced = await OfflineService.syncPendingDiagnoses();
         if (synced > 0) debugPrint("✅ تمت مزامنة $synced تشخيص");
+        _checkForUpdate();
       } else {
         debugPrint("📴 انقطع الاتصال بالإنترنت");
       }
     });
+  }
+
+  Future<void> _checkForUpdate() async {
+    final update = await VersionService.checkUpdate();
+    if (update == null) return;
+    if (_navigatorKey.currentContext == null) return;
+
+    showDialog(
+      context: _navigatorKey.currentContext!,
+      barrierDismissible: false,
+      builder: (_) => UpdateDialog(
+        version: update['version'],
+        changelog: update['changelog'],
+        downloadUrl: update['downloadUrl'],
+        mandatory: update['mandatory'],
+      ),
+    );
   }
 
   @override
@@ -112,9 +438,11 @@ class _AgriConsultantAppState extends State<AgriConsultantApp> {
         return MaterialApp(
           debugShowCheckedModeBanner: false,
           title: 'نباتي',
+          navigatorKey: _navigatorKey,
           themeMode: mode,
           theme: ThemeData(
-            colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF047857)),
+            colorScheme:
+                ColorScheme.fromSeed(seedColor: const Color(0xFF047857)),
             useMaterial3: true,
             fontFamily: 'Cairo',
             brightness: Brightness.light,
@@ -1929,7 +2257,7 @@ class AboutScreen extends StatelessWidget {
   }
 }
 
-// ---------------- 9. EncyclopediaScreen (موسوعة + مقالات) ----------------
+// ---------------- EncyclopediaScreen ----------------
 class EncyclopediaScreen extends StatelessWidget {
   const EncyclopediaScreen({super.key});
 
@@ -1966,7 +2294,7 @@ class EncyclopediaScreen extends StatelessWidget {
   }
 }
 
-// ---------------- 10. PestsTab ----------------
+// ---------------- PestsTab ----------------
 class PestsTab extends StatelessWidget {
   const PestsTab({super.key});
 
@@ -2027,7 +2355,7 @@ class PestsTab extends StatelessWidget {
   }
 }
 
-// ---------------- 11. ArticlesTab ----------------
+// ---------------- ArticlesTab ----------------
 class ArticlesTab extends StatelessWidget {
   const ArticlesTab({super.key});
 
@@ -2069,7 +2397,7 @@ class ArticlesTab extends StatelessWidget {
   }
 }
 
-// ---------------- 12. StatisticsScreen ----------------
+// ---------------- StatisticsScreen ----------------
 class StatisticsScreen extends StatefulWidget {
   const StatisticsScreen({super.key});
 
@@ -2097,7 +2425,6 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     }
   }
 
-  // عدّ الكلمات المفتاحية الأكثر تكراراً
   Map<String, int> _getTopKeywords() {
     final Map<String, int> keywords = {
       'مرض فطري': 0,
@@ -2122,11 +2449,8 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     return Map.fromEntries(sorted.take(5));
   }
 
-  // عدد التشخيصات المزامنة وغير المزامنة
-  int _getSyncedCount() =>
-      _items.where((i) => i['isSynced'] == 1).length;
-  int _getUnsyncedCount() =>
-      _items.where((i) => i['isSynced'] == 0).length;
+  int _getSyncedCount() => _items.where((i) => i['isSynced'] == 1).length;
+  int _getUnsyncedCount() => _items.where((i) => i['isSynced'] == 0).length;
 
   @override
   Widget build(BuildContext context) {
@@ -2160,7 +2484,6 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                 : ListView(
                     padding: const EdgeInsets.all(16),
                     children: [
-                      // إجمالي
                       _buildStatCard(
                         icon: Icons.eco,
                         color: const Color(0xFF047857),
@@ -2203,15 +2526,16 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                           padding: const EdgeInsets.all(16),
                           child: Column(
                             children: _getTopKeywords().entries.map((e) {
-                              final max = _items.isEmpty
+                              final allValues =
+                                  _getTopKeywords().values.toList();
+                              final max = allValues.isEmpty
                                   ? 1
-                                  : (_getTopKeywords().values.reduce(
+                                  : (allValues.reduce(
                                               (a, b) => a > b ? a : b) ==
                                           0
                                       ? 1
-                                      : _getTopKeywords()
-                                          .values
-                                          .reduce((a, b) => a > b ? a : b));
+                                      : allValues.reduce(
+                                          (a, b) => a > b ? a : b));
                               final ratio = e.value / max;
                               return Padding(
                                 padding:
@@ -2291,7 +2615,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
   }
 }
 
-// ---------------- 13. PestData (بيانات الآفات) ----------------
+// ---------------- PestData ----------------
 class PestData {
   final String name;
   final String type;
@@ -2406,7 +2730,7 @@ class PestData {
   ];
 }
 
-// ---------------- 14. ArticleData (بيانات المقالات) ----------------
+// ---------------- ArticleData ----------------
 class ArticleData {
   final String title;
   final String category;
@@ -2618,7 +2942,7 @@ class ArticleData {
   ];
 }
 
-// ---------------- 15. ArticlesAndGuidesScreen (احتياطي) ----------------
+// ---------------- ArticlesAndGuidesScreen ----------------
 class ArticlesAndGuidesScreen extends StatelessWidget {
   const ArticlesAndGuidesScreen({super.key});
 
