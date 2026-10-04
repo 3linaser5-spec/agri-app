@@ -84,19 +84,9 @@ jobs:
           rootProject.buildDir = '../build'
           subprojects {
               project.buildDir = "${rootProject.buildDir}/${project.name}"
+          }
+          subprojects {
               project.evaluationDependsOn(':app')
-              afterEvaluate { project ->
-                  if (project.hasProperty('android')) {
-                      project.android {
-                          if (compileSdkVersion == null) {
-                              compileSdkVersion 34
-                          }
-                          if (namespace == null && project.name != 'app') {
-                              namespace "com.dahshory.agri.${project.name.toLowerCase().replaceAll('-', '_')}"
-                          }
-                      }
-                  }
-              }
           }
           tasks.register("clean", Delete) {
               delete rootProject.buildDir
