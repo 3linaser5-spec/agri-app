@@ -11,6 +11,8 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
+import 'package:share_plus/share_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'package:google_generative_ai/google_generative_ai.dart';
 import 'firebase_options.dart';
@@ -27,6 +29,9 @@ void main() async {
       options: DefaultFirebaseOptions.currentPlatform,
     );
 
+    // تحميل إعداد الوضع الليلي
+    await ThemeController.load();
+
     try {
       await NotificationService.initialize();
       await NotificationService.subscribeToPestAlerts();
@@ -41,6 +46,25 @@ void main() async {
   }
 
   runApp(const AgriConsultantApp());
+}
+
+// ---------------- ThemeController للوضع الليلي ----------------
+class ThemeController {
+  static final ValueNotifier<ThemeMode> themeMode =
+      ValueNotifier(ThemeMode.light);
+
+  static Future<void> load() async {
+    final prefs = await SharedPreferences.getInstance();
+    final isDark = prefs.getBool('dark_mode') ?? false;
+    themeMode.value = isDark ? ThemeMode.dark : ThemeMode.light;
+  }
+
+  static Future<void> toggle() async {
+    final prefs = await SharedPreferences.getInstance();
+    final isCurrentlyDark = themeMode.value == ThemeMode.dark;
+    themeMode.value = isCurrentlyDark ? ThemeMode.light : ThemeMode.dark;
+    await prefs.setBool('dark_mode', !isCurrentlyDark);
+  }
 }
 
 // ---------------- AgriConsultantApp ----------------
@@ -85,15 +109,31 @@ class _AgriConsultantAppState extends State<AgriConsultantApp> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'نباتي',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF047857)),
-        useMaterial3: true,
-        fontFamily: 'Cairo',
-      ),
-      home: const SplashScreen(), // ✅ شاشة البداية
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: ThemeController.themeMode,
+      builder: (context, mode, _) {
+        return MaterialApp(
+          debugShowCheckedModeBanner: false,
+          title: 'نباتي',
+          themeMode: mode,
+          theme: ThemeData(
+            colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF047857)),
+            useMaterial3: true,
+            fontFamily: 'Cairo',
+            brightness: Brightness.light,
+          ),
+          darkTheme: ThemeData(
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: const Color(0xFF047857),
+              brightness: Brightness.dark,
+            ),
+            useMaterial3: true,
+            fontFamily: 'Cairo',
+            brightness: Brightness.dark,
+          ),
+          home: const SplashScreen(),
+        );
+      },
     );
   }
 }
@@ -219,7 +259,7 @@ class _SplashScreenState extends State<SplashScreen>
   }
 }
 
-// ---------------- 0. التحقق من حالة تسجيل الدخول ----------------
+// ---------------- 0. AuthWrapper ----------------
 class AuthWrapper extends StatelessWidget {
   const AuthWrapper({super.key});
 
@@ -228,7 +268,6 @@ class AuthWrapper extends StatelessWidget {
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
-        
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
             body: Center(
@@ -239,18 +278,12 @@ class AuthWrapper extends StatelessWidget {
 
         if (snapshot.hasData && snapshot.data != null) {
           final user = snapshot.data!;
-          
           String phone = "غير معروف";
           if (user.email != null && user.email!.contains('@')) {
             phone = user.email!.split('@').first;
           }
-
           String name = user.displayName ?? "مزارع";
-
-          return MainNavigationScreen(
-            userName: name,
-            userPhone: phone,
-          );
+          return MainNavigationScreen(userName: name, userPhone: phone);
         }
 
         return const AuthScreen();
@@ -259,7 +292,7 @@ class AuthWrapper extends StatelessWidget {
   }
 }
 
-// ---------------- 1. تسجيل الدخول ----------------
+// ---------------- 1. AuthScreen ----------------
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
 
@@ -278,11 +311,8 @@ class _AuthScreenState extends State<AuthScreen> {
 
   Future<void> _handleAuth() async {
     if (!_formKey.currentState!.validate()) return;
-
     setState(() => _isLoading = true);
-
     String? errorMessage;
-
     if (isLogin) {
       errorMessage = await _authService.login(
         phone: _phoneController.text,
@@ -295,15 +325,12 @@ class _AuthScreenState extends State<AuthScreen> {
         password: _passwordController.text,
       );
     }
-
     if (!mounted) return;
     setState(() => _isLoading = false);
-
     if (errorMessage != null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(errorMessage)),
       );
-      return;
     }
   }
 
@@ -318,7 +345,6 @@ class _AuthScreenState extends State<AuthScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
       body: Directionality(
         textDirection: TextDirection.rtl,
         child: Center(
@@ -333,10 +359,14 @@ class _AuthScreenState extends State<AuthScreen> {
                   const SizedBox(height: 10),
                   const Text(
                     'نباتي',
-                    style: TextStyle(fontSize: 34, fontWeight: FontWeight.bold, color: Color(0xFF047857)),
+                    style: TextStyle(
+                        fontSize: 34,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF047857)),
                   ),
                   const Text('مستشارك الزراعي الذكي',
-                      style: TextStyle(color: Colors.black54, fontSize: 14, fontWeight: FontWeight.w500)),
+                      style: TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.w500)),
                   const SizedBox(height: 4),
                   const Text('إشراف: م. علي الدهشوري',
                       style: TextStyle(color: Color(0xFF047857), fontSize: 12)),
@@ -348,7 +378,8 @@ class _AuthScreenState extends State<AuthScreen> {
                       decoration: InputDecoration(
                         labelText: 'الاسم بالكامل',
                         prefixIcon: const Icon(Icons.person),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12)),
                       ),
                     ),
                     const SizedBox(height: 14),
@@ -360,7 +391,8 @@ class _AuthScreenState extends State<AuthScreen> {
                     decoration: InputDecoration(
                       labelText: 'رقم الموبايل',
                       prefixIcon: const Icon(Icons.phone),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12)),
                     ),
                   ),
                   const SizedBox(height: 14),
@@ -371,7 +403,8 @@ class _AuthScreenState extends State<AuthScreen> {
                     decoration: InputDecoration(
                       labelText: 'كلمة المرور',
                       prefixIcon: const Icon(Icons.lock),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12)),
                     ),
                   ),
                   const SizedBox(height: 24),
@@ -379,8 +412,10 @@ class _AuthScreenState extends State<AuthScreen> {
                     onPressed: _isLoading ? null : _handleAuth,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF047857),
+                      foregroundColor: Colors.white,
                       minimumSize: const Size.fromHeight(50),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
                     ),
                     child: _isLoading
                         ? const CircularProgressIndicator(color: Colors.white)
@@ -396,8 +431,11 @@ class _AuthScreenState extends State<AuthScreen> {
                   TextButton(
                     onPressed: () => setState(() => isLogin = !isLogin),
                     child: Text(
-                      isLogin ? 'ليس لديك حساب؟ سجل الآن' : 'لديك حساب بالفعل؟ تسجيل الدخول',
-                      style: const TextStyle(color: Color(0xFF047857), fontWeight: FontWeight.bold),
+                      isLogin
+                          ? 'ليس لديك حساب؟ سجل الآن'
+                          : 'لديك حساب بالفعل؟ تسجيل الدخول',
+                      style: const TextStyle(
+                          color: Color(0xFF047857), fontWeight: FontWeight.bold),
                     ),
                   ),
                 ],
@@ -410,11 +448,12 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 }
 
-// ---------------- 2. شاشات التنقل ----------------
+// ---------------- 2. MainNavigationScreen ----------------
 class MainNavigationScreen extends StatefulWidget {
   final String userName;
   final String userPhone;
-  const MainNavigationScreen({super.key, required this.userName, required this.userPhone});
+  const MainNavigationScreen(
+      {super.key, required this.userName, required this.userPhone});
 
   @override
   State<MainNavigationScreen> createState() => _MainNavigationScreenState();
@@ -439,20 +478,24 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         unselectedItemColor: Colors.grey,
         onTap: (index) => setState(() => _currentIndex = index),
         items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home_filled), label: 'الرئيسية'),
-          BottomNavigationBarItem(icon: Icon(Icons.camera_alt), label: 'فحص الآفات'),
-          BottomNavigationBarItem(icon: Icon(Icons.menu_book), label: 'الموسوعة'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.home_filled), label: 'الرئيسية'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.camera_alt), label: 'فحص الآفات'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.menu_book), label: 'الموسوعة'),
         ],
       ),
     );
   }
 }
 
-// ---------------- 3. الرئيسية والطقس ----------------
+// ---------------- 3. HomeDashboard ----------------
 class HomeDashboard extends StatefulWidget {
   final String userName;
   final String userPhone;
-  const HomeDashboard({super.key, required this.userName, required this.userPhone});
+  const HomeDashboard(
+      {super.key, required this.userName, required this.userPhone});
 
   @override
   State<HomeDashboard> createState() => _HomeDashboardState();
@@ -482,13 +525,16 @@ class _HomeDashboardState extends State<HomeDashboard> {
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
-          setState(() => weatherStatusText = "برجاء إعطاء صلاحية الموقع لمعرفة الطقس");
+          setState(() =>
+              weatherStatusText = "برجاء إعطاء صلاحية الموقع لمعرفة الطقس");
           return;
         }
       }
 
       if (permission == LocationPermission.deniedForever) {
-        setState(() => weatherStatusText = "⚠️ تم رفض صلاحية الموقع نهائياً، برجاء تفعيلها من الإعدادات");
+        setState(() =>
+            weatherStatusText =
+                "⚠️ تم رفض صلاحية الموقع نهائياً، برجاء تفعيلها من الإعدادات");
         return;
       }
 
@@ -496,8 +542,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
         desiredAccuracy: LocationAccuracy.best,
         timeLimit: const Duration(seconds: 20),
       );
-
-      debugPrint("📍 الإحداثيات: ${position.latitude}, ${position.longitude}");
 
       final url = Uri.parse(
           'https://api.open-meteo.com/v1/forecast?latitude=${position.latitude}&longitude=${position.longitude}&current=temperature_2m,relative_humidity_2m');
@@ -507,8 +551,10 @@ class _HomeDashboardState extends State<HomeDashboard> {
         final data = json.decode(response.body);
         setState(() {
           weatherTemp = data['current']['temperature_2m'].toString();
-          weatherHumidity = data['current']['relative_humidity_2m'].toString();
-          weatherStatusText = "درجة الحرارة: $weatherTemp°م | الرطوبة: $weatherHumidity%";
+          weatherHumidity =
+              data['current']['relative_humidity_2m'].toString();
+          weatherStatusText =
+              "درجة الحرارة: $weatherTemp°م | الرطوبة: $weatherHumidity%";
           isWeatherLoaded = true;
         });
       } else {
@@ -520,30 +566,29 @@ class _HomeDashboardState extends State<HomeDashboard> {
     }
   }
 
-  Widget _buildQuickActionCard(
-      {required IconData icon,
-      required Color color,
-      required String title,
-      required VoidCallback onTap}) {
+  Widget _buildQuickActionCard({
+    required IconData icon,
+    required Color color,
+    required String title,
+    required VoidCallback onTap,
+  }) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 16),
         decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.grey.shade200),
-            boxShadow: [
-              BoxShadow(color: Colors.grey.shade100, blurRadius: 4, offset: const Offset(0, 2))
-            ]),
+          color: Theme.of(context).cardColor,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey.shade200),
+        ),
         child: Column(
           children: [
             Icon(icon, color: color, size: 32),
             const SizedBox(height: 8),
             Text(title,
                 style: const TextStyle(
-                    fontWeight: FontWeight.bold, fontSize: 13, color: Colors.black87)),
+                    fontWeight: FontWeight.bold, fontSize: 13)),
           ],
         ),
       ),
@@ -587,7 +632,8 @@ class _HomeDashboardState extends State<HomeDashboard> {
           padding: const EdgeInsets.all(16),
           children: [
             Card(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              shape:
+                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               color: const Color(0xFFECFDF5),
               elevation: 0,
               child: Padding(
@@ -599,18 +645,21 @@ class _HomeDashboardState extends State<HomeDashboard> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text('حالة الطقس في موقعك',
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 16)),
                         Icon(Icons.wb_sunny, color: Colors.orange, size: 28),
                       ],
                     ),
                     const SizedBox(height: 8),
                     Text(weatherStatusText,
                         style: const TextStyle(
-                            color: Colors.black87, fontWeight: FontWeight.bold)),
+                            color: Colors.black87,
+                            fontWeight: FontWeight.bold)),
                     const Divider(height: 20),
                     Row(
                       children: [
-                        const Icon(Icons.water_drop, color: Colors.blue, size: 20),
+                        const Icon(Icons.water_drop,
+                            color: Colors.blue, size: 20),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
@@ -634,7 +683,9 @@ class _HomeDashboardState extends State<HomeDashboard> {
             const SizedBox(height: 24),
             const Text('الوصول السريع',
                 style: TextStyle(
-                    fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF047857))),
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: Color(0xFF047857))),
             const SizedBox(height: 12),
             Row(
               children: [
@@ -647,7 +698,8 @@ class _HomeDashboardState extends State<HomeDashboard> {
                         Navigator.push(
                             context,
                             MaterialPageRoute(
-                                builder: (context) => const ArticlesAndGuidesScreen()));
+                                builder: (context) =>
+                                    const ArticlesAndGuidesScreen()));
                       }),
                 ),
                 const SizedBox(width: 12),
@@ -676,24 +728,41 @@ class _HomeDashboardState extends State<HomeDashboard> {
                       onTap: () async {
                         final uri = Uri.parse("https://wa.me/201126920209");
                         try {
-                          await launchUrl(uri, mode: LaunchMode.externalApplication);
+                          await launchUrl(uri,
+                              mode: LaunchMode.externalApplication);
                         } catch (e) {
-                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                              content: Text('حدث خطأ أثناء فتح الواتساب')));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                  content:
+                                      Text('حدث خطأ أثناء فتح الواتساب')));
                         }
                       }),
                 ),
                 const SizedBox(width: 12),
-                const Expanded(child: SizedBox()),
+                Expanded(
+                  child: _buildQuickActionCard(
+                      icon: Icons.info_outline,
+                      color: const Color(0xFF6366F1),
+                      title: 'عن التطبيق',
+                      onTap: () {
+                        Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (context) => const AboutScreen()));
+                      }),
+                ),
               ],
             ),
             const SizedBox(height: 24),
             const Text('نصيحة اليوم 💡',
                 style: TextStyle(
-                    fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF047857))),
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: Color(0xFF047857))),
             const SizedBox(height: 12),
             Card(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              shape:
+                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               color: Colors.amber[50],
               elevation: 0,
               child: Padding(
@@ -706,7 +775,8 @@ class _HomeDashboardState extends State<HomeDashboard> {
                     const Expanded(
                       child: Text(
                         'تجنب رش المبيدات في وقت الظهيرة أو عند ارتفاع درجات الحرارة لتفادي احتراق الأوراق، وأفضل وقت للرش هو الصباح الباكر أو بعد كسر حدة الشمس عصراً.',
-                        style: TextStyle(fontSize: 13, height: 1.6, color: Colors.black87),
+                        style: TextStyle(
+                            fontSize: 13, height: 1.6, color: Colors.black87),
                       ),
                     ),
                   ],
@@ -720,11 +790,12 @@ class _HomeDashboardState extends State<HomeDashboard> {
   }
 }
 
-// ---------------- 4. شاشة الفحص الذكي ----------------
+// ---------------- 4. AiScannerScreen ----------------
 class AiScannerScreen extends StatefulWidget {
   final String userName;
   final String userPhone;
-  const AiScannerScreen({super.key, required this.userName, required this.userPhone});
+  const AiScannerScreen(
+      {super.key, required this.userName, required this.userPhone});
 
   @override
   State<AiScannerScreen> createState() => _AiScannerScreenState();
@@ -773,7 +844,8 @@ class _AiScannerScreenState extends State<AiScannerScreen> {
               ),
             ),
             ListTile(
-              leading: const Icon(Icons.camera_alt, color: Color(0xFF047857), size: 30),
+              leading: const Icon(Icons.camera_alt,
+                  color: Color(0xFF047857), size: 30),
               title: const Text('التقاط صورة بالكاميرا'),
               onTap: () async {
                 Navigator.pop(context);
@@ -781,7 +853,8 @@ class _AiScannerScreenState extends State<AiScannerScreen> {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.photo_library, color: Color(0xFF047857), size: 30),
+              leading: const Icon(Icons.photo_library,
+                  color: Color(0xFF047857), size: 30),
               title: const Text('اختيار من المعرض'),
               onTap: () async {
                 Navigator.pop(context);
@@ -834,20 +907,35 @@ class _AiScannerScreenState extends State<AiScannerScreen> {
 📋 *تشخيص المستشار الذكي:*
 $_diagnosis
 """;
-
-    final uri = Uri.parse("https://wa.me/$engineerPhone?text=${Uri.encodeComponent(message)}");
+    final uri = Uri.parse(
+        "https://wa.me/$engineerPhone?text=${Uri.encodeComponent(message)}");
     try {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } catch (e) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('تعذر فتح تطبيق الواتساب')));
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تعذر فتح تطبيق الواتساب')));
     }
+  }
+
+  Future<void> _shareDiagnosis() async {
+    final text = """
+🌱 *تشخيص نباتي - المستشار الزراعي الذكي*
+━━━━━━━━━━━━━━━━━━
+🌿 *السؤال:* ${_questionCtrl.text.trim()}
+
+📋 *التشخيص:*
+$_diagnosis
+
+━━━━━━━━━━━━━━━━━━
+📱 تطبيق نباتي - مستشارك الزراعي الذكي
+""";
+    await Share.share(text, subject: 'تشخيص نباتي');
   }
 
   @override
   void dispose() {
     _flutterTts.stop();
-    _questionCtrl.dispose(); 
+    _questionCtrl.dispose();
     super.dispose();
   }
 
@@ -862,7 +950,8 @@ $_diagnosis
 
     if (_apiKey.isEmpty) {
       setState(() {
-        _diagnosis = 'خطأ في الإعدادات: مفتاح API (GEMINI_API_KEY) غير موجود.\nيرجى التأكد من تمرير المفتاح أثناء عملية البناء (Build) باستخدام --dart-define.';
+        _diagnosis =
+            'خطأ في الإعدادات: مفتاح API (GEMINI_API_KEY) غير موجود.\nيرجى التأكد من تمرير المفتاح أثناء عملية البناء (Build) باستخدام --dart-define.';
       });
       return;
     }
@@ -870,7 +959,8 @@ $_diagnosis
     final hasInternet = await OfflineService.hasInternet();
     if (!hasInternet) {
       setState(() {
-        _diagnosis = '⚠️ لا يوجد اتصال بالإنترنت حالياً.\nتم حفظ سؤالك وسيتم إرساله تلقائياً عند عودة الاتصال.';
+        _diagnosis =
+            '⚠️ لا يوجد اتصال بالإنترنت حالياً.\nتم حفظ سؤالك وسيتم إرساله تلقائياً عند عودة الاتصال.';
       });
       await OfflineService.saveDiagnosis(
         userName: widget.userName,
@@ -894,18 +984,15 @@ $_diagnosis
     while (attempt < maxRetries && !success) {
       try {
         attempt++;
-        
         final model = GenerativeModel(
-          model: 'gemini-3.8-flash', 
+          model: 'gemini-3.8-flash',
           apiKey: _apiKey,
         );
-
         final prompt = """
 أنت مهندس زراعي خبير ومستشار زراعي مصري.
 قم بتشخيص الحالة التالية وقدم توصياتك الزراعية باللغة العربية وباللهجة المصرية المبسطة.
 سؤال المزارع: $question
 """;
-
         List<Part> parts = [TextPart(prompt)];
 
         if (_imageFile != null) {
@@ -913,14 +1000,13 @@ $_diagnosis
           parts.add(DataPart('image/jpeg', imageBytes));
         }
 
-        final response = await model.generateContent([
-          Content.multi(parts)
-        ]);
+        final response = await model.generateContent([Content.multi(parts)]);
 
         setState(() {
-          _diagnosis = response.text ?? 'لم يتمكن الذكاء الاصطناعي من تقديم تشخيص.';
+          _diagnosis =
+              response.text ?? 'لم يتمكن الذكاء الاصطناعي من تقديم تشخيص.';
         });
-        
+
         await OfflineService.saveDiagnosis(
           userName: widget.userName,
           userPhone: widget.userPhone,
@@ -928,15 +1014,15 @@ $_diagnosis
           imagePath: _imageFile?.path,
           diagnosis: _diagnosis,
         );
-        
-        success = true;
 
+        success = true;
       } catch (e) {
         if (attempt >= maxRetries) {
           setState(() {
-            _diagnosis = 'عذراً، خدمة الذكاء الاصطناعي مشغولة حالياً بسبب الضغط العالي.\nبرجاء المحاولة مرة أخرى بعد قليل.';
+            _diagnosis =
+                'عذراً، خدمة الذكاء الاصطناعي مشغولة حالياً بسبب الضغط العالي.\nبرجاء المحاولة مرة أخرى بعد قليل.';
           });
-          print("❌ فشل الاتصال بالذكاء الاصطناعي بعد $attempt محاولات. الخطأ: $e");
+          print("❌ فشل بعد $attempt محاولات. الخطأ: $e");
         } else {
           print("⚠️ المحاولة رقم $attempt فشلت. جاري إعادة المحاولة...");
           await Future.delayed(const Duration(seconds: 2));
@@ -953,7 +1039,8 @@ $_diagnosis
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('الفحص الذكي للآفات', style: TextStyle(color: Colors.white)),
+        title: const Text('الفحص الذكي للآفات',
+            style: TextStyle(color: Colors.white)),
         backgroundColor: const Color(0xFF047857),
         actions: [
           IconButton(
@@ -979,9 +1066,9 @@ $_diagnosis
                 maxLines: 4,
                 decoration: InputDecoration(
                   hintText: 'اكتب مشكلة النبات أو الآفة اللي بتواجهك...',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12)),
                   filled: true,
-                  fillColor: Colors.white,
                 ),
               ),
               const SizedBox(height: 12),
@@ -998,7 +1085,8 @@ $_diagnosis
                   ),
                   const SizedBox(width: 8),
                   if (_imageFile != null)
-                    const Text('تم إرفاق صورة ✅', style: TextStyle(color: Colors.green)),
+                    const Text('تم إرفاق صورة ✅',
+                        style: TextStyle(color: Colors.green)),
                 ],
               ),
               const SizedBox(height: 20),
@@ -1006,8 +1094,10 @@ $_diagnosis
                 onPressed: _loading ? null : _submit,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF047857),
+                  foregroundColor: Colors.white,
                   minimumSize: const Size.fromHeight(50),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
                 ),
                 child: _loading
                     ? const CircularProgressIndicator(color: Colors.white)
@@ -1017,7 +1107,8 @@ $_diagnosis
               const SizedBox(height: 24),
               if (_diagnosis.isNotEmpty) ...[
                 Card(
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
                   color: const Color(0xFFECFDF5),
                   child: Padding(
                     padding: const EdgeInsets.all(16.0),
@@ -1037,35 +1128,58 @@ $_diagnosis
                         ),
                         const Divider(),
                         Text(_diagnosis,
-                            style: const TextStyle(fontSize: 14, height: 1.6)),
+                            style: const TextStyle(
+                                fontSize: 14, height: 1.6)),
                         const SizedBox(height: 12),
                         Row(
                           children: [
                             Expanded(
                               child: ElevatedButton.icon(
-                                onPressed: () => _toggleVoicePlayback(_diagnosis),
+                                onPressed: () =>
+                                    _toggleVoicePlayback(_diagnosis),
                                 icon: Icon(_isPlayingVoice
                                     ? Icons.stop
                                     : Icons.volume_up),
                                 label: Text(_isPlayingVoice
                                     ? 'إيقاف الصوت'
-                                    : 'استمع للتشخيص (باللهجة المصرية)'),
+                                    : 'استمع للتشخيص'),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: const Color(0xFF047857),
+                                  foregroundColor: Colors.white,
                                 ),
                               ),
                             ),
                           ],
                         ),
                         const SizedBox(height: 8),
-                        ElevatedButton.icon(
-                          onPressed: _sendToEngineerWhatsApp,
-                          icon: const Icon(Icons.chat),
-                          label: const Text('تأكيد الاستشارة مع م. علي الدهشوري'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF25D366),
-                            minimumSize: const Size.fromHeight(45),
-                          ),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: _shareDiagnosis,
+                                icon: const Icon(Icons.share),
+                                label: const Text('مشاركة'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF3B82F6),
+                                  foregroundColor: Colors.white,
+                                  minimumSize: const Size.fromHeight(45),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: _sendToEngineerWhatsApp,
+                                icon: const Icon(Icons.chat),
+                                label: const Text('للمهندس'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF25D366),
+                                  foregroundColor: Colors.white,
+                                  minimumSize: const Size.fromHeight(45),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -1080,7 +1194,7 @@ $_diagnosis
   }
 }
 
-// ---------------- 5. شاشة سجل التشخيصات ----------------
+// ---------------- 5. HistoryScreen مع البحث ----------------
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
 
@@ -1089,21 +1203,46 @@ class HistoryScreen extends StatefulWidget {
 }
 
 class _HistoryScreenState extends State<HistoryScreen> {
-  List<Map<String, dynamic>> _items = [];
+  List<Map<String, dynamic>> _allItems = [];
+  List<Map<String, dynamic>> _filteredItems = [];
   bool _loading = true;
+  final _searchCtrl = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _loadHistory();
+    _searchCtrl.addListener(_filterItems);
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _loadHistory() async {
     final items = await OfflineService.getAllDiagnoses();
     if (mounted) {
       setState(() {
-        _items = items;
+        _allItems = items;
+        _filteredItems = items;
         _loading = false;
+      });
+    }
+  }
+
+  void _filterItems() {
+    final query = _searchCtrl.text.trim().toLowerCase();
+    if (query.isEmpty) {
+      setState(() => _filteredItems = _allItems);
+    } else {
+      setState(() {
+        _filteredItems = _allItems.where((item) {
+          final question = (item['question'] ?? '').toString().toLowerCase();
+          final diagnosis = (item['diagnosis'] ?? '').toString().toLowerCase();
+          return question.contains(query) || diagnosis.contains(query);
+        }).toList();
       });
     }
   }
@@ -1136,7 +1275,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('سجل التشخيصات', style: TextStyle(color: Colors.white)),
+        title: const Text('سجل التشخيصات',
+            style: TextStyle(color: Colors.white)),
         backgroundColor: const Color(0xFF047857),
         actions: [
           IconButton(
@@ -1154,7 +1294,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     ),
                     TextButton(
                       onPressed: () => Navigator.pop(context, true),
-                      child: const Text('مسح', style: TextStyle(color: Colors.red)),
+                      child:
+                          const Text('مسح', style: TextStyle(color: Colors.red)),
                     ),
                   ],
                 ),
@@ -1169,111 +1310,155 @@ class _HistoryScreenState extends State<HistoryScreen> {
       ),
       body: Directionality(
         textDirection: TextDirection.rtl,
-        child: _loading
-            ? const Center(child: CircularProgressIndicator())
-            : _items.isEmpty
-                ? const Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.history, size: 80, color: Colors.grey),
-                        SizedBox(height: 16),
-                        Text('لا يوجد سجل حتى الآن',
-                            style: TextStyle(fontSize: 16, color: Colors.grey)),
-                      ],
-                    ),
-                  )
-                : ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: _items.length,
-                    itemBuilder: (context, index) {
-                      final item = _items[index];
-                      final date = item['createdAt']?.toString() ?? '';
-                      String dateFormatted = date;
-                      try {
-                        final dt = DateTime.parse(date);
-                        dateFormatted = "${dt.day}/${dt.month}/${dt.year} - ${dt.hour}:${dt.minute}";
-                      } catch (_) {}
-
-                      return Card(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12)),
-                        child: Padding(
-                          padding: const EdgeInsets.all(12),
+        child: Column(
+          children: [
+            // ✅ شريط البحث
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: TextField(
+                controller: _searchCtrl,
+                decoration: InputDecoration(
+                  hintText: 'ابحث في السجل...',
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: _searchCtrl.text.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear),
+                          onPressed: () => _searchCtrl.clear(),
+                        )
+                      : null,
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                  filled: true,
+                ),
+              ),
+            ),
+            Expanded(
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _filteredItems.isEmpty
+                      ? Center(
                           child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Row(
-                                children: [
-                                  const Icon(Icons.eco, color: Color(0xFF047857)),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      item['question']?.toString() ?? '',
-                                      style: const TextStyle(
-                                          fontWeight: FontWeight.bold, fontSize: 14),
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const Divider(),
+                              Icon(
+                                  _allItems.isEmpty
+                                      ? Icons.history
+                                      : Icons.search_off,
+                                  size: 80,
+                                  color: Colors.grey),
+                              const SizedBox(height: 16),
                               Text(
-                                item['diagnosis']?.toString() ?? '',
-                                style: const TextStyle(fontSize: 13, height: 1.5),
-                                maxLines: 4,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              const SizedBox(height: 8),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(dateFormatted,
-                                      style: const TextStyle(
-                                          fontSize: 11, color: Colors.grey)),
-                                  Row(
-                                    children: [
-                                      if (item['isSynced'] == 0)
-                                        const Padding(
-                                          padding: EdgeInsets.only(left: 8),
-                                          child: Text('⏳ في انتظار المزامنة',
-                                              style: TextStyle(
-                                                  fontSize: 11, color: Colors.orange)),
-                                        ),
-                                      IconButton(
-                                        icon: const Icon(Icons.delete,
-                                            color: Colors.red, size: 20),
-                                        onPressed: () =>
-                                            _deleteOne(item['id'] as int),
-                                        padding: EdgeInsets.zero,
-                                        constraints: const BoxConstraints(),
-                                      ),
-                                    ],
-                                  ),
-                                ],
+                                _allItems.isEmpty
+                                    ? 'لا يوجد سجل حتى الآن'
+                                    : 'لا توجد نتائج مطابقة للبحث',
+                                style: const TextStyle(
+                                    fontSize: 16, color: Colors.grey),
                               ),
                             ],
                           ),
+                        )
+                      : ListView.builder(
+                          padding: const EdgeInsets.all(12),
+                          itemCount: _filteredItems.length,
+                          itemBuilder: (context, index) {
+                            final item = _filteredItems[index];
+                            final date = item['createdAt']?.toString() ?? '';
+                            String dateFormatted = date;
+                            try {
+                              final dt = DateTime.parse(date);
+                              dateFormatted =
+                                  "${dt.day}/${dt.month}/${dt.year} - ${dt.hour}:${dt.minute}";
+                            } catch (_) {}
+
+                            return Card(
+                              margin: const EdgeInsets.only(bottom: 12),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12)),
+                              child: Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        const Icon(Icons.eco,
+                                            color: Color(0xFF047857)),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            item['question']?.toString() ?? '',
+                                            style: const TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 14),
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const Divider(),
+                                    Text(
+                                      item['diagnosis']?.toString() ?? '',
+                                      style: const TextStyle(
+                                          fontSize: 13, height: 1.5),
+                                      maxLines: 4,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(dateFormatted,
+                                            style: const TextStyle(
+                                                fontSize: 11,
+                                                color: Colors.grey)),
+                                        Row(
+                                          children: [
+                                            if (item['isSynced'] == 0)
+                                              const Padding(
+                                                padding:
+                                                    EdgeInsets.only(left: 8),
+                                                child: Text(
+                                                    '⏳ في انتظار المزامنة',
+                                                    style: TextStyle(
+                                                        fontSize: 11,
+                                                        color:
+                                                            Colors.orange)),
+                                              ),
+                                            IconButton(
+                                              icon: const Icon(Icons.delete,
+                                                  color: Colors.red, size: 20),
+                                              onPressed: () => _deleteOne(
+                                                  item['id'] as int),
+                                              padding: EdgeInsets.zero,
+                                              constraints:
+                                                  const BoxConstraints(),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
                         ),
-                      );
-                    },
-                  ),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
-// ---------------- 6. شاشة الملف الشخصي ----------------
+// ---------------- 6. ProfileScreen ----------------
 class ProfileScreen extends StatefulWidget {
   final String userName;
   final String userPhone;
-  const ProfileScreen({
-    super.key,
-    required this.userName,
-    required this.userPhone,
-  });
+  const ProfileScreen(
+      {super.key, required this.userName, required this.userPhone});
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -1348,7 +1533,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ],
       ),
     );
-
     if (confirm == true) {
       await _authService.logout();
     }
@@ -1358,7 +1542,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('الملف الشخصي', style: TextStyle(color: Colors.white)),
+        title:
+            const Text('الملف الشخصي', style: TextStyle(color: Colors.white)),
         backgroundColor: const Color(0xFF047857),
       ),
       body: Directionality(
@@ -1370,13 +1555,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: CircleAvatar(
                 radius: 50,
                 backgroundColor: const Color(0xFF047857).withOpacity(0.15),
-                child: const Icon(Icons.person, size: 60, color: Color(0xFF047857)),
+                child: const Icon(Icons.person,
+                    size: 60, color: Color(0xFF047857)),
               ),
             ),
             const SizedBox(height: 24),
 
             Card(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape:
+                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               elevation: 2,
               child: Padding(
                 padding: const EdgeInsets.all(16),
@@ -1388,7 +1575,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         Icon(Icons.person, color: Color(0xFF047857)),
                         SizedBox(width: 8),
                         Text('الاسم',
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 15)),
                       ],
                     ),
                     const SizedBox(height: 10),
@@ -1417,6 +1605,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         label: Text(_saving ? 'جاري الحفظ...' : 'حفظ الاسم'),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF047857),
+                          foregroundColor: Colors.white,
                           minimumSize: const Size.fromHeight(45),
                           shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12)),
@@ -1430,7 +1619,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const SizedBox(height: 16),
 
             Card(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape:
+                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               elevation: 2,
               child: ListTile(
                 leading: const Icon(Icons.phone, color: Color(0xFF047857)),
@@ -1441,6 +1631,56 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             const SizedBox(height: 16),
 
+            // ✅ زر الوضع الليلي
+            Card(
+              shape:
+                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              elevation: 2,
+              child: ValueListenableBuilder<ThemeMode>(
+                valueListenable: ThemeController.themeMode,
+                builder: (context, mode, _) {
+                  final isDark = mode == ThemeMode.dark;
+                  return SwitchListTile(
+                    secondary: Icon(
+                      isDark ? Icons.dark_mode : Icons.light_mode,
+                      color: const Color(0xFF047857),
+                    ),
+                    title: const Text('الوضع الليلي',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: Text(isDark ? 'مُفعّل' : 'مُعطّل'),
+                    value: isDark,
+                    activeColor: const Color(0xFF047857),
+                    onChanged: (value) async {
+                      await ThemeController.toggle();
+                    },
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // ✅ زر عن التطبيق
+            Card(
+              shape:
+                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              elevation: 2,
+              child: ListTile(
+                leading: const Icon(Icons.info_outline,
+                    color: Color(0xFF047857)),
+                title: const Text('عن التطبيق',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (context) => const AboutScreen()),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 24),
+
             ElevatedButton.icon(
               onPressed: _logout,
               icon: const Icon(Icons.logout),
@@ -1450,7 +1690,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 backgroundColor: Colors.red.shade600,
                 foregroundColor: Colors.white,
                 minimumSize: const Size.fromHeight(55),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
               ),
             ),
           ],
@@ -1460,7 +1701,213 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 }
 
-// ---------------- 7. شاشة المقالات ----------------
+// ---------------- 7. AboutScreen ----------------
+class AboutScreen extends StatelessWidget {
+  const AboutScreen({super.key});
+
+  Future<void> _openWhatsApp() async {
+    final uri = Uri.parse("https://wa.me/201126920209");
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('عن التطبيق',
+            style: TextStyle(color: Colors.white)),
+        backgroundColor: const Color(0xFF047857),
+      ),
+      body: Directionality(
+        textDirection: TextDirection.rtl,
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            // الشعار
+            Center(
+              child: Container(
+                width: 130,
+                height: 130,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(25),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 15,
+                      offset: const Offset(0, 5),
+                    ),
+                  ],
+                ),
+                padding: const EdgeInsets.all(8),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: Image.asset(
+                    'assets/icon/app_icon.png',
+                    fit: BoxFit.contain,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            // اسم التطبيق
+            const Center(
+              child: Text(
+                'نباتي',
+                style: TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF047857),
+                ),
+              ),
+            ),
+            const Center(
+              child: Text(
+                'مستشارك الزراعي الذكي',
+                style: TextStyle(fontSize: 15, color: Colors.grey),
+              ),
+            ),
+            const SizedBox(height: 6),
+            const Center(
+              child: Text(
+                'الإصدار 1.0.0',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // الوصف
+            Card(
+              shape:
+                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: const [
+                    Row(
+                      children: [
+                        Icon(Icons.eco, color: Color(0xFF047857)),
+                        SizedBox(width: 8),
+                        Text('عن نباتي',
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 16)),
+                      ],
+                    ),
+                    SizedBox(height: 12),
+                    Text(
+                      'نباتي هو تطبيق زراعي ذكي يساعد المزارعين على تشخيص أمراض وآفات النباتات باستخدام الذكاء الاصطناعي، وتقديم توصيات زراعية دقيقة باللهجة المصرية.',
+                      style: TextStyle(fontSize: 14, height: 1.7),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // المميزات
+            Card(
+              shape:
+                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: const [
+                    Row(
+                      children: [
+                        Icon(Icons.star, color: Color(0xFFF59E0B)),
+                        SizedBox(width: 8),
+                        Text('المميزات',
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 16)),
+                      ],
+                    ),
+                    SizedBox(height: 12),
+                    Text('• تشخيص فوري للآفات بالذكاء الاصطناعي',
+                        style: TextStyle(fontSize: 13, height: 1.8)),
+                    Text('• إمكانية إرفاق صور من الكاميرا أو المعرض',
+                        style: TextStyle(fontSize: 13, height: 1.8)),
+                    Text('• الاستماع للتشخيص بصوت عربي',
+                        style: TextStyle(fontSize: 13, height: 1.8)),
+                    Text('• حفظ سجل التشخيصات ومشاركتها',
+                        style: TextStyle(fontSize: 13, height: 1.8)),
+                    Text('• العمل بدون إنترنت مع المزامنة التلقائية',
+                        style: TextStyle(fontSize: 13, height: 1.8)),
+                    Text('• تنبيهات فورية عن الآفات',
+                        style: TextStyle(fontSize: 13, height: 1.8)),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // التواصل
+            Card(
+              shape:
+                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Row(
+                      children: [
+                        Icon(Icons.support_agent, color: Color(0xFF047857)),
+                        SizedBox(width: 8),
+                        Text('التواصل والدعم',
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 16)),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    const Text('إشراف واستشارة:',
+                        style: TextStyle(fontSize: 13, color: Colors.grey)),
+                    const SizedBox(height: 4),
+                    const Text('م. علي الدهشوري',
+                        style: TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: _openWhatsApp,
+                        icon: const Icon(Icons.chat),
+                        label: const Text('تواصل عبر واتساب'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF25D366),
+                          foregroundColor: Colors.white,
+                          minimumSize: const Size.fromHeight(45),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            const Center(
+              child: Text(
+                '© 2025 نباتي - جميع الحقوق محفوظة',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------- 8. ArticlesAndGuidesScreen ----------------
 class ArticlesAndGuidesScreen extends StatelessWidget {
   const ArticlesAndGuidesScreen({super.key});
 
@@ -1468,7 +1915,8 @@ class ArticlesAndGuidesScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('الموسوعة الزراعية', style: TextStyle(color: Colors.white)),
+        title: const Text('الموسوعة الزراعية',
+            style: TextStyle(color: Colors.white)),
         backgroundColor: const Color(0xFF047857),
       ),
       body: const Center(
