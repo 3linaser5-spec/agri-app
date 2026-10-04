@@ -202,7 +202,7 @@ jobs:
 
       - name: Add Missing Packages Automatically
         run: |
-          flutter pub add cloud_firestore google_generative_ai flutter_tts url_launcher firebase_core image_picker geolocator http firebase_auth firebase_app_check connectivity_plus sqflite path firebase_messaging flutter_local_notifications
+          flutter pub add cloud_firestore google_generative_ai flutter_tts url_launcher firebase_core image_picker geolocator http firebase_auth firebase_app_check connectivity_plus sqflite path firebase_messaging flutter_local_notifications share_plus shared_preferences
           sed -i '1i import "package:cloud_firestore/cloud_firestore.dart";' lib/main.dart
           sed -i '1i import "package:firebase_core/firebase_core.dart";' lib/main.dart
           sed -i '1i import "package:firebase_app_check/firebase_app_check.dart";' lib/main.dart
