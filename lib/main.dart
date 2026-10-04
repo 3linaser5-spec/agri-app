@@ -29,7 +29,6 @@ void main() async {
       options: DefaultFirebaseOptions.currentPlatform,
     );
 
-    // تحميل إعداد الوضع الليلي
     await ThemeController.load();
 
     try {
@@ -48,7 +47,7 @@ void main() async {
   runApp(const AgriConsultantApp());
 }
 
-// ---------------- ThemeController للوضع الليلي ----------------
+// ---------------- ThemeController ----------------
 class ThemeController {
   static final ValueNotifier<ThemeMode> themeMode =
       ValueNotifier(ThemeMode.light);
@@ -92,9 +91,7 @@ class _AgriConsultantAppState extends State<AgriConsultantApp> {
       if (hasNet) {
         debugPrint("🌐 عاد الاتصال بالإنترنت، جاري المزامنة...");
         final synced = await OfflineService.syncPendingDiagnoses();
-        if (synced > 0) {
-          debugPrint("✅ تمت مزامنة $synced تشخيص");
-        }
+        if (synced > 0) debugPrint("✅ تمت مزامنة $synced تشخيص");
       } else {
         debugPrint("📴 انقطع الاتصال بالإنترنت");
       }
@@ -155,22 +152,17 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   void initState() {
     super.initState();
-
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1500),
     );
-
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _controller, curve: Curves.easeIn),
     );
-
     _scaleAnimation = Tween<double>(begin: 0.7, end: 1.0).animate(
       CurvedAnimation(parent: _controller, curve: Curves.easeOutBack),
     );
-
     _controller.forward();
-
     Future.delayed(const Duration(milliseconds: 2500), () {
       if (mounted) {
         Navigator.pushReplacement(
@@ -259,7 +251,7 @@ class _SplashScreenState extends State<SplashScreen>
   }
 }
 
-// ---------------- 0. AuthWrapper ----------------
+// ---------------- AuthWrapper ----------------
 class AuthWrapper extends StatelessWidget {
   const AuthWrapper({super.key});
 
@@ -292,7 +284,7 @@ class AuthWrapper extends StatelessWidget {
   }
 }
 
-// ---------------- 1. AuthScreen ----------------
+// ---------------- AuthScreen ----------------
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
 
@@ -448,7 +440,7 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 }
 
-// ---------------- 2. MainNavigationScreen ----------------
+// ---------------- MainNavigationScreen ----------------
 class MainNavigationScreen extends StatefulWidget {
   final String userName;
   final String userPhone;
@@ -467,7 +459,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     final screens = [
       HomeDashboard(userName: widget.userName, userPhone: widget.userPhone),
       AiScannerScreen(userName: widget.userName, userPhone: widget.userPhone),
-      const ArticlesAndGuidesScreen(),
+      const EncyclopediaScreen(),
     ];
 
     return Scaffold(
@@ -490,7 +482,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   }
 }
 
-// ---------------- 3. HomeDashboard ----------------
+// ---------------- HomeDashboard ----------------
 class HomeDashboard extends StatefulWidget {
   final String userName;
   final String userPhone;
@@ -611,6 +603,16 @@ class _HomeDashboardState extends State<HomeDashboard> {
         ),
         actions: [
           IconButton(
+            icon: const Icon(Icons.bar_chart, color: Colors.white),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (context) => const StatisticsScreen()),
+              );
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.person, color: Colors.white),
             onPressed: () {
               Navigator.push(
@@ -693,13 +695,13 @@ class _HomeDashboardState extends State<HomeDashboard> {
                   child: _buildQuickActionCard(
                       icon: Icons.menu_book,
                       color: const Color(0xFF047857),
-                      title: 'برامج التسميد',
+                      title: 'الموسوعة',
                       onTap: () {
                         Navigator.push(
                             context,
                             MaterialPageRoute(
                                 builder: (context) =>
-                                    const ArticlesAndGuidesScreen()));
+                                    const EncyclopediaScreen()));
                       }),
                 ),
                 const SizedBox(width: 12),
@@ -722,6 +724,20 @@ class _HomeDashboardState extends State<HomeDashboard> {
               children: [
                 Expanded(
                   child: _buildQuickActionCard(
+                      icon: Icons.bar_chart,
+                      color: const Color(0xFF6366F1),
+                      title: 'إحصائيات',
+                      onTap: () {
+                        Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (context) =>
+                                    const StatisticsScreen()));
+                      }),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildQuickActionCard(
                       icon: Icons.chat,
                       color: const Color(0xFF25D366),
                       title: 'الدعم الفني',
@@ -738,11 +754,15 @@ class _HomeDashboardState extends State<HomeDashboard> {
                         }
                       }),
                 ),
-                const SizedBox(width: 12),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
                 Expanded(
                   child: _buildQuickActionCard(
                       icon: Icons.info_outline,
-                      color: const Color(0xFF6366F1),
+                      color: const Color(0xFF8B5CF6),
                       title: 'عن التطبيق',
                       onTap: () {
                         Navigator.push(
@@ -751,6 +771,8 @@ class _HomeDashboardState extends State<HomeDashboard> {
                                 builder: (context) => const AboutScreen()));
                       }),
                 ),
+                const SizedBox(width: 12),
+                const Expanded(child: SizedBox()),
               ],
             ),
             const SizedBox(height: 24),
@@ -790,7 +812,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
   }
 }
 
-// ---------------- 4. AiScannerScreen ----------------
+// ---------------- AiScannerScreen ----------------
 class AiScannerScreen extends StatefulWidget {
   final String userName;
   final String userPhone;
@@ -838,10 +860,9 @@ class _AiScannerScreenState extends State<AiScannerScreen> {
           children: [
             const Padding(
               padding: EdgeInsets.all(16.0),
-              child: Text(
-                'اختر مصدر الصورة',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
+              child: Text('اختر مصدر الصورة',
+                  style:
+                      TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             ),
             ListTile(
               leading: const Icon(Icons.camera_alt,
@@ -1194,7 +1215,7 @@ $_diagnosis
   }
 }
 
-// ---------------- 5. HistoryScreen مع البحث ----------------
+// ---------------- HistoryScreen ----------------
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
 
@@ -1294,8 +1315,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     ),
                     TextButton(
                       onPressed: () => Navigator.pop(context, true),
-                      child:
-                          const Text('مسح', style: TextStyle(color: Colors.red)),
+                      child: const Text('مسح',
+                          style: TextStyle(color: Colors.red)),
                     ),
                   ],
                 ),
@@ -1312,7 +1333,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
         textDirection: TextDirection.rtl,
         child: Column(
           children: [
-            // ✅ شريط البحث
             Padding(
               padding: const EdgeInsets.all(12),
               child: TextField(
@@ -1423,8 +1443,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                                     '⏳ في انتظار المزامنة',
                                                     style: TextStyle(
                                                         fontSize: 11,
-                                                        color:
-                                                            Colors.orange)),
+                                                        color: Colors.orange)),
                                               ),
                                             IconButton(
                                               icon: const Icon(Icons.delete,
@@ -1453,7 +1472,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 }
 
-// ---------------- 6. ProfileScreen ----------------
+// ---------------- ProfileScreen ----------------
 class ProfileScreen extends StatefulWidget {
   final String userName;
   final String userPhone;
@@ -1560,7 +1579,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
             const SizedBox(height: 24),
-
             Card(
               shape:
                   RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -1617,7 +1635,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
             const SizedBox(height: 16),
-
             Card(
               shape:
                   RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -1630,8 +1647,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
             const SizedBox(height: 16),
-
-            // ✅ زر الوضع الليلي
             Card(
               shape:
                   RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -1658,8 +1673,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
             const SizedBox(height: 16),
-
-            // ✅ زر عن التطبيق
+            Card(
+              shape:
+                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              elevation: 2,
+              child: ListTile(
+                leading:
+                    const Icon(Icons.bar_chart, color: Color(0xFF047857)),
+                title: const Text('إحصائيات',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (context) => const StatisticsScreen()),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 16),
             Card(
               shape:
                   RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -1680,7 +1713,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
             const SizedBox(height: 24),
-
             ElevatedButton.icon(
               onPressed: _logout,
               icon: const Icon(Icons.logout),
@@ -1701,7 +1733,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 }
 
-// ---------------- 7. AboutScreen ----------------
+// ---------------- AboutScreen ----------------
 class AboutScreen extends StatelessWidget {
   const AboutScreen({super.key});
 
@@ -1709,17 +1741,15 @@ class AboutScreen extends StatelessWidget {
     final uri = Uri.parse("https://wa.me/201126920209");
     try {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } catch (e) {
-      // ignore
-    }
+    } catch (e) {}
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('عن التطبيق',
-            style: TextStyle(color: Colors.white)),
+        title:
+            const Text('عن التطبيق', style: TextStyle(color: Colors.white)),
         backgroundColor: const Color(0xFF047857),
       ),
       body: Directionality(
@@ -1727,7 +1757,6 @@ class AboutScreen extends StatelessWidget {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            // الشعار
             Center(
               child: Container(
                 width: 130,
@@ -1754,8 +1783,6 @@ class AboutScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 20),
-
-            // اسم التطبيق
             const Center(
               child: Text(
                 'نباتي',
@@ -1780,8 +1807,6 @@ class AboutScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 24),
-
-            // الوصف
             Card(
               shape:
                   RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -1809,8 +1834,6 @@ class AboutScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
-
-            // المميزات
             Card(
               shape:
                   RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -1841,13 +1864,13 @@ class AboutScreen extends StatelessWidget {
                         style: TextStyle(fontSize: 13, height: 1.8)),
                     Text('• تنبيهات فورية عن الآفات',
                         style: TextStyle(fontSize: 13, height: 1.8)),
+                    Text('• موسوعة زراعية شاملة',
+                        style: TextStyle(fontSize: 13, height: 1.8)),
                   ],
                 ),
               ),
             ),
             const SizedBox(height: 12),
-
-            // التواصل
             Card(
               shape:
                   RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -1893,7 +1916,6 @@ class AboutScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 20),
-
             const Center(
               child: Text(
                 '© 2025 نباتي - جميع الحقوق محفوظة',
@@ -1907,21 +1929,701 @@ class AboutScreen extends StatelessWidget {
   }
 }
 
-// ---------------- 8. ArticlesAndGuidesScreen ----------------
-class ArticlesAndGuidesScreen extends StatelessWidget {
-  const ArticlesAndGuidesScreen({super.key});
+// ---------------- 9. EncyclopediaScreen (موسوعة + مقالات) ----------------
+class EncyclopediaScreen extends StatelessWidget {
+  const EncyclopediaScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('الموسوعة الزراعية',
+              style: TextStyle(color: Colors.white)),
+          backgroundColor: const Color(0xFF047857),
+          bottom: const TabBar(
+            indicatorColor: Colors.white,
+            labelColor: Colors.white,
+            unselectedLabelColor: Color(0xFFFDE68A),
+            tabs: [
+              Tab(icon: Icon(Icons.bug_report), text: 'الآفات'),
+              Tab(icon: Icon(Icons.article), text: 'مقالات'),
+            ],
+          ),
+        ),
+        body: const Directionality(
+          textDirection: TextDirection.rtl,
+          child: TabBarView(
+            children: [
+              PestsTab(),
+              ArticlesTab(),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------- 10. PestsTab ----------------
+class PestsTab extends StatelessWidget {
+  const PestsTab({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: PestData.allPests.length,
+      itemBuilder: (context, index) {
+        final pest = PestData.allPests[index];
+        return Card(
+          margin: const EdgeInsets.only(bottom: 12),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          child: ExpansionTile(
+            leading: Container(
+              width: 45,
+              height: 45,
+              decoration: BoxDecoration(
+                color: const Color(0xFF047857).withOpacity(0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(pest.icon, color: const Color(0xFF047857)),
+            ),
+            title: Text(pest.name,
+                style: const TextStyle(
+                    fontWeight: FontWeight.bold, fontSize: 15)),
+            subtitle: Text(pest.type,
+                style: const TextStyle(fontSize: 12, color: Colors.grey)),
+            childrenPadding: const EdgeInsets.all(16),
+            children: [
+              _buildSection('📋 الوصف', pest.description),
+              _buildSection('🔍 الأعراض', pest.symptoms),
+              _buildSection('💊 العلاج', pest.treatment),
+              _buildSection('🛡️ الوقاية', pest.prevention),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildSection(String title, String content) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title,
+              style: const TextStyle(
+                  fontWeight: FontWeight.bold, fontSize: 14)),
+          const SizedBox(height: 6),
+          Text(content,
+              style: const TextStyle(fontSize: 13, height: 1.6)),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------- 11. ArticlesTab ----------------
+class ArticlesTab extends StatelessWidget {
+  const ArticlesTab({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: ArticleData.allArticles.length,
+      itemBuilder: (context, index) {
+        final article = ArticleData.allArticles[index];
+        return Card(
+          margin: const EdgeInsets.only(bottom: 12),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          child: ExpansionTile(
+            leading: Container(
+              width: 45,
+              height: 45,
+              decoration: BoxDecoration(
+                color: const Color(0xFFF59E0B).withOpacity(0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(article.icon, color: const Color(0xFFF59E0B)),
+            ),
+            title: Text(article.title,
+                style: const TextStyle(
+                    fontWeight: FontWeight.bold, fontSize: 15)),
+            subtitle: Text(article.category,
+                style: const TextStyle(fontSize: 12, color: Colors.grey)),
+            childrenPadding: const EdgeInsets.all(16),
+            children: [
+              Text(article.content,
+                  style: const TextStyle(fontSize: 13, height: 1.7)),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+// ---------------- 12. StatisticsScreen ----------------
+class StatisticsScreen extends StatefulWidget {
+  const StatisticsScreen({super.key});
+
+  @override
+  State<StatisticsScreen> createState() => _StatisticsScreenState();
+}
+
+class _StatisticsScreenState extends State<StatisticsScreen> {
+  List<Map<String, dynamic>> _items = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    final items = await OfflineService.getAllDiagnoses();
+    if (mounted) {
+      setState(() {
+        _items = items;
+        _loading = false;
+      });
+    }
+  }
+
+  // عدّ الكلمات المفتاحية الأكثر تكراراً
+  Map<String, int> _getTopKeywords() {
+    final Map<String, int> keywords = {
+      'مرض فطري': 0,
+      'حشرة': 0,
+      'اصفرار': 0,
+      'ذبول': 0,
+      'بقع': 0,
+      'عفن': 0,
+      'نقص تغذية': 0,
+    };
+    for (var item in _items) {
+      final text =
+          "${item['question']} ${item['diagnosis']}".toLowerCase();
+      keywords.forEach((key, value) {
+        if (text.contains(key)) {
+          keywords[key] = value + 1;
+        }
+      });
+    }
+    final sorted = keywords.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    return Map.fromEntries(sorted.take(5));
+  }
+
+  // عدد التشخيصات المزامنة وغير المزامنة
+  int _getSyncedCount() =>
+      _items.where((i) => i['isSynced'] == 1).length;
+  int _getUnsyncedCount() =>
+      _items.where((i) => i['isSynced'] == 0).length;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('الموسوعة الزراعية',
+        title: const Text('الإحصائيات',
             style: TextStyle(color: Colors.white)),
         backgroundColor: const Color(0xFF047857),
       ),
-      body: const Center(
-        child: Text('قسم المقالات والإرشادات الزراعية (قيد التطوير)'),
+      body: Directionality(
+        textDirection: TextDirection.rtl,
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : _items.isEmpty
+                ? const Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.bar_chart, size: 80, color: Colors.grey),
+                        SizedBox(height: 16),
+                        Text('لا توجد إحصائيات بعد',
+                            style: TextStyle(
+                                fontSize: 16, color: Colors.grey)),
+                        SizedBox(height: 8),
+                        Text('ابدأ بإجراء فحوصات لعرض الإحصائيات',
+                            style: TextStyle(
+                                fontSize: 13, color: Colors.grey)),
+                      ],
+                    ),
+                  )
+                : ListView(
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      // إجمالي
+                      _buildStatCard(
+                        icon: Icons.eco,
+                        color: const Color(0xFF047857),
+                        title: 'إجمالي التشخيصات',
+                        value: _items.length.toString(),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildStatCard(
+                              icon: Icons.cloud_done,
+                              color: const Color(0xFF3B82F6),
+                              title: 'مُزامن',
+                              value: _getSyncedCount().toString(),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _buildStatCard(
+                              icon: Icons.cloud_off,
+                              color: const Color(0xFFF59E0B),
+                              title: 'غير مُزامن',
+                              value: _getUnsyncedCount().toString(),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                      const Text('📊 أكثر المشاكل تكراراً',
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                              color: Color(0xFF047857))),
+                      const SizedBox(height: 12),
+                      Card(
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            children: _getTopKeywords().entries.map((e) {
+                              final max = _items.isEmpty
+                                  ? 1
+                                  : (_getTopKeywords().values.reduce(
+                                              (a, b) => a > b ? a : b) ==
+                                          0
+                                      ? 1
+                                      : _getTopKeywords()
+                                          .values
+                                          .reduce((a, b) => a > b ? a : b));
+                              final ratio = e.value / max;
+                              return Padding(
+                                padding:
+                                    const EdgeInsets.only(bottom: 12),
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(e.key,
+                                            style: const TextStyle(
+                                                fontSize: 13,
+                                                fontWeight:
+                                                    FontWeight.w500)),
+                                        Text('${e.value}',
+                                            style: const TextStyle(
+                                                fontSize: 13,
+                                                fontWeight:
+                                                    FontWeight.bold,
+                                                color: Color(0xFF047857))),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 4),
+                                    LinearProgressIndicator(
+                                      value: ratio,
+                                      backgroundColor:
+                                          Colors.grey.shade200,
+                                      color: const Color(0xFF047857),
+                                      minHeight: 6,
+                                      borderRadius:
+                                          BorderRadius.circular(3),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
       ),
     );
+  }
+
+  Widget _buildStatCard({
+    required IconData icon,
+    required Color color,
+    required String title,
+    required String value,
+  }) {
+    return Card(
+      shape:
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            Icon(icon, color: color, size: 40),
+            const SizedBox(height: 8),
+            Text(value,
+                style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    color: color)),
+            const SizedBox(height: 4),
+            Text(title,
+                style:
+                    const TextStyle(fontSize: 13, color: Colors.grey)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------- 13. PestData (بيانات الآفات) ----------------
+class PestData {
+  final String name;
+  final String type;
+  final IconData icon;
+  final String description;
+  final String symptoms;
+  final String treatment;
+  final String prevention;
+
+  const PestData({
+    required this.name,
+    required this.type,
+    required this.icon,
+    required this.description,
+    required this.symptoms,
+    required this.treatment,
+    required this.prevention,
+  });
+
+  static const List<PestData> allPests = [
+    PestData(
+      name: 'البياض الدقيقي',
+      type: 'مرض فطري',
+      icon: Icons.grain,
+      description:
+          'مرض فطري يصيب الأوراق والسيقان ويظهر على شكل طبقة بيضاء دقيقية. ينتشر في الجو الرطب والمتوسط الحرارة.',
+      symptoms:
+          '• طبقة بيضاء دقيقية على الأوراق\n• تجعد الأوراق\n• اصفرار وتقزم النبات\n• ضعف النمو العام',
+      treatment:
+          '• الرش بالكبريت الميكروني (2 جم/لتر)\n• استخدام مبيدات فطرية مثل التوباس\n• رش محلول صودا الخبز (ملعقة + لتر ماء)\n• التقليم وإزالة الأجزاء المصابة',
+      prevention:
+          '• تهوية جيدة بين النباتات\n• تجنب الري العلوي على الأوراق\n• تقليل الرطوبة حول النباتات\n• رش وقائي بالكبريت في الربيع',
+    ),
+    PestData(
+      name: 'المن (حشرة المن)',
+      type: 'حشرة',
+      icon: Icons.bug_report,
+      description:
+          'حشرة صغيرة تتغذى على عصارة النبات، تفرز مادة عسلية تجذب النمل وتنمو عليها الفطريات.',
+      symptoms:
+          '• تجمعات من الحشرات الصغيرة على الأوراق\n• تجعد وتشوه الأوراق الجديدة\n• مادة عسلية لزجة\n• اسوداد الأوراق (عفن أسود)',
+      treatment:
+          '• رش بالماء القوي لإزالة الحشرات\n• محلول صابون البوتاسيوم (20 جم/لتر)\n• مبيدات مثل الملاثيون أو الإيميداكلوبريد\n• إطلاق حشرة أبو العيد (أسد المن)',
+      prevention:
+          '• فحص دوري للأوراق الجديدة\n• زراعة نباتات طاردة مثل النعناع والريحان\n• تجنب الإفراط في التسميد النيتروجيني',
+    ),
+    PestData(
+      name: 'التوتا أبسولوتا',
+      type: 'حشرة (فراشة)',
+      icon: Icons.eco,
+      description:
+          'آفة خطيرة تصيب الطماطم والفلفل والباذنجان، تسبب خسائر كبيرة في المحصول.',
+      symptoms:
+          '• ثقوب في الأوراق والثمار\n• أنفاق داخل الأوراق\n• ذبول القمم النامية\n• يرقات خضراء داخل الثمار',
+      treatment:
+          '• استخدام مصائد الفرمونات\n• الرش بمبيدات مثل الإيمامكتين\n• استخدام البكتيريا Bt (باسيلس ثورنجينسيس)\n• إزالة الثمار المصابة وحرقها',
+      prevention:
+          '• تركيب شبكات حماية\n• تدوير المحاصيل\n• إزالة بقايا المحصول السابق\n• زراعة أصناف مقاومة',
+    ),
+    PestData(
+      name: 'العنكبوت الأحمر',
+      type: 'حشرة',
+      icon: Icons.pest_control,
+      description:
+          'حشرة دقيقة تتغذى على عصارة الأوراق وتظهر في الجو الحار الجاف.',
+      symptoms:
+          '• نقط صفراء دقيقة على الأوراق\n• خيوط عنكبوتية على السطح السفلي\n• اصفرار وجفاف الأوراق\n• تساقط الأوراق',
+      treatment:
+          '• رش بالماء القوي (الحشرة تكره الرطوبة)\n• رش بالكبريت الميكروني\n• مبيدات أكاروسية مثل الأبامكتين\n• زيادة رطوبة الجو حول النباتات',
+      prevention:
+          '• رش الأوراق بالماء يومياً\n• تجنب الجفاف الشديد\n• زراعة نباتات طاردة\n• التسميد المتوازن',
+    ),
+    PestData(
+      name: 'لفحة الطماطم',
+      type: 'مرض بكتيري',
+      icon: Icons.local_florist,
+      description:
+          'مرض بكتيري خطير يصيب الطماطم والبصل والفلفل، ينتشر بسرعة في الجو الرطب.',
+      symptoms:
+          '• بقع داكنة على الأوراق\n• تعفن الثمار\n• ذبول الأوراق السفلية\n• تعفن القمة الزهرية',
+      treatment:
+          '• إزالة النباتات المصابة فوراً\n• رش بالمبيدات النحاسية\n• الرش بمضادات حيوية زراعية\n• تجنب الري العلوي',
+      prevention:
+          '• بذور نظيفة معتمدة\n• تدوير المحاصيل\n• تصريف جيد للتربة\n• تهوية جيدة في البيوت المحمية',
+    ),
+    PestData(
+      name: 'نيماتودا الجذور',
+      type: 'ديدان مجهرية',
+      icon: Icons.grass,
+      description:
+          'ديدان مجهرية تصيب جذور النبات وتسبب تعقدات، وتقلل من امتصاص الماء والعناصر.',
+      symptoms:
+          '• تعقدات على الجذور\n• تقزم وضعف النبات\n• اصفرار عام\n• ذبول في وقت الظهيرة',
+      treatment:
+          '• شمسنة التربة في الصيف\n• استخدام المبيدات النيماتودية\n• إضافة المادة العضوية بكثافة\n• زراعة نباتات طاردة (مثل القطيفة)',
+      prevention:
+          '• تدوير المحاصيل\n• تعقيم الشتلات\n• تجنب نقله من حقل مصاب\n• حرث عميق قبل الزراعة',
+    ),
+    PestData(
+      name: 'الذبابة البيضاء',
+      type: 'حشرة',
+      icon: Icons.flutter_dash,
+      description:
+          'حشرة صغيرة بيضاء تتغذى على عصارة النبات وتنقل الفيروسات.',
+      symptoms:
+          '• حشرات بيضاء صغيرة تطير عند لمس النبات\n• اصفرار الأوراق\n• ضعف عام في النبات\n• نقل أمراض فيروسية',
+      treatment:
+          '• استخدام مصائد صفراء لاصقة\n• رش بالصابون البوتاسيوم\n• مبيدات جهازية مثل الإيميداكلوبريد\n• إطلاق المفترسات الطبيعية',
+      prevention:
+          '• شبكات حماية في المشتل\n• إزالة الأعشاب الضارة\n• زراعة نباتات طاردة\n• فحص الشتلات قبل الزراعة',
+    ),
+  ];
+}
+
+// ---------------- 14. ArticleData (بيانات المقالات) ----------------
+class ArticleData {
+  final String title;
+  final String category;
+  final IconData icon;
+  final String content;
+
+  const ArticleData({
+    required this.title,
+    required this.category,
+    required this.icon,
+    required this.content,
+  });
+
+  static const List<ArticleData> allArticles = [
+    ArticleData(
+      title: 'أساسيات التسميد الصحيح للنباتات',
+      category: 'تسميد',
+      icon: Icons.agriculture,
+      content: '''
+• التسميد النيتروجيني (N):
+- مسؤول عن النمو الخضري والأوراق.
+- يستخدم في بداية النمو.
+- مصادر: اليوريا، نترات الأمونيوم.
+- الإفراط فيه يسبب نمواً خضرياً على حساب الثمار.
+
+• التسميد الفوسفاتي (P):
+- مهم لتكوين الجذور والأزهار والثمار.
+- يستخدم قبل الزراعة وأثناء الإثمار.
+- مصادر: السوبر فوسفات.
+
+• التسميد البوتاسي (K):
+- مهم لجودة الثمار ومقاومة الأمراض.
+- يستخدم في مرحلة الإثمار.
+- مصادر: سلفات البوتاسيوم.
+
+• القاعدة الذهبية:
+لا تسمد في وقت الظهيرة أو قبل المطر.
+افضل وقت للتسميد هو الصباح الباكر أو بعد المغرب.
+''',
+    ),
+    ArticleData(
+      title: 'كيفية ري النباتات بطريقة صحيحة',
+      category: 'ري',
+      icon: Icons.water_drop,
+      content: '''
+• قواعد الري الأساسية:
+1. الري في الصباح الباكر أو بعد المغرب.
+2. تجنب الري في وقت الظهيرة (يسبب احتراق الأوراق).
+3. تأكد من رطوبة التربة قبل الري (لا تسرف).
+
+• علامات الإفراط في الري:
+- اصفرار الأوراق السفلية.
+- تعفن الجذور.
+- نمو الطحالب على سطح التربة.
+
+• علامات نقص الري:
+- ذبول الأوراق.
+- تشقق التربة.
+- توقف النمو.
+
+• أفضل طريقة للري:
+الري بالتنقيط هي الأفضل، لأنها توفر المياه وتوصل الماء مباشرة للجذور.
+
+• نصيحة:
+عند ارتفاع الحرارة عن 30 درجة، ارفع كمية الري بنسبة 20%.
+''',
+    ),
+    ArticleData(
+      title: 'الوقاية من أمراض النباتات',
+      category: 'وقاية',
+      icon: Icons.security,
+      content: '''
+• القواعد الذهبية للوقاية:
+
+1. النظافة:
+- إزالة الأوراق المصابة فوراً.
+- تعقيم أدوات التقليم.
+- إزالة بقايا المحصول السابق.
+
+2. التهوية:
+- مسافات كافية بين النباتات.
+- تهوية جيدة في البيوت المحمية.
+- إزالة الأعشاب الضارة.
+
+3. الري السليم:
+- تجنب الري العلوي على الأوراق.
+- الري في الصباح الباكر.
+- تصريف جيد للتربة.
+
+4. التسميد المتوازن:
+- تجنب الإفراط في النيتروجين.
+- إضافة المادة العضوية.
+- التوازن بين العناصر.
+
+5. المكافحة البيولوجية:
+- إطلاق المفترسات الطبيعية.
+- استخدام المبيدات الحيوية.
+- زراعة نباتات طاردة.
+
+• القاعدة: الوقاية خير من العلاج.
+''',
+    ),
+    ArticleData(
+      title: 'موسم الحصاد المثالي للمحاصيل',
+      category: 'حصاد',
+      icon: Icons.emoji_events,
+      content: '''
+• علامات نضج المحاصيل:
+
+1. الطماطم:
+- تحول اللون من الأخضر للأحمر.
+- ليونة خفيفة عند الضغط.
+- سهولة الفصل من العنق.
+
+2. الخيار:
+- لون أخضر غامق موحد.
+- قوام صلب.
+- حجم مناسب للصنف.
+
+3. الفلفل:
+- لون كامل (أخضر، أحمر، أصفر).
+- لمعان طبيعي.
+- صلابة القشرة.
+
+4. البصل:
+- اصفرار الأوراق وسقوطها.
+- جفاف القشرة الخارجية.
+- انتفاخ البصلة.
+
+• أفضل وقت للحصاد:
+- الصباح الباكر قبل ارتفاع الحرارة.
+- بعد جفاف الندى.
+
+• بعد الحصاد:
+- التخزين في مكان بارد جاف.
+- التخلص من الثمار التالفة.
+- عدم رص الثمار فوق بعضها.
+''',
+    ),
+    ArticleData(
+      title: 'تحضير التربة للزراعة',
+      category: 'زراعة',
+      icon: Icons.landscape,
+      content: '''
+• خطوات تحضير التربة:
+
+1. تنظيف الأرض:
+- إزالة بقايا المحصول السابق.
+- إزالة الحجارة والأعشاب.
+
+2. الحرث:
+- حرث عميق (30-40 سم).
+- ترك الأرض للتهوية 7-10 أيام.
+
+3. إضافة المادة العضوية:
+- سماد بلدي متحلل (5-10 م³/فدان).
+- كمبوست.
+- مخلفات نباتية.
+
+4. التسوية:
+- تسوية سطح التربة.
+- تقسيم إلى أحواض أو خطوط.
+
+5. التخطيط:
+- عمل خطوط الزراعة.
+- ترك مسافات مناسبة بين الخطوط.
+
+6. تعقيم التربة (اختياري):
+- بالشمس (شمسنة).
+- بالمبيدات الفطرية.
+- بالبخار للمساحات الصغيرة.
+
+• ملاحظة:
+افحص التربة قبل الزراعة لمعرفة نسبة الأملاح والـ pH.
+''',
+    ),
+    ArticleData(
+      title: 'الزراعة بدون تربة (الهيدروبونيك)',
+      category: 'زراعة',
+      icon: Icons.science,
+      content: '''
+• ما هي الزراعة بدون تربة؟
+طريقة لزراعة النباتات بدون استخدام التربة، بحيث تنمو في محلول مغذي.
+
+• أنواعها:
+1. NFT (تقنية الطبقة الرقيقة).
+2. DWC (الماء العميق).
+3. الزراعة في الرمل أو الحصى.
+4. الأيروبونيك (رذاذ).
+
+• المميزات:
+- توفير 80% من المياه.
+- عدم الحاجة للأراضي الزراعية.
+- إنتاج نظيف بدون مبيدات.
+- نمو أسرع بـ 30-50%.
+
+• العيوب:
+- التكلفة الأولية عالية.
+- تحتاج خبرة.
+- حساسة لانقطاع الكهرباء.
+
+• النباتات المناسبة:
+الخس، الجرجير، الطماطم، الخيار، الفراولة، الأعشاب العطرية.
+
+• المحلول المغذي:
+يجب أن يحتوي على كل العناصر الكبرى والصغرى بنسب دقيقة.
+''',
+    ),
+  ];
+}
+
+// ---------------- 15. ArticlesAndGuidesScreen (احتياطي) ----------------
+class ArticlesAndGuidesScreen extends StatelessWidget {
+  const ArticlesAndGuidesScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const EncyclopediaScreen();
   }
 }
