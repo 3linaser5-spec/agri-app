@@ -61,7 +61,6 @@ class _AgriConsultantAppState extends State<AgriConsultantApp> {
     _setupConnectivityListener();
   }
 
-  // ✅ مراقبة حالة الشبكة لمزامنة التشخيصات المعلقة
   void _setupConnectivityListener() {
     _connectivitySub = Connectivity()
         .onConnectivityChanged
@@ -307,7 +306,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   @override
   Widget build(BuildContext context) {
     final screens = [
-      HomeDashboard(userName: widget.userName),
+      HomeDashboard(userName: widget.userName, userPhone: widget.userPhone),
       AiScannerScreen(userName: widget.userName, userPhone: widget.userPhone),
       const ArticlesAndGuidesScreen(),
     ];
@@ -332,7 +331,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 // ---------------- 3. الرئيسية والطقس ----------------
 class HomeDashboard extends StatefulWidget {
   final String userName;
-  const HomeDashboard({super.key, required this.userName});
+  final String userPhone;
+  const HomeDashboard({super.key, required this.userName, required this.userPhone});
 
   @override
   State<HomeDashboard> createState() => _HomeDashboardState();
@@ -444,6 +444,22 @@ class _HomeDashboardState extends State<HomeDashboard> {
                 style: TextStyle(color: Color(0xFFFDE68A), fontSize: 11)),
           ],
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.person, color: Colors.white),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => ProfileScreen(
+                    userName: widget.userName,
+                    userPhone: widget.userPhone,
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
       ),
       body: Directionality(
         textDirection: TextDirection.rtl,
@@ -972,7 +988,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
     }
   }
 
-  // ✅ دالة مسح تشخيص واحد
   Future<void> _deleteOne(int id) async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -1098,7 +1113,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                   Text(dateFormatted,
                                       style: const TextStyle(
                                           fontSize: 11, color: Colors.grey)),
-                                  // ✅ زر المسح + حالة المزامنة
                                   Row(
                                     children: [
                                       if (item['isSynced'] == 0)
@@ -1131,7 +1145,202 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 }
 
-// ---------------- 6. شاشة المقالات ----------------
+// ---------------- 6. شاشة الملف الشخصي ----------------
+class ProfileScreen extends StatefulWidget {
+  final String userName;
+  final String userPhone;
+  const ProfileScreen({
+    super.key,
+    required this.userName,
+    required this.userPhone,
+  });
+
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  late TextEditingController _nameCtrl;
+  bool _saving = false;
+  final _authService = AuthService();
+
+  @override
+  void initState() {
+    super.initState();
+    _nameCtrl = TextEditingController(text: widget.userName);
+  }
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _saveName() async {
+    final newName = _nameCtrl.text.trim();
+    if (newName.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('الاسم لا يمكن أن يكون فارغاً')),
+      );
+      return;
+    }
+
+    setState(() => _saving = true);
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        await user.updateDisplayName(newName);
+        await user.reload();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✅ تم تحديث الاسم بنجاح'),
+              backgroundColor: Color(0xFF047857),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('حدث خطأ: $e')),
+        );
+      }
+    }
+    if (mounted) setState(() => _saving = false);
+  }
+
+  Future<void> _logout() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('تسجيل الخروج'),
+        content: const Text('هل أنت متأكد من تسجيل الخروج؟'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('إلغاء'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('خروج', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      await _authService.logout();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('الملف الشخصي', style: TextStyle(color: Colors.white)),
+        backgroundColor: const Color(0xFF047857),
+      ),
+      body: Directionality(
+        textDirection: TextDirection.rtl,
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            Center(
+              child: CircleAvatar(
+                radius: 50,
+                backgroundColor: const Color(0xFF047857).withOpacity(0.15),
+                child: const Icon(Icons.person, size: 60, color: Color(0xFF047857)),
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            Card(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              elevation: 2,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Row(
+                      children: [
+                        Icon(Icons.person, color: Color(0xFF047857)),
+                        SizedBox(width: 8),
+                        Text('الاسم',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: _nameCtrl,
+                      decoration: InputDecoration(
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 14),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: _saving ? null : _saveName,
+                        icon: _saving
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                    color: Colors.white, strokeWidth: 2),
+                              )
+                            : const Icon(Icons.save),
+                        label: Text(_saving ? 'جاري الحفظ...' : 'حفظ الاسم'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF047857),
+                          minimumSize: const Size.fromHeight(45),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            Card(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              elevation: 2,
+              child: ListTile(
+                leading: const Icon(Icons.phone, color: Color(0xFF047857)),
+                title: const Text('رقم الموبايل',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: Text(widget.userPhone),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            ElevatedButton.icon(
+              onPressed: _logout,
+              icon: const Icon(Icons.logout),
+              label: const Text('تسجيل الخروج',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red.shade600,
+                foregroundColor: Colors.white,
+                minimumSize: const Size.fromHeight(55),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------- 7. شاشة المقالات ----------------
 class ArticlesAndGuidesScreen extends StatelessWidget {
   const ArticlesAndGuidesScreen({super.key});
 
