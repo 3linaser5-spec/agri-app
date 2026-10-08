@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../models/calculator_models.dart';
 import '../../services/calculator_service.dart';
 import 'template_editor_screen.dart';
+import 'json_import_screen.dart';
 
 // ================== لوحة الأدمن الرئيسية ==================
 class AdminPanelScreen extends StatefulWidget {
@@ -46,7 +47,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
             : ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
-                  // بانر ترحيبي
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
@@ -183,22 +183,47 @@ class _SectionTemplatesScreenState extends State<SectionTemplatesScreen> {
             style: const TextStyle(color: Colors.white)),
         backgroundColor: const Color(0xFF047857),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () async {
-          await Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => TemplateEditorScreen(
-                sectionId: widget.section.id,
-                sectionName: widget.section.name,
-              ),
-            ),
-          );
-          _loadTemplates();
-        },
-        backgroundColor: const Color(0xFF047857),
-        icon: const Icon(Icons.add, color: Colors.white),
-        label: const Text('إضافة قالب', style: TextStyle(color: Colors.white)),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          FloatingActionButton.extended(
+            heroTag: 'json_import',
+            onPressed: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => JsonImportScreen(section: widget.section),
+                ),
+              );
+              _loadTemplates();
+            },
+            backgroundColor: Colors.blue.shade700,
+            icon: const Icon(Icons.cloud_upload, color: Colors.white),
+            label: const Text('استيراد JSON',
+                style: TextStyle(color: Colors.white)),
+          ),
+          const SizedBox(height: 10),
+          FloatingActionButton.extended(
+            heroTag: 'add_template',
+            onPressed: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => TemplateEditorScreen(
+                    sectionId: widget.section.id,
+                    sectionName: widget.section.name,
+                  ),
+                ),
+              );
+              _loadTemplates();
+            },
+            backgroundColor: const Color(0xFF047857),
+            icon: const Icon(Icons.add, color: Colors.white),
+            label: const Text('إضافة قالب',
+                style: TextStyle(color: Colors.white)),
+          ),
+        ],
       ),
       body: Directionality(
         textDirection: TextDirection.rtl,
@@ -215,7 +240,7 @@ class _SectionTemplatesScreenState extends State<SectionTemplatesScreen> {
                             style:
                                 TextStyle(fontSize: 16, color: Colors.grey)),
                         SizedBox(height: 8),
-                        Text('دوس "إضافة قالب" لتبدأ',
+                        Text('دوس "إضافة قالب" أو "استيراد JSON" لتبدأ',
                             style:
                                 TextStyle(fontSize: 13, color: Colors.grey)),
                       ],
