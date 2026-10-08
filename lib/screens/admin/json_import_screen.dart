@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../models/calculator_models.dart';
-import '../../services/calculator_service.dart';
 
 class JsonImportScreen extends StatefulWidget {
   final CalculatorSection section;
@@ -50,12 +49,9 @@ class _JsonImportScreenState extends State<JsonImportScreen> {
     });
 
     try {
-      // Parse JSON
       final dynamic parsed = json.decode(jsonText);
 
-      // لو JSON array، نستورد كل قالب
-      final List<dynamic> templates =
-          parsed is List ? parsed : [parsed];
+      final List<dynamic> templates = parsed is List ? parsed : [parsed];
 
       int successCount = 0;
       int failCount = 0;
@@ -69,10 +65,9 @@ class _JsonImportScreenState extends State<JsonImportScreen> {
         }
 
         try {
-          // نضيف section_id لو مش موجود
-          templateData['section_id'] ??= widget.section.id;
+          // ✅ إضافة section_id تلقائياً
+          templateData['section_id'] = widget.section.id;
 
-          // التحقق من الحقول الأساسية
           final name = templateData['name']?.toString();
           if (name == null || name.trim().isEmpty) {
             failCount++;
@@ -80,7 +75,6 @@ class _JsonImportScreenState extends State<JsonImportScreen> {
             continue;
           }
 
-          // إضافة للـ Firestore مباشرة
           final id = await _saveTemplate(templateData);
           if (id != null) {
             successCount++;
@@ -130,7 +124,6 @@ class _JsonImportScreenState extends State<JsonImportScreen> {
           .doc('5vZIZWBYDYNRhOL6PwGc')
           .collection('calculator_templates');
 
-      // نتأكد إن fields, tasks, materials, financial موجودين
       data['fields'] ??= [];
       data['tasks'] ??= [];
       data['materials'] ??= [];
@@ -173,7 +166,6 @@ class _JsonImportScreenState extends State<JsonImportScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            // Header
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
@@ -187,7 +179,7 @@ class _JsonImportScreenState extends State<JsonImportScreen> {
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      'الصق كود JSON للقالب (أو عدة قوالب في مصفوفة [ ])',
+                      'الصق كود JSON للقالب (أو عدة قوالب في مصفوفة [ ])\nسيتم ربط القالب تلقائياً بقسم: ${widget.section.name}',
                       style: TextStyle(
                           fontSize: 12,
                           color: Colors.blue.shade700,
@@ -199,7 +191,6 @@ class _JsonImportScreenState extends State<JsonImportScreen> {
             ),
             const SizedBox(height: 16),
 
-            // Input field
             TextField(
               controller: _jsonCtrl,
               maxLines: 15,
@@ -216,7 +207,6 @@ class _JsonImportScreenState extends State<JsonImportScreen> {
             ),
             const SizedBox(height: 16),
 
-            // Result message
             if (_resultMessage != null) ...[
               Container(
                 padding: const EdgeInsets.all(14),
@@ -235,9 +225,7 @@ class _JsonImportScreenState extends State<JsonImportScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Icon(
-                      _isSuccess
-                          ? Icons.check_circle
-                          : Icons.error_outline,
+                      _isSuccess ? Icons.check_circle : Icons.error_outline,
                       color: _isSuccess ? Colors.green : Colors.red,
                       size: 24,
                     ),
@@ -260,7 +248,6 @@ class _JsonImportScreenState extends State<JsonImportScreen> {
               const SizedBox(height: 16),
             ],
 
-            // Import button
             ElevatedButton.icon(
               onPressed: _loading ? null : _importJson,
               icon: _loading
@@ -287,7 +274,6 @@ class _JsonImportScreenState extends State<JsonImportScreen> {
 
             const SizedBox(height: 24),
 
-            // Help section
             Card(
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12)),
@@ -311,6 +297,7 @@ class _JsonImportScreenState extends State<JsonImportScreen> {
                       '• لازم يكون JSON صحيح (استخدم jsonlint.com للتحقق)\n'
                       '• الحقول الأساسية: name, emoji, description\n'
                       '• يدعم استيراد قالب واحد أو عدة قوالب [ ]\n'
+                      '• section_id بيتضاف تلقائياً (مش محتاج تكتبه)\n'
                       '• لو حصل خطأ، هتلاقي التفاصيل فوق',
                       style: TextStyle(
                           fontSize: 12,
