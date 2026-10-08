@@ -24,6 +24,8 @@ import 'firebase_options.dart';
 import 'services/auth_service.dart';
 import 'services/offline_service.dart';
 import 'services/notification_service.dart';
+import 'services/calculator_service.dart'; // ✅ جديد
+import 'screens/admin/admin_panel_screen.dart'; // ✅ جديد
 import 'utils/validators.dart';
 
 void main() async {
@@ -833,6 +835,12 @@ class _HomeDashboardState extends State<HomeDashboard> {
     _fetchWeatherByLocation();
   }
 
+  // ✅ التحقق إن المستخدم الحالي أدمن
+  bool _isAdmin() {
+    final email = FirebaseAuth.instance.currentUser?.email;
+    return CalculatorService.isAdmin(email);
+  }
+
   Future<void> _fetchWeatherByLocation() async {
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -930,6 +938,19 @@ class _HomeDashboardState extends State<HomeDashboard> {
           ],
         ),
         actions: [
+          if (_isAdmin())
+            IconButton(
+              icon: const Icon(Icons.admin_panel_settings,
+                  color: Colors.amber),
+              tooltip: 'لوحة الأدمن',
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (context) => const AdminPanelScreen()),
+                );
+              },
+            ),
           IconButton(
             icon: const Icon(Icons.bar_chart, color: Colors.white),
             onPressed: () {
@@ -1070,7 +1091,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
                       color: const Color(0xFF25D366),
                       title: 'الدعم الفني',
                       onTap: () async {
-                        final uri = Uri.parse("https://wa.me/201126920209");
+                        final uri = Uri.parse("https://wa.me/201284172047");
                         try {
                           await launchUrl(uri,
                               mode: LaunchMode.externalApplication);
@@ -1248,7 +1269,7 @@ class _AiScannerScreenState extends State<AiScannerScreen> {
   }
 
   Future<void> _sendToEngineerWhatsApp() async {
-    const engineerPhone = "201126920209";
+    const engineerPhone = "201284172047";
     final message = """
 السلام عليكم يا بشمهندس علي، معي استشارة زراعية:
 🌱 *اسم المزارع:* ${widget.userName}
@@ -2066,7 +2087,7 @@ class AboutScreen extends StatelessWidget {
   const AboutScreen({super.key});
 
   Future<void> _openWhatsApp() async {
-    final uri = Uri.parse("https://wa.me/201126920209");
+    final uri = Uri.parse("https://wa.me/201284172047");
     try {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } catch (e) {}
