@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../models/calculator_models.dart';
 import '../../services/calculator_service.dart';
+import 'template_editor_screen.dart';
 
 // ================== لوحة الأدمن الرئيسية ==================
 class AdminPanelScreen extends StatefulWidget {
@@ -236,10 +236,26 @@ class _SectionTemplatesScreenState extends State<SectionTemplatesScreen> {
                           title: Text(t.name,
                               style:
                                   const TextStyle(fontWeight: FontWeight.bold)),
-                          subtitle: Text(t.description,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontSize: 12)),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(t.description,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontSize: 12)),
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  _chip('${t.fields.length} حقول', Colors.blue),
+                                  const SizedBox(width: 4),
+                                  _chip('${t.tasks.length} مهام', Colors.orange),
+                                  const SizedBox(width: 4),
+                                  _chip('${t.materials.length} مواد',
+                                      Colors.green),
+                                ],
+                              ),
+                            ],
+                          ),
                           trailing: IconButton(
                             icon:
                                 const Icon(Icons.delete, color: Colors.red),
@@ -252,184 +268,17 @@ class _SectionTemplatesScreenState extends State<SectionTemplatesScreen> {
       ),
     );
   }
-}
 
-// ================== شاشة محرر القالب ==================
-class TemplateEditorScreen extends StatefulWidget {
-  final String sectionId;
-  final String sectionName;
-  const TemplateEditorScreen({
-    super.key,
-    required this.sectionId,
-    required this.sectionName,
-  });
-
-  @override
-  State<TemplateEditorScreen> createState() => _TemplateEditorScreenState();
-}
-
-class _TemplateEditorScreenState extends State<TemplateEditorScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _nameCtrl = TextEditingController();
-  final _emojiCtrl = TextEditingController();
-  final _descCtrl = TextEditingController();
-  bool _saving = false;
-
-  @override
-  void dispose() {
-    _nameCtrl.dispose();
-    _emojiCtrl.dispose();
-    _descCtrl.dispose();
-    super.dispose();
-  }
-
-  Future<void> _save() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    setState(() => _saving = true);
-
-    final id = await CalculatorService.addTemplate(
-      sectionId: widget.sectionId,
-      name: _nameCtrl.text.trim(),
-      emoji: _emojiCtrl.text.trim(),
-      description: _descCtrl.text.trim(),
-      areaUnit: 'فدان',
-      areaUnitLabel: 'المساحة',
-      fields: [],
-      tasks: [],
-      materials: [],
-      financial: {},
-    );
-
-    if (mounted) setState(() => _saving = false);
-
-    if (id != null) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ تم حفظ القالب بنجاح'),
-            backgroundColor: Color(0xFF047857),
-          ),
-        );
-        Navigator.pop(context);
-      }
-    } else {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('❌ فشل الحفظ، حاول مرة أخرى'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('إضافة قالب - ${widget.sectionName}',
-            style: const TextStyle(color: Colors.white)),
-        backgroundColor: const Color(0xFF047857),
+  Widget _chip(String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(6),
       ),
-      body: Directionality(
-        textDirection: TextDirection.rtl,
-        child: Form(
-          key: _formKey,
-          child: ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              // اسم المحصول
-              TextFormField(
-                controller: _nameCtrl,
-                decoration: InputDecoration(
-                  labelText: 'اسم المحصول',
-                  hintText: 'مثال: قمح',
-                  prefixIcon: const Icon(Icons.eco),
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                ),
-                validator: (v) =>
-                    (v == null || v.trim().isEmpty) ? 'ادخل اسم المحصول' : null,
-              ),
-              const SizedBox(height: 16),
-
-              // الإيموجي
-              TextFormField(
-                controller: _emojiCtrl,
-                decoration: InputDecoration(
-                  labelText: 'إيموجي (اختياري)',
-                  hintText: 'مثال: 🌾',
-                  prefixIcon: const Icon(Icons.emoji_emotions),
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // الوصف
-              TextFormField(
-                controller: _descCtrl,
-                maxLines: 3,
-                decoration: InputDecoration(
-                  labelText: 'وصف المحصول',
-                  hintText: 'مثال: برنامج زراعة القمح من خدمة الأرض للحصاد',
-                  prefixIcon: const Icon(Icons.description),
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                ),
-                validator: (v) =>
-                    (v == null || v.trim().isEmpty) ? 'ادخل الوصف' : null,
-              ),
-              const SizedBox(height: 24),
-
-              // ملاحظة
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.amber.shade50,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Row(
-                  children: [
-                    Icon(Icons.info_outline, color: Colors.orange, size: 20),
-                    SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'بعد الحفظ، تقدر تضيف الحقول والمهام والمواد من خلال تعديل القالب',
-                        style: TextStyle(fontSize: 12),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              // زر الحفظ
-              ElevatedButton.icon(
-                onPressed: _saving ? null : _save,
-                icon: _saving
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                            color: Colors.white, strokeWidth: 2),
-                      )
-                    : const Icon(Icons.save),
-                label: Text(_saving ? 'جاري الحفظ...' : 'حفظ القالب'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF047857),
-                  foregroundColor: Colors.white,
-                  minimumSize: const Size.fromHeight(55),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+      child: Text(text,
+          style: TextStyle(
+              fontSize: 10, color: color, fontWeight: FontWeight.bold)),
     );
   }
 }
