@@ -24,8 +24,9 @@ import 'firebase_options.dart';
 import 'services/auth_service.dart';
 import 'services/offline_service.dart';
 import 'services/notification_service.dart';
-import 'services/calculator_service.dart'; // ✅ جديد
-import 'screens/admin/admin_panel_screen.dart'; // ✅ جديد
+import 'services/calculator_service.dart';
+import 'screens/admin/admin_panel_screen.dart';
+import 'screens/calculators/calculator_hub_screen.dart';
 import 'utils/validators.dart';
 
 void main() async {
@@ -835,7 +836,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
     _fetchWeatherByLocation();
   }
 
-  // ✅ التحقق إن المستخدم الحالي أدمن
   bool _isAdmin() {
     final email = FirebaseAuth.instance.currentUser?.email;
     return CalculatorService.isAdmin(email);
@@ -915,6 +915,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
             Icon(icon, color: color, size: 32),
             const SizedBox(height: 8),
             Text(title,
+                textAlign: TextAlign.center,
                 style: const TextStyle(
                     fontWeight: FontWeight.bold, fontSize: 13)),
           ],
@@ -1038,12 +1039,27 @@ class _HomeDashboardState extends State<HomeDashboard> {
                     fontSize: 16,
                     color: Color(0xFF047857))),
             const SizedBox(height: 12),
+            // صف 1: الحاسبات الزراعية + الموسوعة
             Row(
               children: [
                 Expanded(
                   child: _buildQuickActionCard(
-                      icon: Icons.menu_book,
+                      icon: Icons.calculate,
                       color: const Color(0xFF047857),
+                      title: 'الحاسبات الزراعية',
+                      onTap: () {
+                        Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (context) =>
+                                    const CalculatorHubScreen()));
+                      }),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildQuickActionCard(
+                      icon: Icons.menu_book,
+                      color: const Color(0xFF0EA5E9),
                       title: 'الموسوعة',
                       onTap: () {
                         Navigator.push(
@@ -1053,7 +1069,12 @@ class _HomeDashboardState extends State<HomeDashboard> {
                                     const EncyclopediaScreen()));
                       }),
                 ),
-                const SizedBox(width: 12),
+              ],
+            ),
+            const SizedBox(height: 12),
+            // صف 2: سجل التشخيصات + إحصائيات
+            Row(
+              children: [
                 Expanded(
                   child: _buildQuickActionCard(
                       icon: Icons.history,
@@ -1066,11 +1087,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
                                 builder: (context) => const HistoryScreen()));
                       }),
                 ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
+                const SizedBox(width: 12),
                 Expanded(
                   child: _buildQuickActionCard(
                       icon: Icons.bar_chart,
@@ -1084,7 +1101,12 @@ class _HomeDashboardState extends State<HomeDashboard> {
                                     const StatisticsScreen()));
                       }),
                 ),
-                const SizedBox(width: 12),
+              ],
+            ),
+            const SizedBox(height: 12),
+            // صف 3: الدعم الفني + عن التطبيق
+            Row(
+              children: [
                 Expanded(
                   child: _buildQuickActionCard(
                       icon: Icons.chat,
@@ -1103,11 +1125,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
                         }
                       }),
                 ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
+                const SizedBox(width: 12),
                 Expanded(
                   child: _buildQuickActionCard(
                       icon: Icons.info_outline,
@@ -1120,8 +1138,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
                                 builder: (context) => const AboutScreen()));
                       }),
                 ),
-                const SizedBox(width: 12),
-                const Expanded(child: SizedBox()),
               ],
             ),
             const SizedBox(height: 24),
