@@ -119,9 +119,8 @@ class _JsonImportScreenState extends State<JsonImportScreen> {
 
   Future<String?> _saveTemplate(Map<String, dynamic> data) async {
     try {
+      // ✅ الحفظ في الـ root مباشرة (جنب users و ai_queries)
       final ref = FirebaseFirestore.instance
-          .collection('ai_queries')
-          .doc('5vZIZWBYDYNRhOL6PwGc')
           .collection('calculator_templates');
 
       data['fields'] ??= [];
