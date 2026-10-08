@@ -4,32 +4,13 @@ import '../models/calculator_models.dart';
 class CalculatorService {
   static final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  // ⚠️ المسار المؤقت (لأن البيانات جوه ai_queries)
-  static const String _rootCollection = 'ai_queries';
-  static const String _rootDocId = '5vZIZWBYDYNRhOL6PwGc';
-  static const String _sectionsCollection = 'calculator_sections';
-  static const String _templatesCollection = 'calculator_templates';
-
-  // المرجع للأقسام
-  static CollectionReference<Map<String, dynamic>> get _sectionsRef {
-    return _firestore
-        .collection(_rootCollection)
-        .doc(_rootDocId)
-        .collection(_sectionsCollection);
-  }
-
-  // المرجع للقوالب
-  static CollectionReference<Map<String, dynamic>> get _templatesRef {
-    return _firestore
-        .collection(_rootCollection)
-        .doc(_rootDocId)
-        .collection(_templatesCollection);
-  }
-
   // ======== الأقسام ========
   static Future<List<CalculatorSection>> getSections() async {
     try {
-      final snapshot = await _sectionsRef.orderBy('order').get();
+      final snapshot = await _firestore
+          .collection('calculator_sections')
+          .orderBy('order')
+          .get();
       return snapshot.docs
           .map((doc) => CalculatorSection.fromFirestore(doc))
           .toList();
@@ -43,7 +24,8 @@ class CalculatorService {
   static Future<List<CalculatorTemplate>> getTemplatesBySection(
       String sectionId) async {
     try {
-      final snapshot = await _templatesRef
+      final snapshot = await _firestore
+          .collection('calculator_templates')
           .where('section_id', isEqualTo: sectionId)
           .get();
       return snapshot.docs
@@ -57,7 +39,8 @@ class CalculatorService {
 
   static Future<CalculatorTemplate?> getTemplate(String id) async {
     try {
-      final doc = await _templatesRef.doc(id).get();
+      final doc =
+          await _firestore.collection('calculator_templates').doc(id).get();
       if (!doc.exists) return null;
       return CalculatorTemplate.fromFirestore(doc);
     } catch (e) {
@@ -80,7 +63,7 @@ class CalculatorService {
     Map<String, dynamic> financial = const {},
   }) async {
     try {
-      final docRef = await _templatesRef.add({
+      final docRef = await _firestore.collection('calculator_templates').add({
         'section_id': sectionId,
         'name': name,
         'emoji': emoji,
@@ -104,7 +87,10 @@ class CalculatorService {
   static Future<bool> updateTemplate(
       String id, Map<String, dynamic> data) async {
     try {
-      await _templatesRef.doc(id).update(data);
+      await _firestore
+          .collection('calculator_templates')
+          .doc(id)
+          .update(data);
       return true;
     } catch (e) {
       print('❌ خطأ في تعديل القالب: $e');
@@ -115,7 +101,10 @@ class CalculatorService {
   // ======== حذف قالب ========
   static Future<bool> deleteTemplate(String id) async {
     try {
-      await _templatesRef.doc(id).delete();
+      await _firestore
+          .collection('calculator_templates')
+          .doc(id)
+          .delete();
       return true;
     } catch (e) {
       print('❌ خطأ في حذف القالب: $e');
