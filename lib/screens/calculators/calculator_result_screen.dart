@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../models/calculator_models.dart';
+import '../../models/my_farm_model.dart';
+import '../../services/my_farm_service.dart';
 
 class CalculatorResultScreen extends StatefulWidget {
   final CalculatorTemplate template;
@@ -19,11 +22,12 @@ class CalculatorResultScreen extends StatefulWidget {
 }
 
 class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
+  bool _saving = false;
+  bool _saved = false;
+
   double get _areaMultiplier {
-    // لو المستخدم دخل مساحة، نضرب فيها
     final area = _inputValues['area'];
     if (area is num) return area.toDouble();
-    // نجرب ندور على أي حقل اسمه فيه "area" أو "مساحة"
     for (var entry in _inputValues.entries) {
       if (entry.key.toLowerCase().contains('area') ||
           entry.key.contains('مساحة')) {
@@ -35,20 +39,109 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
 
   Map<String, dynamic> get _inputValues => widget.inputValues;
 
-  // ترتيب المهام حسب اليوم
   List<CalculatorTask> get _sortedTasks {
     final list = List<CalculatorTask>.from(widget.template.tasks);
     list.sort((a, b) => a.dayFromStart.compareTo(b.dayFromStart));
     return list;
   }
 
-  // إجمالي تكلفة المواد
   double get _totalMaterialsCost {
     double total = 0;
     for (var m in widget.template.materials) {
       total += m.quantityPerUnit * m.estimatedPricePerUnit * _areaMultiplier;
     }
     return total;
+  }
+
+  Future<void> _saveToMyFarm() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('⚠️ الرجاء تسجيل الدخول أولاً'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final startDate = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime.now().subtract(const Duration(days: 30)),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+      helpText: 'اختر تاريخ بداية البرنامج',
+      cancelText: 'إلغاء',
+      confirmText: 'تأكيد',
+    );
+
+    if (startDate == null) return;
+
+    setState(() => _saving = true);
+
+    final program = MyFarmProgram(
+      id: '',
+      userId: user.uid,
+      templateId: widget.template.id,
+      templateName: widget.template.name,
+      templateEmoji: widget.template.emoji,
+      sectionId: widget.template.sectionId,
+      sectionName: widget.template.name,
+      governorate: _inputValues['governorate'] ?? '',
+      climateZone: _inputValues['climate_zone'] ?? '',
+      inputValues: _inputValues,
+      tasks: widget.template.tasks
+          .map((t) => {
+                'title': t.title,
+                'description': t.description,
+                'day_from_start': t.dayFromStart,
+                'category': t.category,
+              })
+          .toList(),
+      materials: widget.template.materials
+          .map((m) => {
+                'name': m.name,
+                'category': m.category,
+                'quantity_per_unit': m.quantityPerUnit,
+                'unit': m.unit,
+                'price_per_unit': m.estimatedPricePerUnit,
+              })
+          .toList(),
+      financial: {
+        'expected_yield': widget.template.financial.expectedYieldPerUnit,
+        'yield_unit': widget.template.financial.yieldUnit,
+        'expected_price':
+            widget.template.financial.expectedPricePerYieldUnit,
+        'cost_distribution':
+            widget.template.financial.costDistribution,
+      },
+      startDate: startDate,
+      createdAt: DateTime.now(),
+      status: 'active',
+    );
+
+    final id = await MyFarmService.saveProgram(program);
+
+    if (!mounted) return;
+    setState(() => _saving = false);
+
+    if (id != null) {
+      setState(() => _saved = true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('✅ تم حفظ البرنامج في مزرعتي بنجاح'),
+          backgroundColor: Color(0xFF047857),
+          duration: Duration(seconds: 3),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('❌ فشل الحفظ، حاول مرة أخرى'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   @override
@@ -61,6 +154,16 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
               style: const TextStyle(color: Colors.white)),
           backgroundColor: widget.primaryColor,
           iconTheme: const IconThemeData(color: Colors.white),
+          actions: [
+            IconButton(
+              icon: Icon(
+                _saved ? Icons.check_circle : Icons.save,
+                color: Colors.white,
+              ),
+              tooltip: 'حفظ في مزرعتي',
+              onPressed: _saving || _saved ? null : _saveToMyFarm,
+            ),
+          ],
           bottom: const TabBar(
             indicatorColor: Colors.white,
             labelColor: Colors.white,
@@ -74,11 +177,78 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
         ),
         body: Directionality(
           textDirection: TextDirection.rtl,
-          child: TabBarView(
+          child: Column(
             children: [
-              _buildTimelineTab(),
-              _buildMaterialsTab(),
-              _buildFinancialTab(),
+              if (_inputValues['governorate'] != null)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  color: widget.primaryColor.withOpacity(0.1),
+                  child: Row(
+                    children: [
+                      Icon(Icons.location_on,
+                          color: widget.primaryColor, size: 18),
+                      const SizedBox(width: 6),
+                      Text(
+                        'المحافظة: ${_inputValues['governorate']}',
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: widget.primaryColor),
+                      ),
+                    ],
+                  ),
+                ),
+
+              Expanded(
+                child: TabBarView(
+                  children: [
+                    _buildTimelineTab(),
+                    _buildMaterialsTab(),
+                    _buildFinancialTab(),
+                  ],
+                ),
+              ),
+
+              if (!_saved)
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 10,
+                        offset: const Offset(0, -2),
+                      ),
+                    ],
+                  ),
+                  child: SafeArea(
+                    child: ElevatedButton.icon(
+                      onPressed: _saving ? null : _saveToMyFarm,
+                      icon: _saving
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                  color: Colors.white, strokeWidth: 2),
+                            )
+                          : const Icon(Icons.save),
+                      label: Text(
+                        _saving ? 'جاري الحفظ...' : 'حفظ في مزرعتي',
+                        style: const TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: widget.primaryColor,
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size.fromHeight(50),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                  ),
+                ),
             ],
           ),
         ),
@@ -103,7 +273,6 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // الخط الزمني
               Column(
                 children: [
                   Container(
@@ -131,7 +300,6 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
                 ],
               ),
               const SizedBox(width: 12),
-              // المحتوى
               Expanded(
                 child: Container(
                   margin: const EdgeInsets.only(bottom: 16),
@@ -210,7 +378,6 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
           'لم يتم إضافة مواد لهذا المحصول');
     }
 
-    // تجميع حسب الفئة
     final grouped = <String, List<CalculatorMaterial>>{};
     for (var m in widget.template.materials) {
       grouped.putIfAbsent(m.category, () => []).add(m);
@@ -219,7 +386,6 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        // معلومات المساحة
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
@@ -267,8 +433,7 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
                   const Divider(height: 16),
                   ...entry.value.map((m) {
                     final totalQty = m.quantityPerUnit * _areaMultiplier;
-                    final totalCost =
-                        totalQty * m.estimatedPricePerUnit;
+                    final totalCost = totalQty * m.estimatedPricePerUnit;
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 8),
                       child: Row(
@@ -301,7 +466,6 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
         }),
 
         const SizedBox(height: 8),
-        // الإجمالي
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -315,8 +479,7 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
           ),
           child: Row(
             children: [
-              const Icon(Icons.shopping_bag,
-                  color: Colors.white, size: 28),
+              const Icon(Icons.shopping_bag, color: Colors.white, size: 28),
               const SizedBox(width: 10),
               const Expanded(
                 child: Text('إجمالي تكلفة المشتريات',
@@ -356,16 +519,12 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
   Widget _buildFinancialTab() {
     final financial = widget.template.financial;
 
-    // حساب الإنتاج الكلي والعائد
     final totalYield = financial.expectedYieldPerUnit * _areaMultiplier;
-    final totalRevenue =
-        totalYield * financial.expectedPricePerYieldUnit;
+    final totalRevenue = totalYield * financial.expectedPricePerYieldUnit;
     final netProfit = totalRevenue - _totalMaterialsCost;
-    final roi = _totalMaterialsCost > 0
-        ? (netProfit / _totalMaterialsCost) * 100
-        : 0.0;
+    final roi =
+        _totalMaterialsCost > 0 ? (netProfit / _totalMaterialsCost) * 100 : 0.0;
 
-    // لو مفيش بيانات مالية
     if (financial.expectedYieldPerUnit == 0 &&
         financial.expectedPricePerYieldUnit == 0 &&
         financial.costDistribution.isEmpty) {
@@ -376,7 +535,6 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        // بطاقات الإنتاج والعائد
         Row(
           children: [
             Expanded(
@@ -401,10 +559,9 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
         ),
         const SizedBox(height: 12),
 
-        // تكلفة + ربح
         Card(
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -418,8 +575,7 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
                     color: netProfit > 0 ? Colors.green : Colors.red,
                     isBold: true),
                 const Divider(height: 20),
-                _buildRow('نسبة العائد (ROI)',
-                    '${roi.toStringAsFixed(1)}%',
+                _buildRow('نسبة العائد (ROI)', '${roi.toStringAsFixed(1)}%',
                     color: roi > 0 ? Colors.green : Colors.red),
               ],
             ),
@@ -427,11 +583,9 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
         ),
         const SizedBox(height: 16),
 
-        // توزيع التكاليف
         if (financial.costDistribution.isNotEmpty) ...[
           const Text('📊 توزيع التكاليف',
-              style:
-                  TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
           const SizedBox(height: 12),
           Card(
             shape: RoundedRectangleBorder(
@@ -449,8 +603,7 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
-                          mainAxisAlignment:
-                              MainAxisAlignment.spaceBetween,
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(e.key,
                                 style: const TextStyle(
@@ -490,8 +643,7 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
       children: [
         Text(label,
             style: TextStyle(
-                fontWeight:
-                    isBold ? FontWeight.bold : FontWeight.w500,
+                fontWeight: isBold ? FontWeight.bold : FontWeight.w500,
                 fontSize: 14)),
         Text(value,
             style: TextStyle(
@@ -509,8 +661,7 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
     required Color color,
   }) {
     return Card(
-      shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Column(
@@ -518,8 +669,7 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
             Icon(icon, color: color, size: 28),
             const SizedBox(height: 8),
             Text(label,
-                style:
-                    const TextStyle(fontSize: 12, color: Colors.grey)),
+                style: const TextStyle(fontSize: 12, color: Colors.grey)),
             const SizedBox(height: 4),
             Text(value,
                 style: TextStyle(
@@ -532,8 +682,7 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
     );
   }
 
-  Widget _buildEmptyState(
-      IconData icon, String title, String subtitle) {
+  Widget _buildEmptyState(IconData icon, String title, String subtitle) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
