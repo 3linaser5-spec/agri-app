@@ -21,6 +21,21 @@ dependencies:
   url_launcher: any
   flutter_tts: any
 
+  # ✅ إشعارات
+  firebase_messaging: any
+  flutter_local_notifications: any
+  timezone: any
+  flutter_timezone: any
+
+  # ✅ PDF
+  pdf: any
+  printing: any
+  path_provider: any
+
+  # ✅ أدوات
+  shared_preferences: any
+  intl: any
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
