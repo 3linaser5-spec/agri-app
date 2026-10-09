@@ -53,3 +53,9 @@ flutter:
   assets:
     - assets/icon/
     - assets/fonts/
+  
+  # ✅ الخط العربي للـ PDF
+  fonts:
+    - family: Cairo
+      fonts:
+        - asset: assets/fonts/Cairo-Regular.ttf
