@@ -141,15 +141,20 @@ class NotificationService {
   // ✅ جدولة إشعارات مهام البرنامج
   // ═══════════════════════════════════════════
   /// [programId] معرّف البرنامج (بيتحول لـ int كـ base ID)
+  /// [programName] اسم البرنامج (اختياري - للعرض في الإشعار)
   /// [startDate] تاريخ بداية البرنامج
   /// [tasks] قائمة المهام، كل مهمة فيها `day_from_start`
-  static Future<void> scheduleProgramNotifications({
+  ///
+  /// Returns: عدد الإشعارات اللي اتجدولت بنجاح
+  static Future<int> scheduleProgramNotifications({
     required String programId,
+    String? programName,
     required DateTime startDate,
     required List<Map<String, dynamic>> tasks,
   }) async {
     // base ID فريد لكل برنامج (عشان نتجنب التعارض)
     final int baseId = programId.hashCode.abs() % 100000;
+    int scheduledCount = 0;
 
     for (int i = 0; i < tasks.length; i++) {
       final task = tasks[i];
@@ -191,11 +196,15 @@ class NotificationService {
           uiLocalNotificationDateInterpretation:
               UILocalNotificationDateInterpretation.absoluteTime,
         );
+        scheduledCount++;
         debugPrint("✅ تم جدولة: $title (يوم $dayFromStart)");
       } catch (e) {
         debugPrint("❌ فشل جدولة $title: $e");
       }
     }
+
+    debugPrint("📊 إجمالي المجدول: $scheduledCount من ${tasks.length}");
+    return scheduledCount;
   }
 
   // ═══════════════════════════════════════════
