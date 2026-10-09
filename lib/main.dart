@@ -878,6 +878,75 @@ class _HomeDashboardState extends State<HomeDashboard> {
         }));
   }
 
+  // ✅ دالة مساعدة لجلب اسم المكان بعدة خدمات (نظام احتياطي)
+  Future<String> _getCityName(
+    double lat,
+    double lon, {
+    String fallback = "",
+  }) async {
+    // ============ 1. Nominatim (مع zoom=10 للحصول على تفاصيل أدق) ============
+    try {
+      final url = Uri.parse(
+          'https://nominatim.openstreetmap.org/reverse?lat=$lat&lon=$lon&format=json&accept-language=ar&zoom=10');
+      final resp = await http.get(url, headers: {
+        'User-Agent': 'Nabati-App/1.0',
+      }).timeout(const Duration(seconds: 8));
+
+      if (resp.statusCode == 200) {
+        final data = json.decode(resp.body);
+        final address = data['address'] ?? {};
+
+        // ✅ نفضل المدينة/القرية/المركز على المحافظة
+        final city = address['city'] ??
+            address['town'] ??
+            address['municipality'] ??
+            address['county'] ??
+            address['village'] ??
+            address['suburb'] ??
+            address['neighbourhood'] ??
+            address['city_district'] ??
+            address['state_district'];
+
+        if (city != null && city.toString().trim().isNotEmpty) {
+          return city.toString();
+        }
+
+        // لو مفيش مدينة، ناخد المحافظة
+        final state =
+            address['state'] ?? address['governorate'] ?? address['region'];
+        if (state != null && state.toString().trim().isNotEmpty) {
+          return state.toString();
+        }
+      }
+    } catch (e) {
+      debugPrint("Nominatim error: $e");
+    }
+
+    // ============ 2. BigDataCloud (احتياطي) ============
+    try {
+      final url = Uri.parse(
+          'https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=$lat&longitude=$lon&localityLanguage=ar');
+      final resp = await http.get(url).timeout(const Duration(seconds: 8));
+
+      if (resp.statusCode == 200) {
+        final data = json.decode(resp.body);
+        final city =
+            data['city'] ?? data['locality'] ?? data['principalSubdivision'];
+        if (city != null && city.toString().trim().isNotEmpty) {
+          return city.toString();
+        }
+      }
+    } catch (e) {
+      debugPrint("BigDataCloud error: $e");
+    }
+
+    // ============ 3. الاسم القديم لو موجود ============
+    if (fallback.isNotEmpty) return fallback;
+
+    // ============ 4. آخر حل: الإحداثيات ============
+    return '${lat.toStringAsFixed(2)}, ${lon.toStringAsFixed(2)}';
+  }
+
   Future<void> _fetchWeatherByLocation({bool manual = false}) async {
     if (manual) setState(() => _refreshing = true);
 
@@ -912,28 +981,12 @@ class _HomeDashboardState extends State<HomeDashboard> {
         timeLimit: const Duration(seconds: 20),
       );
 
-      // ✅ جلب اسم المكان باستخدام Nominatim (أدق)
-      String cityName = locationName;
-      try {
-        final geoUrl = Uri.parse(
-            'https://nominatim.openstreetmap.org/reverse?lat=${position.latitude}&lon=${position.longitude}&format=json&accept-language=ar');
-        final geoResp = await http.get(geoUrl, headers: {
-          'User-Agent': 'Nabati-App/1.0',
-        }).timeout(const Duration(seconds: 8));
-
-        if (geoResp.statusCode == 200) {
-          final geoData = json.decode(geoResp.body);
-          final address = geoData['address'] ?? {};
-          cityName = address['city'] ??
-              address['town'] ??
-              address['village'] ??
-              address['state'] ??
-              address['governorate'] ??
-              "";
-        }
-      } catch (e) {
-        debugPrint("Reverse geocode error: $e");
-      }
+      // ✅ جلب اسم المكان بالنظام الاحتياطي
+      String cityName = await _getCityName(
+        position.latitude,
+        position.longitude,
+        fallback: locationName,
+      );
 
       // ✅ جلب الطقس
       final url = Uri.parse(
