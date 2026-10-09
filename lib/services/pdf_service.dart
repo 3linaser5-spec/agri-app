@@ -5,7 +5,6 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 class PdfService {
-  // ✅ توليد ملف PDF لبرنامج زراعي
   static Future<void> generateAndSharePdf({
     required String programTitle,
     required String programEmoji,
@@ -16,15 +15,13 @@ class PdfService {
     required List<Map<String, dynamic>> materials,
     required Map<String, dynamic> financial,
   }) async {
-    // ✅ تحميل الخط العربي (Regular + Bold)
+    // ✅ تحميل الخط العربي
     final regularData =
         await rootBundle.load('assets/fonts/Cairo-Regular.ttf');
     final boldData = await rootBundle.load('assets/fonts/Cairo-Bold.ttf');
-
     final arabicFont = pw.Font.ttf(regularData);
     final arabicBold = pw.Font.ttf(boldData);
 
-    // ✅ تعريف الـ theme بالخط العربي
     final theme = pw.ThemeData.withFont(
       base: arabicFont,
       bold: arabicBold,
@@ -33,6 +30,31 @@ class PdfService {
     );
 
     final pdf = pw.Document(theme: theme);
+
+    // ═══════════════════════════════════════
+    // ✅ دالة العلامة المائية (Watermark)
+    // ═══════════════════════════════════════
+    pw.Widget buildWatermark() {
+      return pw.FullPage(
+        ignoreMargins: true,
+        child: pw.Center(
+          child: pw.Transform.rotate(
+            angle: -0.5, // ميلان ~30 درجة
+            child: pw.Opacity(
+              opacity: 0.08,
+              child: pw.Text(
+                'نباتي',
+                style: pw.TextStyle(
+                  font: arabicBold,
+                  fontSize: 160,
+                  color: PdfColor.fromInt(0xFF047857),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
 
     // حساب القيم
     double areaMultiplier = 1.0;
@@ -64,8 +86,78 @@ class PdfService {
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
         textDirection: pw.TextDirection.rtl,
-        margin: const pw.EdgeInsets.all(20),
+        margin: const pw.EdgeInsets.fromLTRB(20, 30, 20, 40), // مساحة للهيدر والفوتر
         theme: theme,
+
+        // ✅ العلامة المائية على كل صفحة
+        buildBackground: (pw.Context context) => buildWatermark(),
+
+        // ✅ الترويسة
+        header: (pw.Context context) => pw.Container(
+          alignment: pw.Alignment.centerRight,
+          margin: const pw.EdgeInsets.only(bottom: 8),
+          padding: const pw.EdgeInsets.only(bottom: 4),
+          decoration: const pw.BoxDecoration(
+            border: pw.Border(
+              bottom: pw.BorderSide(color: PdfColors.grey400, width: 0.5),
+            ),
+          ),
+          child: pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text(
+                'نباتي - مستشارك الزراعي الذكي',
+                style: pw.TextStyle(
+                  font: arabicFont,
+                  fontSize: 9,
+                  color: PdfColors.grey600,
+                ),
+              ),
+              pw.Text(
+                _formatDate(DateTime.now()),
+                style: pw.TextStyle(
+                  font: arabicFont,
+                  fontSize: 9,
+                  color: PdfColors.grey600,
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        // ✅ التذييل
+        footer: (pw.Context context) => pw.Container(
+          alignment: pw.Alignment.center,
+          margin: const pw.EdgeInsets.only(top: 8),
+          padding: const pw.EdgeInsets.only(top: 4),
+          decoration: const pw.BoxDecoration(
+            border: pw.Border(
+              top: pw.BorderSide(color: PdfColors.grey400, width: 0.5),
+            ),
+          ),
+          child: pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text(
+                '© 2025 نباتي - جميع الحقوق محفوظة',
+                style: pw.TextStyle(
+                  font: arabicFont,
+                  fontSize: 8,
+                  color: PdfColors.grey600,
+                ),
+              ),
+              pw.Text(
+                'صفحة ${context.pageNumber} من ${context.pagesCount}',
+                style: pw.TextStyle(
+                  font: arabicFont,
+                  fontSize: 8,
+                  color: PdfColors.grey600,
+                ),
+              ),
+            ],
+          ),
+        ),
+
         build: (pw.Context context) => [
           // ============ Header ============
           pw.Container(
@@ -325,7 +417,44 @@ class PdfService {
 
           pw.SizedBox(height: 20),
 
-          // ============ Footer ============
+          // ═══════════════════════════════════════
+          // ✅ تنبيه "هذا البرنامج استرشادي"
+          // ═══════════════════════════════════════
+          pw.Container(
+            padding: const pw.EdgeInsets.all(10),
+            decoration: pw.BoxDecoration(
+              color: PdfColor.fromInt(0xFFFFF3CD), // أصفر فاتح
+              border: pw.Border.all(
+                color: PdfColor.fromInt(0xFFFFC107),
+                width: 1,
+              ),
+              borderRadius: pw.BorderRadius.circular(6),
+            ),
+            child: pw.Row(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text(
+                  '⚠️',
+                  style: pw.TextStyle(fontSize: 16),
+                ),
+                pw.SizedBox(width: 8),
+                pw.Expanded(
+                  child: pw.Text(
+                    'هذا البرنامج استرشادي فقط، ويجب مراجعة المهندس الزراعي المختص قبل التطبيق الفعلي.',
+                    style: pw.TextStyle(
+                      font: arabicBold,
+                      fontSize: 11,
+                      color: PdfColor.fromInt(0xFF856404),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          pw.SizedBox(height: 12),
+
+          // ============ Footer الرئيسي ============
           pw.Container(
             padding: const pw.EdgeInsets.all(10),
             decoration: pw.BoxDecoration(
@@ -365,36 +494,9 @@ class PdfService {
             ),
           ),
         ],
-        // ============ Footer لكل صفحة ============
-        footer: (pw.Context context) => pw.Container(
-          alignment: pw.Alignment.center,
-          margin: const pw.EdgeInsets.only(top: 10),
-          child: pw.Text(
-            'نباتي - ${_formatDate(DateTime.now())}',
-            style: pw.TextStyle(
-              font: arabicFont,
-              fontSize: 8,
-              color: PdfColors.grey400,
-            ),
-          ),
-        ),
-        // ============ Header لكل صفحة ============
-        header: (pw.Context context) => pw.Container(
-          alignment: pw.Alignment.centerRight,
-          margin: const pw.EdgeInsets.only(bottom: 10),
-          child: pw.Text(
-            'نباتي',
-            style: pw.TextStyle(
-              font: arabicBold,
-              fontSize: 9,
-              color: PdfColors.grey400,
-            ),
-          ),
-        ),
       ),
     );
 
-    // مشاركة / طباعة
     final Uint8List bytes = await pdf.save();
     await Printing.sharePdf(
       bytes: bytes,
@@ -403,7 +505,9 @@ class PdfService {
     );
   }
 
-  // ============ Helper Widgets ============
+  // ═══════════════════════════════════════
+  // Helper Widgets
+  // ═══════════════════════════════════════
 
   static pw.Widget _buildSectionTitle(String title, pw.Font boldFont) {
     return pw.Container(
