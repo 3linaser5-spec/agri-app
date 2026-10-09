@@ -4,6 +4,7 @@ import '../../models/calculator_models.dart';
 import '../../models/my_farm_model.dart';
 import '../../services/my_farm_service.dart';
 import '../../services/pdf_service.dart';
+import '../../services/notification_service.dart';
 
 class CalculatorResultScreen extends StatefulWidget {
   final CalculatorTemplate template;
@@ -106,7 +107,7 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
     }
   }
 
-  // ✅ حفظ في مزرعتي
+  // ✅ حفظ في مزرعتي + جدولة الإشعارات
   Future<void> _saveToMyFarm() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
@@ -177,18 +178,43 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
     final id = await MyFarmService.saveProgram(program);
 
     if (!mounted) return;
-    setState(() => _saving = false);
 
     if (id != null) {
-      setState(() => _saved = true);
+      // ✅ جدولة الإشعارات بعد الحفظ بنجاح
+      try {
+        final scheduledCount =
+            await NotificationService.scheduleProgramNotifications(
+          programId: id,
+          programName: widget.template.name,
+          startDate: startDate,
+          tasks: widget.template.tasks
+              .map((t) => {
+                    'title': t.title,
+                    'description': t.description,
+                    'day_from_start': t.dayFromStart,
+                    'category': t.category,
+                  })
+              .toList(),
+        );
+        debugPrint("✅ تم جدولة $scheduledCount إشعار");
+      } catch (e) {
+        debugPrint("⚠️ فشل جدولة الإشعارات: $e");
+      }
+
+      setState(() {
+        _saving = false;
+        _saved = true;
+      });
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('✅ تم حفظ البرنامج في مزرعتي بنجاح'),
+          content: Text('✅ تم حفظ البرنامج مع تفعيل التذكيرات'),
           backgroundColor: Color(0xFF047857),
           duration: Duration(seconds: 3),
         ),
       );
     } else {
+      setState(() => _saving = false);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('❌ فشل الحفظ، حاول مرة أخرى'),
