@@ -912,23 +912,30 @@ class _HomeDashboardState extends State<HomeDashboard> {
         timeLimit: const Duration(seconds: 20),
       );
 
+      // ✅ جلب اسم المكان باستخدام Nominatim (أدق)
       String cityName = locationName;
       try {
         final geoUrl = Uri.parse(
-            'https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${position.latitude}&longitude=${position.longitude}&localityLanguage=ar');
-        final geoResp =
-            await http.get(geoUrl).timeout(const Duration(seconds: 8));
+            'https://nominatim.openstreetmap.org/reverse?lat=${position.latitude}&lon=${position.longitude}&format=json&accept-language=ar');
+        final geoResp = await http.get(geoUrl, headers: {
+          'User-Agent': 'Nabati-App/1.0',
+        }).timeout(const Duration(seconds: 8));
+
         if (geoResp.statusCode == 200) {
           final geoData = json.decode(geoResp.body);
-          cityName = geoData['city'] ??
-              geoData['locality'] ??
-              geoData['principalSubdivision'] ??
+          final address = geoData['address'] ?? {};
+          cityName = address['city'] ??
+              address['town'] ??
+              address['village'] ??
+              address['state'] ??
+              address['governorate'] ??
               "";
         }
       } catch (e) {
         debugPrint("Reverse geocode error: $e");
       }
 
+      // ✅ جلب الطقس
       final url = Uri.parse(
           'https://api.open-meteo.com/v1/forecast?latitude=${position.latitude}&longitude=${position.longitude}&current=temperature_2m,relative_humidity_2m');
 
@@ -1021,7 +1028,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
                       _buildActionItem(
                           icon: Icons.calculate,
                           color: const Color(0xFF047857),
-                          title: 'الحاسبات',
+                          title: 'حاسبات ومخططات',
                           onTap: () {
                             Navigator.pop(context);
                             Navigator.push(
@@ -1405,7 +1412,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
                   child: _buildQuickActionCard(
                       icon: Icons.calculate,
                       color: const Color(0xFF047857),
-                      title: 'الحاسبات الزراعية',
+                      title: 'حاسبات ومخططات المزرعة',
                       onTap: () {
                         Navigator.push(
                             context,
@@ -1542,7 +1549,7 @@ class _AiScannerScreenState extends State<AiScannerScreen> {
     try {
       final XFile? pickedFile = await _picker.pickImage(
         source: source,
-        imageQuality: 80,
+        imageQuality: 70,
       );
       if (pickedFile != null) {
         setState(() => _imageFile = File(pickedFile.path));
@@ -1654,15 +1661,41 @@ $_diagnosis
     while (attempt < maxRetries && !success) {
       try {
         attempt++;
+
+        // ✅ إعدادات الموديل (لردود أسرع وأكثر تركيز)
         final model = GenerativeModel(
           model: 'gemini-3.8-flash',
           apiKey: _apiKey,
+          generationConfig: GenerationConfig(
+            temperature: 0.4,
+            maxOutputTokens: 600,
+            topP: 0.8,
+            topK: 20,
+          ),
         );
+
+        // ✅ الـ Prompt الجديد (رد محدد في 4 نقاط)
         final prompt = """
 أنت مهندس زراعي خبير ومستشار زراعي مصري.
-قم بتشخيص الحالة التالية وقدم توصياتك الزراعية باللغة العربية وباللهجة المصرية المبسطة.
-سؤال المزارع: $question
+اسم المزارع: ${widget.userName}
+
+قم بتشخيص الحالة التالية بناءً على المعلومات والصور المرفقة.
+
+⚠️ قواعد الإجابة (مهمة جداً - التزم بها حرفياً):
+1. ابدأ بالسلام فقط: "السلام عليكم يا ${widget.userName} 🌱"
+2. اكتب تشخيصك في 4 نقاط فقط، كل نقطة في سطر منفصل، بالترتيب ده بالظبط:
+   🔍 المرض/الآفة: [اسم المرض فقط - كلمتين أو ثلاث]
+   🎯 الأسباب: [2-3 أسباب مختصرة في سطر واحد]
+   💊 العلاج: [3-4 خطوات علاج في سطر واحد أو سطرين]
+   🛡️ الوقاية: [2-3 نصائح وقاية في سطر واحد]
+3. ممنوع تكتب أي كلام إضافي - لا مقدمات، لا خاتمة، لا تفاصيل زايدة.
+4. لو مش متأكد من التشخيص، اسأل سؤال توضيحي واحد فقط.
+5. الرد كامل ما يزيدش عن 8 سطور.
+6. لا تستخدم نجوم ** أو شرطات زايدة، خليك بسيط.
+
+سؤال/مشكلة المزارع: $question
 """;
+
         List<Part> parts = [TextPart(prompt)];
 
         if (_imageFile != null) {
@@ -1799,7 +1832,7 @@ $_diagnosis
                         const Divider(),
                         Text(_diagnosis,
                             style: const TextStyle(
-                                fontSize: 14, height: 1.6)),
+                                fontSize: 14, height: 1.8)),
                         const SizedBox(height: 12),
                         Row(
                           children: [
@@ -2070,7 +2103,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                       item['diagnosis']?.toString() ?? '',
                                       style: const TextStyle(
                                           fontSize: 13, height: 1.5),
-                                      maxLines: 4,
+                                      maxLines: 5,
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                     const SizedBox(height: 8),
@@ -2502,11 +2535,11 @@ class AboutScreen extends StatelessWidget {
                     SizedBox(height: 12),
                     Text('• تشخيص فوري للآفات بالذكاء الاصطناعي',
                         style: TextStyle(fontSize: 13, height: 1.8)),
-                    Text('• إمكانية إرفاق صور من الكاميرا أو المعرض',
+                    Text('• حاسبات ومخططات زراعية شاملة',
                         style: TextStyle(fontSize: 13, height: 1.8)),
-                    Text('• الاستماع للتشخيص بصوت عربي',
+                    Text('• حفظ البرامج في مزرعتي ومتابعتها',
                         style: TextStyle(fontSize: 13, height: 1.8)),
-                    Text('• حفظ سجل التشخيصات ومشاركتها',
+                    Text('• تصدير البرامج كملفات PDF',
                         style: TextStyle(fontSize: 13, height: 1.8)),
                     Text('• العمل بدون إنترنت مع المزامنة التلقائية',
                         style: TextStyle(fontSize: 13, height: 1.8)),
@@ -2716,6 +2749,7 @@ class ArticlesTab extends StatelessWidget {
     );
   }
 }
+
 // ---------------- StatisticsScreen ----------------
 class StatisticsScreen extends StatefulWidget {
   const StatisticsScreen({super.key});
