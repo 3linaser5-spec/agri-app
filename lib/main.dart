@@ -25,6 +25,8 @@ import 'services/auth_service.dart';
 import 'services/offline_service.dart';
 import 'services/notification_service.dart';
 import 'services/calculator_service.dart';
+import 'services/encyclopedia_service.dart';
+import 'models/encyclopedia_model.dart';
 import 'screens/admin/admin_panel_screen.dart';
 import 'screens/calculators/calculator_hub_screen.dart';
 import 'screens/farm/my_farm_screen.dart';
@@ -2594,11 +2596,11 @@ class AboutScreen extends StatelessWidget {
                         style: TextStyle(fontSize: 13, height: 1.8)),
                     Text('• تصدير البرامج كملفات PDF',
                         style: TextStyle(fontSize: 13, height: 1.8)),
+                    Text('• موسوعة زراعية شاملة ومتجددة',
+                        style: TextStyle(fontSize: 13, height: 1.8)),
                     Text('• العمل بدون إنترنت مع المزامنة التلقائية',
                         style: TextStyle(fontSize: 13, height: 1.8)),
                     Text('• تنبيهات فورية عن الآفات',
-                        style: TextStyle(fontSize: 13, height: 1.8)),
-                    Text('• موسوعة زراعية شاملة',
                         style: TextStyle(fontSize: 13, height: 1.8)),
                   ],
                 ),
@@ -2663,142 +2665,295 @@ class AboutScreen extends StatelessWidget {
   }
 }
 
-// ---------------- EncyclopediaScreen ----------------
+// ---------------- EncyclopediaScreen (ديناميكي - جديد) ----------------
 class EncyclopediaScreen extends StatelessWidget {
   const EncyclopediaScreen({super.key});
 
+  Color _hexToColor(String hex) {
+    try {
+      final cleaned = hex.replaceAll('#', '');
+      return Color(int.parse('FF$cleaned', radix: 16));
+    } catch (e) {
+      return const Color(0xFF047857);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('الموسوعة الزراعية',
-              style: TextStyle(color: Colors.white)),
-          backgroundColor: const Color(0xFF047857),
-          bottom: const TabBar(
-            indicatorColor: Colors.white,
-            labelColor: Colors.white,
-            unselectedLabelColor: Color(0xFFFDE68A),
-            tabs: [
-              Tab(icon: Icon(Icons.bug_report), text: 'الآفات'),
-              Tab(icon: Icon(Icons.article), text: 'مقالات'),
-            ],
-          ),
-        ),
-        body: const Directionality(
-          textDirection: TextDirection.rtl,
-          child: TabBarView(
-            children: [
-              PestsTab(),
-              ArticlesTab(),
-            ],
-          ),
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('الموسوعة الزراعية',
+            style: TextStyle(color: Colors.white)),
+        backgroundColor: const Color(0xFF047857),
+        iconTheme: const IconThemeData(color: Colors.white),
+      ),
+      body: Directionality(
+        textDirection: TextDirection.rtl,
+        child: StreamBuilder<List<EncyclopediaSection>>(
+          stream: EncyclopediaService.getSectionsStream(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            if (snapshot.hasError) {
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Text('حدث خطأ: ${snapshot.error}'),
+                ),
+              );
+            }
+
+            final sections = snapshot.data ?? [];
+
+            if (sections.isEmpty) {
+              return const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(30),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.menu_book, size: 100, color: Colors.grey),
+                      SizedBox(height: 16),
+                      Text('الموسوعة قيد التطوير',
+                          style: TextStyle(
+                              fontSize: 18, fontWeight: FontWeight.bold)),
+                      SizedBox(height: 8),
+                      Text('سيتم إضافة المحتوى قريباً',
+                          style:
+                              TextStyle(fontSize: 13, color: Colors.grey)),
+                    ],
+                  ),
+                ),
+              );
+            }
+
+            return ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: sections.length,
+              itemBuilder: (context, index) {
+                final section = sections[index];
+                final color = _hexToColor(section.color);
+
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16)),
+                  child: InkWell(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              EncyclopediaSectionView(section: section),
+                        ),
+                      );
+                    },
+                    borderRadius: BorderRadius.circular(16),
+                    child: Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            color.withOpacity(0.1),
+                            color.withOpacity(0.05),
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 60,
+                            height: 60,
+                            decoration: BoxDecoration(
+                              color: color.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            alignment: Alignment.center,
+                            child: Text(section.emoji,
+                                style: const TextStyle(fontSize: 32)),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(section.name,
+                                    style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 16,
+                                        color: color)),
+                                const SizedBox(height: 4),
+                                Text(
+                                  section.description.isEmpty
+                                      ? 'اضغط للاستكشاف'
+                                      : section.description,
+                                  style: const TextStyle(
+                                      fontSize: 12, color: Colors.grey),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
+                          Icon(Icons.arrow_forward_ios,
+                              size: 18, color: color),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            );
+          },
         ),
       ),
     );
   }
 }
 
-// ---------------- PestsTab ----------------
-class PestsTab extends StatelessWidget {
-  const PestsTab({super.key});
+// ---------------- EncyclopediaSectionView ----------------
+class EncyclopediaSectionView extends StatelessWidget {
+  final EncyclopediaSection section;
+  const EncyclopediaSectionView({super.key, required this.section});
+
+  Color _hexToColor(String hex) {
+    try {
+      final cleaned = hex.replaceAll('#', '');
+      return Color(int.parse('FF$cleaned', radix: 16));
+    } catch (e) {
+      return const Color(0xFF047857);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: PestData.allPests.length,
-      itemBuilder: (context, index) {
-        final pest = PestData.allPests[index];
-        return Card(
-          margin: const EdgeInsets.only(bottom: 12),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          child: ExpansionTile(
-            leading: Container(
-              width: 45,
-              height: 45,
-              decoration: BoxDecoration(
-                color: const Color(0xFF047857).withOpacity(0.15),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(pest.icon, color: const Color(0xFF047857)),
-            ),
-            title: Text(pest.name,
-                style: const TextStyle(
-                    fontWeight: FontWeight.bold, fontSize: 15)),
-            subtitle: Text(pest.type,
-                style: const TextStyle(fontSize: 12, color: Colors.grey)),
-            childrenPadding: const EdgeInsets.all(16),
-            children: [
-              _buildSection('📋 الوصف', pest.description),
-              _buildSection('🔍 الأعراض', pest.symptoms),
-              _buildSection('💊 العلاج', pest.treatment),
-              _buildSection('🛡️ الوقاية', pest.prevention),
-            ],
-          ),
-        );
-      },
+    final color = _hexToColor(section.color);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('${section.emoji} ${section.name}',
+            style: const TextStyle(color: Colors.white)),
+        backgroundColor: color,
+        iconTheme: const IconThemeData(color: Colors.white),
+      ),
+      body: Directionality(
+        textDirection: TextDirection.rtl,
+        child: StreamBuilder<List<EncyclopediaItem>>(
+          stream: EncyclopediaService.getItemsStream(section.id),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            final items = snapshot.data ?? [];
+
+            if (items.isEmpty) {
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.inbox, size: 80, color: Colors.grey.shade400),
+                    const SizedBox(height: 16),
+                    const Text('لا يوجد محتوى في هذا القسم بعد',
+                        style: TextStyle(fontSize: 14, color: Colors.grey)),
+                  ],
+                ),
+              );
+            }
+
+            return ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: items.length,
+              itemBuilder: (context, index) {
+                final item = items[index];
+                return _buildItemCard(context, item, color);
+              },
+            );
+          },
+        ),
+      ),
     );
   }
 
-  Widget _buildSection(String title, String content) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildItemCard(
+      BuildContext context, EncyclopediaItem item, Color color) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: ExpansionTile(
+        leading: Container(
+          width: 45,
+          height: 45,
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.15),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            IconLibrary.availableIcons[item.icon] ?? '📄',
+            style: const TextStyle(fontSize: 22),
+          ),
+        ),
+        title: Text(item.title,
+            style: const TextStyle(
+                fontWeight: FontWeight.bold, fontSize: 15)),
+        subtitle: item.subtitle.isEmpty
+            ? null
+            : Text(item.subtitle,
+                style: const TextStyle(fontSize: 12, color: Colors.grey)),
+        childrenPadding: const EdgeInsets.all(16),
         children: [
-          Text(title,
-              style: const TextStyle(
-                  fontWeight: FontWeight.bold, fontSize: 14)),
-          const SizedBox(height: 6),
-          Text(content,
-              style: const TextStyle(fontSize: 13, height: 1.6)),
+          if (item.content.isNotEmpty) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(item.content,
+                  style: const TextStyle(fontSize: 13, height: 1.7)),
+            ),
+            const SizedBox(height: 12),
+          ],
+          ...item.sections.map((sec) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 4,
+                        height: 18,
+                        decoration: BoxDecoration(
+                          color: color,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        sec['title'] ?? '',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                            color: color),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(sec['content'] ?? '',
+                      style: const TextStyle(fontSize: 13, height: 1.6)),
+                ],
+              ),
+            );
+          }).toList(),
         ],
       ),
-    );
-  }
-}
-
-// ---------------- ArticlesTab ----------------
-class ArticlesTab extends StatelessWidget {
-  const ArticlesTab({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: ArticleData.allArticles.length,
-      itemBuilder: (context, index) {
-        final article = ArticleData.allArticles[index];
-        return Card(
-          margin: const EdgeInsets.only(bottom: 12),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          child: ExpansionTile(
-            leading: Container(
-              width: 45,
-              height: 45,
-              decoration: BoxDecoration(
-                color: const Color(0xFFF59E0B).withOpacity(0.15),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(article.icon, color: const Color(0xFFF59E0B)),
-            ),
-            title: Text(article.title,
-                style: const TextStyle(
-                    fontWeight: FontWeight.bold, fontSize: 15)),
-            subtitle: Text(article.category,
-                style: const TextStyle(fontSize: 12, color: Colors.grey)),
-            childrenPadding: const EdgeInsets.all(16),
-            children: [
-              Text(article.content,
-                  style: const TextStyle(fontSize: 13, height: 1.7)),
-            ],
-          ),
-        );
-      },
     );
   }
 }
@@ -3019,333 +3174,6 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
       ),
     );
   }
-}
-
-// ---------------- PestData ----------------
-class PestData {
-  final String name;
-  final String type;
-  final IconData icon;
-  final String description;
-  final String symptoms;
-  final String treatment;
-  final String prevention;
-
-  const PestData({
-    required this.name,
-    required this.type,
-    required this.icon,
-    required this.description,
-    required this.symptoms,
-    required this.treatment,
-    required this.prevention,
-  });
-
-  static const List<PestData> allPests = [
-    PestData(
-      name: 'البياض الدقيقي',
-      type: 'مرض فطري',
-      icon: Icons.grain,
-      description:
-          'مرض فطري يصيب الأوراق والسيقان ويظهر على شكل طبقة بيضاء دقيقية. ينتشر في الجو الرطب والمتوسط الحرارة.',
-      symptoms:
-          '• طبقة بيضاء دقيقية على الأوراق\n• تجعد الأوراق\n• اصفرار وتقزم النبات\n• ضعف النمو العام',
-      treatment:
-          '• الرش بالكبريت الميكروني (2 جم/لتر)\n• استخدام مبيدات فطرية مثل التوباس\n• رش محلول صودا الخبز (ملعقة + لتر ماء)\n• التقليم وإزالة الأجزاء المصابة',
-      prevention:
-          '• تهوية جيدة بين النباتات\n• تجنب الري العلوي على الأوراق\n• تقليل الرطوبة حول النباتات\n• رش وقائي بالكبريت في الربيع',
-    ),
-    PestData(
-      name: 'المن (حشرة المن)',
-      type: 'حشرة',
-      icon: Icons.bug_report,
-      description:
-          'حشرة صغيرة تتغذى على عصارة النبات، تفرز مادة عسلية تجذب النمل وتنمو عليها الفطريات.',
-      symptoms:
-          '• تجمعات من الحشرات الصغيرة على الأوراق\n• تجعد وتشوه الأوراق الجديدة\n• مادة عسلية لزجة\n• اسوداد الأوراق (عفن أسود)',
-      treatment:
-          '• رش بالماء القوي لإزالة الحشرات\n• محلول صابون البوتاسيوم (20 جم/لتر)\n• مبيدات مثل الملاثيون أو الإيميداكلوبريد\n• إطلاق حشرة أبو العيد (أسد المن)',
-      prevention:
-          '• فحص دوري للأوراق الجديدة\n• زراعة نباتات طاردة مثل النعناع والريحان\n• تجنب الإفراط في التسميد النيتروجيني',
-    ),
-    PestData(
-      name: 'التوتا أبسولوتا',
-      type: 'حشرة (فراشة)',
-      icon: Icons.eco,
-      description:
-          'آفة خطيرة تصيب الطماطم والفلفل والباذنجان، تسبب خسائر كبيرة في المحصول.',
-      symptoms:
-          '• ثقوب في الأوراق والثمار\n• أنفاق داخل الأوراق\n• ذبول القمم النامية\n• يرقات خضراء داخل الثمار',
-      treatment:
-          '• استخدام مصائد الفرمونات\n• الرش بمبيدات مثل الإيمامكتين\n• استخدام البكتيريا Bt (باسيلس ثورنجينسيس)\n• إزالة الثمار المصابة وحرقها',
-      prevention:
-          '• تركيب شبكات حماية\n• تدوير المحاصيل\n• إزالة بقايا المحصول السابق\n• زراعة أصناف مقاومة',
-    ),
-    PestData(
-      name: 'العنكبوت الأحمر',
-      type: 'حشرة',
-      icon: Icons.pest_control,
-      description:
-          'حشرة دقيقة تتغذى على عصارة الأوراق وتظهر في الجو الحار الجاف.',
-      symptoms:
-          '• نقط صفراء دقيقة على الأوراق\n• خيوط عنكبوتية على السطح السفلي\n• اصفرار وجفاف الأوراق\n• تساقط الأوراق',
-      treatment:
-          '• رش بالماء القوي (الحشرة تكره الرطوبة)\n• رش بالكبريت الميكروني\n• مبيدات أكاروسية مثل الأبامكتين\n• زيادة رطوبة الجو حول النباتات',
-      prevention:
-          '• رش الأوراق بالماء يومياً\n• تجنب الجفاف الشديد\n• زراعة نباتات طاردة\n• التسميد المتوازن',
-    ),
-    PestData(
-      name: 'لفحة الطماطم',
-      type: 'مرض بكتيري',
-      icon: Icons.local_florist,
-      description:
-          'مرض بكتيري خطير يصيب الطماطم والبصل والفلفل، ينتشر بسرعة في الجو الرطب.',
-      symptoms:
-          '• بقع داكنة على الأوراق\n• تعفن الثمار\n• ذبول الأوراق السفلية\n• تعفن القمة الزهرية',
-      treatment:
-          '• إزالة النباتات المصابة فوراً\n• رش بالمبيدات النحاسية\n• الرش بمضادات حيوية زراعية\n• تجنب الري العلوي',
-      prevention:
-          '• بذور نظيفة معتمدة\n• تدوير المحاصيل\n• تصريف جيد للتربة\n• تهوية جيدة في البيوت المحمية',
-    ),
-    PestData(
-      name: 'نيماتودا الجذور',
-      type: 'ديدان مجهرية',
-      icon: Icons.grass,
-      description:
-          'ديدان مجهرية تصيب جذور النبات وتسبب تعقدات، وتقلل من امتصاص الماء والعناصر.',
-      symptoms:
-          '• تعقدات على الجذور\n• تقزم وضعف النبات\n• اصفرار عام\n• ذبول في وقت الظهيرة',
-      treatment:
-          '• شمسنة التربة في الصيف\n• استخدام المبيدات النيماتودية\n• إضافة المادة العضوية بكثافة\n• زراعة نباتات طاردة (مثل القطيفة)',
-      prevention:
-          '• تدوير المحاصيل\n• تعقيم الشتلات\n• تجنب نقله من حقل مصاب\n• حرث عميق قبل الزراعة',
-    ),
-    PestData(
-      name: 'الذبابة البيضاء',
-      type: 'حشرة',
-      icon: Icons.flutter_dash,
-      description:
-          'حشرة صغيرة بيضاء تتغذى على عصارة النبات وتنقل الفيروسات.',
-      symptoms:
-          '• حشرات بيضاء صغيرة تطير عند لمس النبات\n• اصفرار الأوراق\n• ضعف عام في النبات\n• نقل أمراض فيروسية',
-      treatment:
-          '• استخدام مصائد صفراء لاصقة\n• رش بالصابون البوتاسيوم\n• مبيدات جهازية مثل الإيميداكلوبريد\n• إطلاق المفترسات الطبيعية',
-      prevention:
-          '• شبكات حماية في المشتل\n• إزالة الأعشاب الضارة\n• زراعة نباتات طاردة\n• فحص الشتلات قبل الزراعة',
-    ),
-  ];
-}
-
-// ---------------- ArticleData ----------------
-class ArticleData {
-  final String title;
-  final String category;
-  final IconData icon;
-  final String content;
-
-  const ArticleData({
-    required this.title,
-    required this.category,
-    required this.icon,
-    required this.content,
-  });
-
-  static const List<ArticleData> allArticles = [
-    ArticleData(
-      title: 'أساسيات التسميد الصحيح للنباتات',
-      category: 'تسميد',
-      icon: Icons.agriculture,
-      content: '''
-• التسميد النيتروجيني (N):
-- مسؤول عن النمو الخضري والأوراق.
-- يستخدم في بداية النمو.
-- مصادر: اليوريا، نترات الأمونيوم.
-- الإفراط فيه يسبب نمواً خضرياً على حساب الثمار.
-
-• التسميد الفوسفاتي (P):
-- مهم لتكوين الجذور والأزهار والثمار.
-- يستخدم قبل الزراعة وأثناء الإثمار.
-- مصادر: السوبر فوسفات.
-
-• التسميد البوتاسي (K):
-- مهم لجودة الثمار ومقاومة الأمراض.
-- يستخدم في مرحلة الإثمار.
-- مصادر: سلفات البوتاسيوم.
-
-• القاعدة الذهبية:
-لا تسمد في وقت الظهيرة أو قبل المطر.
-افضل وقت للتسميد هو الصباح الباكر أو بعد المغرب.
-''',
-    ),
-    ArticleData(
-      title: 'كيفية ري النباتات بطريقة صحيحة',
-      category: 'ري',
-      icon: Icons.water_drop,
-      content: '''
-• قواعد الري الأساسية:
-1. الري في الصباح الباكر أو بعد المغرب.
-2. تجنب الري في وقت الظهيرة (يسبب احتراق الأوراق).
-3. تأكد من رطوبة التربة قبل الري (لا تسرف).
-
-• علامات الإفراط في الري:
-- اصفرار الأوراق السفلية.
-- تعفن الجذور.
-- نمو الطحالب على سطح التربة.
-
-• علامات نقص الري:
-- ذبول الأوراق.
-- تشقق التربة.
-- توقف النمو.
-
-• أفضل طريقة للري:
-الري بالتنقيط هي الأفضل، لأنها توفر المياه وتوصل الماء مباشرة للجذور.
-
-• نصيحة:
-عند ارتفاع الحرارة عن 30 درجة، ارفع كمية الري بنسبة 20%.
-''',
-    ),
-    ArticleData(
-      title: 'الوقاية من أمراض النباتات',
-      category: 'وقاية',
-      icon: Icons.security,
-      content: '''
-• القواعد الذهبية للوقاية:
-
-1. النظافة:
-- إزالة الأوراق المصابة فوراً.
-- تعقيم أدوات التقليم.
-- إزالة بقايا المحصول السابق.
-
-2. التهوية:
-- مسافات كافية بين النباتات.
-- تهوية جيدة في البيوت المحمية.
-- إزالة الأعشاب الضارة.
-
-3. الري السليم:
-- تجنب الري العلوي على الأوراق.
-- الري في الصباح الباكر.
-- تصريف جيد للتربة.
-
-4. التسميد المتوازن:
-- تجنب الإفراط في النيتروجين.
-- إضافة المادة العضوية.
-- التوازن بين العناصر.
-
-5. المكافحة البيولوجية:
-- إطلاق المفترسات الطبيعية.
-- استخدام المبيدات الحيوية.
-- زراعة نباتات طاردة.
-
-• القاعدة: الوقاية خير من العلاج.
-''',
-    ),
-    ArticleData(
-      title: 'موسم الحصاد المثالي للمحاصيل',
-      category: 'حصاد',
-      icon: Icons.emoji_events,
-      content: '''
-• علامات نضج المحاصيل:
-
-1. الطماطم:
-- تحول اللون من الأخضر للأحمر.
-- ليونة خفيفة عند الضغط.
-- سهولة الفصل من العنق.
-
-2. الخيار:
-- لون أخضر غامق موحد.
-- قوام صلب.
-- حجم مناسب للصنف.
-
-3. الفلفل:
-- لون كامل (أخضر، أحمر، أصفر).
-- لمعان طبيعي.
-- صلابة القشرة.
-
-4. البصل:
-- اصفرار الأوراق وسقوطها.
-- جفاف القشرة الخارجية.
-- انتفاخ البصلة.
-
-• أفضل وقت للحصاد:
-- الصباح الباكر قبل ارتفاع الحرارة.
-- بعد جفاف الندى.
-
-• بعد الحصاد:
-- التخزين في مكان بارد جاف.
-- التخلص من الثمار التالفة.
-- عدم رص الثمار فوق بعضها.
-''',
-    ),
-    ArticleData(
-      title: 'تحضير التربة للزراعة',
-      category: 'زراعة',
-      icon: Icons.landscape,
-      content: '''
-• خطوات تحضير التربة:
-
-1. تنظيف الأرض:
-- إزالة بقايا المحصول السابق.
-- إزالة الحجارة والأعشاب.
-
-2. الحرث:
-- حرث عميق (30-40 سم).
-- ترك الأرض للتهوية 7-10 أيام.
-
-3. إضافة المادة العضوية:
-- سماد بلدي متحلل (5-10 م³/فدان).
-- كمبوست.
-- مخلفات نباتية.
-
-4. التسوية:
-- تسوية سطح التربة.
-- تقسيم إلى أحواض أو خطوط.
-
-5. التخطيط:
-- عمل خطوط الزراعة.
-- ترك مسافات مناسبة بين الخطوط.
-
-6. تعقيم التربة (اختياري):
-- بالشمس (شمسنة).
-- بالمبيدات الفطرية.
-- بالبخار للمساحات الصغيرة.
-
-• ملاحظة:
-افحص التربة قبل الزراعة لمعرفة نسبة الأملاح والـ pH.
-''',
-    ),
-    ArticleData(
-      title: 'الزراعة بدون تربة (الهيدروبونيك)',
-      category: 'زراعة',
-      icon: Icons.science,
-      content: '''
-• ما هي الزراعة بدون تربة؟
-طريقة لزراعة النباتات بدون استخدام التربة، بحيث تنمو في محلول مغذي.
-
-• أنواعها:
-1. NFT (تقنية الطبقة الرقيقة).
-2. DWC (الماء العميق).
-3. الزراعة في الرمل أو الحصى.
-4. الأيروبونيك (رذاذ).
-
-• المميزات:
-- توفير 80% من المياه.
-- عدم الحاجة للأراضي الزراعية.
-- إنتاج نظيف بدون مبيدات.
-- نمو أسرع بـ 30-50%.
-
-• العيوب:
-- التكلفة الأولية عالية.
-- تحتاج خبرة.
-- حساسة لانقطاع الكهرباء.
-
-• النباتات المناسبة:
-الخس، الجرجير، الطماطم، الخيار، الفراولة، الأعشاب العطرية.
-
-• المحلول المغذي:
-يجب أن يحتوي على كل العناصر الكبرى والصغرى بنسب دقيقة.
-''',
-    ),
-  ];
 }
 
 // ---------------- ArticlesAndGuidesScreen ----------------
