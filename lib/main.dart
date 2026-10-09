@@ -377,6 +377,7 @@ class ThemeController {
     await prefs.setBool('dark_mode', !isCurrentlyDark);
   }
 }
+
 // ---------------- AgriConsultantApp ----------------
 class AgriConsultantApp extends StatefulWidget {
   const AgriConsultantApp({super.key});
@@ -616,7 +617,6 @@ class AuthWrapper extends StatelessWidget {
     );
   }
 }
-
 // ---------------- AuthScreen ----------------
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -814,6 +814,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     );
   }
 }
+
 // ---------------- HomeDashboard ----------------
 class HomeDashboard extends StatefulWidget {
   final String userName;
@@ -880,13 +881,11 @@ class _HomeDashboardState extends State<HomeDashboard> {
         }));
   }
 
-  // ✅ دالة مساعدة لجلب اسم المكان بعدة خدمات (نظام احتياطي)
   Future<String> _getCityName(
     double lat,
     double lon, {
     String fallback = "",
   }) async {
-    // ============ 1. Nominatim (مع zoom=10 للحصول على تفاصيل أدق) ============
     try {
       final url = Uri.parse(
           'https://nominatim.openstreetmap.org/reverse?lat=$lat&lon=$lon&format=json&accept-language=ar&zoom=10');
@@ -898,7 +897,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
         final data = json.decode(resp.body);
         final address = data['address'] ?? {};
 
-        // ✅ نفضل المدينة/القرية/المركز على المحافظة
         final city = address['city'] ??
             address['town'] ??
             address['municipality'] ??
@@ -913,7 +911,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
           return city.toString();
         }
 
-        // لو مفيش مدينة، ناخد المحافظة
         final state =
             address['state'] ?? address['governorate'] ?? address['region'];
         if (state != null && state.toString().trim().isNotEmpty) {
@@ -924,7 +921,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
       debugPrint("Nominatim error: $e");
     }
 
-    // ============ 2. BigDataCloud (احتياطي) ============
     try {
       final url = Uri.parse(
           'https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=$lat&longitude=$lon&localityLanguage=ar');
@@ -942,10 +938,8 @@ class _HomeDashboardState extends State<HomeDashboard> {
       debugPrint("BigDataCloud error: $e");
     }
 
-    // ============ 3. الاسم القديم لو موجود ============
     if (fallback.isNotEmpty) return fallback;
 
-    // ============ 4. آخر حل: الإحداثيات ============
     return '${lat.toStringAsFixed(2)}, ${lon.toStringAsFixed(2)}';
   }
 
@@ -983,14 +977,12 @@ class _HomeDashboardState extends State<HomeDashboard> {
         timeLimit: const Duration(seconds: 20),
       );
 
-      // ✅ جلب اسم المكان بالنظام الاحتياطي
       String cityName = await _getCityName(
         position.latitude,
         position.longitude,
         fallback: locationName,
       );
 
-      // ✅ جلب الطقس
       final url = Uri.parse(
           'https://api.open-meteo.com/v1/forecast?latitude=${position.latitude}&longitude=${position.longitude}&current=temperature_2m,relative_humidity_2m');
 
@@ -1671,6 +1663,7 @@ $_diagnosis
     super.dispose();
   }
 
+  // ✅ دالة الـ submit بعد التعديل — موديل 2.0-flash + تقرير كامل
   Future<void> _submit() async {
     final question = _questionCtrl.text.trim();
     if (question.isEmpty && _imageFile == null) {
@@ -1717,36 +1710,53 @@ $_diagnosis
       try {
         attempt++;
 
-        // ✅ إعدادات الموديل (لردود أسرع وأكثر تركيز)
+        // ✅ الموديل الجديد + إعدادات التقرير الكامل
         final model = GenerativeModel(
-          model: 'gemini-3.8-flash',
+          model: 'gemini-2.0-flash',
           apiKey: _apiKey,
           generationConfig: GenerationConfig(
-            temperature: 0.4,
-            maxOutputTokens: 600,
-            topP: 0.8,
-            topK: 20,
+            temperature: 0.3,
+            maxOutputTokens: 4096,
+            topP: 0.9,
+            topK: 40,
           ),
         );
 
-        // ✅ الـ Prompt الجديد (رد محدد في 4 نقاط)
+        // ✅ Prompt التقرير الكامل
         final prompt = """
-أنت مهندس زراعي خبير ومستشار زراعي مصري.
+أنت مهندس زراعي خبير ومستشار زراعي مصري بخبرة 20 سنة.
 اسم المزارع: ${widget.userName}
 
-قم بتشخيص الحالة التالية بناءً على المعلومات والصور المرفقة.
+المطلوب منك: تقديم تقرير زراعي شامل ومفصل عن الحالة التالية.
 
 ⚠️ قواعد الإجابة (مهمة جداً - التزم بها حرفياً):
-1. ابدأ بالسلام فقط: "السلام عليكم يا ${widget.userName} 🌱"
-2. اكتب تشخيصك في 4 نقاط فقط، كل نقطة في سطر منفصل، بالترتيب ده بالظبط:
-   🔍 المرض/الآفة: [اسم المرض فقط - كلمتين أو ثلاث]
-   🎯 الأسباب: [2-3 أسباب مختصرة في سطر واحد]
-   💊 العلاج: [3-4 خطوات علاج في سطر واحد أو سطرين]
-   🛡️ الوقاية: [2-3 نصائح وقاية في سطر واحد]
-3. ممنوع تكتب أي كلام إضافي - لا مقدمات، لا خاتمة، لا تفاصيل زايدة.
-4. لو مش متأكد من التشخيص، اسأل سؤال توضيحي واحد فقط.
-5. الرد كامل ما يزيدش عن 8 سطور.
-6. لا تستخدم نجوم ** أو شرطات زايدة، خليك بسيط.
+
+1. ابدأ بالسلام فقط في سطر واحد:
+"السلام عليكم يا ${widget.userName} 🌱"
+
+2. بعدها اكتب تقرير مفصل بالترتيب ده بالظبط، مع استخدام الإيموجي زي ما هو مكتوب:
+
+🔍 *المرض/الآفة:*
+اكتب اسم المرض أو الآفة بالتفصيل (اسم علمي + اسم شائع إن أمكن)، ووصف مختصر للأعراض الظاهرة.
+
+🎯 *الأسباب:*
+اذكر 3-4 أسباب رئيسية لظهور المشكلة (ظروف جوية، ري، تربة، إصابات...)، كل سبب في سطر منفصل مع شرح بسيط.
+
+💊 *العلاج:*
+اذكر خطة علاجية كاملة ومفصلة تشمل:
+- أسماء المبيدات أو المواد الفعالة (بالجرعات الموصى بها للفدان)
+- طريقة التطبيق (رش / حقن / تسميد)
+- عدد المرات والفاصل بين كل رشة
+- احتياطات الأمان اللي لازم تتبع
+
+🛡️ *الوقاية:*
+اذكر 4-5 نصائح وقائية للمستقبل لمنع تكرار المشكلة.
+
+3. لو الصورة مش واضحة أو المعلومات ناقصة، اسأل سؤال توضيحي واحد في الآخر.
+
+4. خلي التقرير كامل ومفصل، بس مترصّص في نقاط واضحة ومقروءة.
+
+5. متستخدمش نجوم ** كتير، استخدم الإيموجي اللي فوق بس.
 
 سؤال/مشكلة المزارع: $question
 """;
@@ -1780,9 +1790,9 @@ $_diagnosis
             _diagnosis =
                 'عذراً، خدمة الذكاء الاصطناعي مشغولة حالياً بسبب الضغط العالي.\nبرجاء المحاولة مرة أخرى بعد قليل.';
           });
-          print("❌ فشل بعد $attempt محاولات. الخطأ: $e");
+          debugPrint("❌ فشل بعد $attempt محاولات. الخطأ: $e");
         } else {
-          print("⚠️ المحاولة رقم $attempt فشلت. جاري إعادة المحاولة...");
+          debugPrint("⚠️ المحاولة رقم $attempt فشلت. جاري إعادة المحاولة...");
           await Future.delayed(const Duration(seconds: 2));
         }
       }
@@ -1885,9 +1895,16 @@ $_diagnosis
                           ],
                         ),
                         const Divider(),
-                        Text(_diagnosis,
-                            style: const TextStyle(
-                                fontSize: 14, height: 1.8)),
+                        SelectableText(
+                          _diagnosis,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            height: 1.9,
+                            fontFamily: 'Cairo',
+                          ),
+                          textAlign: TextAlign.right,
+                          textDirection: TextDirection.rtl,
+                        ),
                         const SizedBox(height: 12),
                         Row(
                           children: [
@@ -1951,7 +1968,6 @@ $_diagnosis
     );
   }
 }
-
 // ---------------- HistoryScreen ----------------
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
@@ -2208,6 +2224,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 }
+
 // ---------------- ProfileScreen ----------------
 class ProfileScreen extends StatefulWidget {
   final String userName;
@@ -2665,7 +2682,7 @@ class AboutScreen extends StatelessWidget {
   }
 }
 
-// ---------------- EncyclopediaScreen (ديناميكي - جديد) ----------------
+// ---------------- EncyclopediaScreen ----------------
 class EncyclopediaScreen extends StatelessWidget {
   const EncyclopediaScreen({super.key});
 
@@ -3176,12 +3193,4 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
   }
 }
 
-// ---------------- ArticlesAndGuidesScreen ----------------
-class ArticlesAndGuidesScreen extends StatelessWidget {
-  const ArticlesAndGuidesScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const EncyclopediaScreen();
-  }
-}
+// ---------------- ArticlesAnd
