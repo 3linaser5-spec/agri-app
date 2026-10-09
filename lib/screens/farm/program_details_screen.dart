@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/my_farm_model.dart';
 import '../../services/my_farm_service.dart';
+import '../../services/pdf_service.dart';
 
 class ProgramDetailsScreen extends StatefulWidget {
   final MyFarmProgram program;
@@ -17,6 +18,38 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
   void initState() {
     super.initState();
     _program = widget.program;
+  }
+
+  // ✅ تحميل PDF
+  Future<void> _downloadPdf() async {
+    try {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('⏳ جاري تجهيز ملف PDF...'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+
+      await PdfService.generateAndSharePdf(
+        programTitle: _program.templateName,
+        programEmoji: _program.templateEmoji,
+        governorate: _program.governorate,
+        sectionName: _program.sectionName,
+        inputValues: _program.inputValues,
+        tasks: _program.tasks,
+        materials: _program.materials,
+        financial: _program.financial,
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ فشل إنشاء PDF: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _deleteProgram() async {
@@ -64,6 +97,11 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
           iconTheme: const IconThemeData(color: Colors.white),
           actions: [
             IconButton(
+              icon: const Icon(Icons.picture_as_pdf, color: Colors.white),
+              tooltip: 'تحميل PDF',
+              onPressed: _downloadPdf,
+            ),
+            IconButton(
               icon: const Icon(Icons.delete, color: Colors.white),
               tooltip: 'حذف البرنامج',
               onPressed: _deleteProgram,
@@ -83,7 +121,6 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
           textDirection: TextDirection.rtl,
           child: Column(
             children: [
-              // Header
               Container(
                 padding: const EdgeInsets.all(16),
                 color: const Color(0xFF047857).withOpacity(0.1),
@@ -135,7 +172,6 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
                   ],
                 ),
               ),
-
               Expanded(
                 child: TabBarView(
                   children: [
@@ -169,8 +205,6 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
         final day = task['day_from_start'] as int? ?? 0;
         final category = task['category'] as String? ?? '';
         final color = _getCategoryColor(category);
-
-        // حالة المهمة
         final status = _getTaskStatus(day);
 
         return Card(
@@ -181,7 +215,6 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
             padding: const EdgeInsets.all(12),
             child: Row(
               children: [
-                // دائرة اليوم
                 Container(
                   width: 50,
                   height: 50,
