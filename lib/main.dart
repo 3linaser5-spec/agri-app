@@ -3193,4 +3193,12 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
   }
 }
 
-// ---------------- ArticlesAnd
+// ---------------- ArticlesAndGuidesScreen ----------------
+class ArticlesAndGuidesScreen extends StatelessWidget {
+  const ArticlesAndGuidesScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const EncyclopediaScreen();
+  }
+}
