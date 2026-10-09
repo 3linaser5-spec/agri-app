@@ -31,31 +31,6 @@ class PdfService {
 
     final pdf = pw.Document(theme: theme);
 
-    // ═══════════════════════════════════════
-    // ✅ دالة العلامة المائية (Watermark)
-    // ═══════════════════════════════════════
-    pw.Widget buildWatermark() {
-      return pw.FullPage(
-        ignoreMargins: true,
-        child: pw.Center(
-          child: pw.Transform.rotate(
-            angle: -0.5, // ميلان ~30 درجة
-            child: pw.Opacity(
-              opacity: 0.08,
-              child: pw.Text(
-                'نباتي',
-                style: pw.TextStyle(
-                  font: arabicBold,
-                  fontSize: 160,
-                  color: PdfColor.fromInt(0xFF047857),
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
     // حساب القيم
     double areaMultiplier = 1.0;
     final area = inputValues['area'];
@@ -77,7 +52,6 @@ class PdfService {
         ? (netProfit / totalMaterialsCost) * 100
         : 0.0;
 
-    // ترتيب المهام
     final sortedTasks = List<Map<String, dynamic>>.from(tasks);
     sortedTasks.sort((a, b) => (a['day_from_start'] as int? ?? 0)
         .compareTo(b['day_from_start'] as int? ?? 0));
@@ -86,13 +60,10 @@ class PdfService {
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
         textDirection: pw.TextDirection.rtl,
-        margin: const pw.EdgeInsets.fromLTRB(20, 30, 20, 40), // مساحة للهيدر والفوتر
+        margin: const pw.EdgeInsets.fromLTRB(20, 30, 20, 40),
         theme: theme,
 
-        // ✅ العلامة المائية على كل صفحة
-        buildBackground: (pw.Context context) => buildWatermark(),
-
-        // ✅ الترويسة
+        // ✅ الترويسة (Header) — على كل صفحة
         header: (pw.Context context) => pw.Container(
           alignment: pw.Alignment.centerRight,
           margin: const pw.EdgeInsets.only(bottom: 8),
@@ -125,7 +96,7 @@ class PdfService {
           ),
         ),
 
-        // ✅ التذييل
+        // ✅ التذييل (Footer) — على كل صفحة
         footer: (pw.Context context) => pw.Container(
           alignment: pw.Alignment.center,
           margin: const pw.EdgeInsets.only(top: 8),
@@ -159,7 +130,7 @@ class PdfService {
         ),
 
         build: (pw.Context context) => [
-          // ============ Header ============
+          // ============ Header شعار نباتي ============
           pw.Container(
             padding: const pw.EdgeInsets.all(12),
             decoration: pw.BoxDecoration(
@@ -417,13 +388,11 @@ class PdfService {
 
           pw.SizedBox(height: 20),
 
-          // ═══════════════════════════════════════
-          // ✅ تنبيه "هذا البرنامج استرشادي"
-          // ═══════════════════════════════════════
+          // ============ تنبيه "هذا البرنامج استرشادي" ============
           pw.Container(
             padding: const pw.EdgeInsets.all(10),
             decoration: pw.BoxDecoration(
-              color: PdfColor.fromInt(0xFFFFF3CD), // أصفر فاتح
+              color: PdfColor.fromInt(0xFFFFF3CD),
               border: pw.Border.all(
                 color: PdfColor.fromInt(0xFFFFC107),
                 width: 1,
@@ -431,16 +400,19 @@ class PdfService {
               borderRadius: pw.BorderRadius.circular(6),
             ),
             child: pw.Row(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
                 pw.Text(
-                  '⚠️',
-                  style: pw.TextStyle(fontSize: 16),
+                  '!',
+                  style: pw.TextStyle(
+                    font: arabicBold,
+                    fontSize: 18,
+                    color: PdfColor.fromInt(0xFF856404),
+                  ),
                 ),
                 pw.SizedBox(width: 8),
                 pw.Expanded(
                   child: pw.Text(
-                    'هذا البرنامج استرشادي فقط، ويجب مراجعة المهندس الزراعي المختص قبل التطبيق الفعلي.',
+                    'تنبيه: هذا البرنامج استرشادي فقط، ويجب مراجعة المهندس الزراعي المختص قبل التطبيق الفعلي.',
                     style: pw.TextStyle(
                       font: arabicBold,
                       fontSize: 11,
