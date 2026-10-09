@@ -36,14 +36,20 @@ jobs:
           rm -f android/build.gradle
           rm -f android/settings.gradle
           
+          # ✅ إضافة الصلاحيات
           sed -i 's/<application/<uses-permission android:name="android.permission.INTERNET"\/>\n    <uses-permission android:name="android.permission.CAMERA"\/>\n    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"\/>\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"\/>\n    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"\/>\n    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"\/>\n    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"\/>\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"\/>\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"\/>\n    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"\/>\n    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"\/>\n    <uses-permission android:name="android.permission.USE_EXACT_ALARM"\/>\n    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"\/>\n    <uses-permission android:name="android.permission.VIBRATE"\/>\n    <application/' android/app/src/main/AndroidManifest.xml
           
           # ✅ تغيير اسم التطبيق من agri_app لـ نباتي
           sed -i 's/android:label="agri_app"/android:label="نباتي"/' android/app/src/main/AndroidManifest.xml
           
-          # ✅ للتأكد إن التغيير نجح
+          # ✅ إضافة الـ receivers للإشعارات المجدولة
+          sed -i 's|</application>|<receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver" \/>\n        <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver">\n            <intent-filter>\n                <action android:name="android.intent.action.BOOT_COMPLETED"\/>\n                <action android:name="android.intent.action.MY_PACKAGE_REPLACED"\/>\n                <action android:name="android.intent.action.QUICKBOOT_POWERON"\/>\n                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON"\/>\n            <\/intent-filter>\n        <\/receiver>\n    <\/application>|' android/app/src/main/AndroidManifest.xml
+          
+          # ✅ للتأكد إن التغييرات نجحت
           echo "--- AndroidManifest.xml label ---"
           grep 'android:label' android/app/src/main/AndroidManifest.xml
+          echo "--- AndroidManifest.xml receivers count ---"
+          grep -c 'ScheduledNotification' android/app/src/main/AndroidManifest.xml
           
           cat << 'EOF' > android/settings.gradle
           pluginManagement {
@@ -209,7 +215,7 @@ jobs:
 
       - name: Add Missing Packages Automatically
         run: |
-          flutter pub add cloud_firestore google_generative_ai flutter_tts url_launcher firebase_core image_picker geolocator http firebase_auth firebase_app_check 'connectivity_plus:^6.0.3' sqflite path firebase_messaging flutter_local_notifications share_plus shared_preferences package_info_plus dio open_filex permission_handler path_provider pdf printing timezone
+          flutter pub add cloud_firestore google_generative_ai flutter_tts url_launcher firebase_core image_picker geolocator http firebase_auth firebase_app_check 'connectivity_plus:^6.0.3' sqflite path firebase_messaging flutter_local_notifications share_plus shared_preferences package_info_plus dio open_filex permission_handler path_provider pdf printing timezone flutter_timezone intl
           sed -i '1i import "package:cloud_firestore/cloud_firestore.dart";' lib/main.dart
           sed -i '1i import "package:firebase_core/firebase_core.dart";' lib/main.dart
           sed -i '1i import "package:firebase_app_check/firebase_app_check.dart";' lib/main.dart
