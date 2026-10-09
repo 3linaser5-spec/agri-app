@@ -3,6 +3,7 @@ import '../../models/calculator_models.dart';
 import '../../services/calculator_service.dart';
 import 'template_editor_screen.dart';
 import 'json_import_screen.dart';
+import 'encyclopedia_admin_screen.dart';
 
 // ================== لوحة الأدمن الرئيسية ==================
 class AdminPanelScreen extends StatefulWidget {
@@ -47,6 +48,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
             : ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
+                  // ============ بانر الترحيب ============
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
@@ -78,8 +80,33 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                       ],
                     ),
                   ),
+
                   const SizedBox(height: 20),
-                  const Text('الأقسام:',
+
+                  // ============ إدارة المحتوى ============
+                  const Text('📚 إدارة المحتوى:',
+                      style: TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 16)),
+                  const SizedBox(height: 10),
+                  _buildAdminActionCard(
+                    icon: Icons.menu_book,
+                    color: const Color(0xFF0EA5E9),
+                    title: 'إدارة الموسوعة الشاملة',
+                    subtitle: 'أضف / عدل / احذف الأقسام والعناصر',
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const EncyclopediaAdminScreen(),
+                        ),
+                      );
+                    },
+                  ),
+
+                  const SizedBox(height: 24),
+
+                  // ============ حاسبات ومخططات المزرعة ============
+                  const Text('🌾 حاسبات ومخططات المزرعة:',
                       style: TextStyle(
                           fontWeight: FontWeight.bold, fontSize: 16)),
                   const SizedBox(height: 10),
@@ -90,6 +117,58 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
     );
   }
 
+  // ============ كارت إجراء إداري ============
+  Widget _buildAdminActionCard({
+    required IconData icon,
+    required Color color,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              Container(
+                width: 55,
+                height: 55,
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                alignment: Alignment.center,
+                child: Icon(icon, color: color, size: 28),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 15)),
+                    const SizedBox(height: 4),
+                    Text(subtitle,
+                        style: const TextStyle(
+                            fontSize: 11, color: Colors.grey)),
+                  ],
+                ),
+              ),
+              Icon(Icons.arrow_forward_ios, size: 16, color: color),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ============ بطاقة قسم حاسبة ============
   Widget _buildSectionTile(CalculatorSection section) {
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
