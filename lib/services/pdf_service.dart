@@ -16,10 +16,13 @@ class PdfService {
     required List<Map<String, dynamic>> materials,
     required Map<String, dynamic> financial,
   }) async {
-    // ✅ تحميل الخط العربي
-    final fontData = await rootBundle.load('assets/fonts/Cairo-Regular.ttf');
-    final arabicFont = pw.Font.ttf(fontData);
-    final arabicBold = pw.Font.ttf(fontData); // مؤقتًا نستخدم Regular للـ Bold
+    // ✅ تحميل الخط العربي (Regular + Bold)
+    final regularData =
+        await rootBundle.load('assets/fonts/Cairo-Regular.ttf');
+    final boldData = await rootBundle.load('assets/fonts/Cairo-Bold.ttf');
+
+    final arabicFont = pw.Font.ttf(regularData);
+    final arabicBold = pw.Font.ttf(boldData);
 
     // ✅ تعريف الـ theme بالخط العربي
     final theme = pw.ThemeData.withFont(
@@ -62,7 +65,7 @@ class PdfService {
         pageFormat: PdfPageFormat.a4,
         textDirection: pw.TextDirection.rtl,
         margin: const pw.EdgeInsets.all(20),
-        theme: theme, // ✅ تمرير الـ theme
+        theme: theme,
         build: (pw.Context context) => [
           // ============ Header ============
           pw.Container(
@@ -80,9 +83,8 @@ class PdfService {
                     pw.Text(
                       'نباتي',
                       style: pw.TextStyle(
-                        font: arabicFont, // ✅
+                        font: arabicBold,
                         fontSize: 24,
-                        fontWeight: pw.FontWeight.bold,
                         color: PdfColors.white,
                       ),
                     ),
@@ -90,18 +92,20 @@ class PdfService {
                     pw.Text(
                       'مستشارك الزراعي الذكي',
                       style: pw.TextStyle(
-                        font: arabicFont, // ✅
+                        font: arabicFont,
                         fontSize: 11,
                         color: PdfColors.white,
                       ),
                     ),
                   ],
                 ),
-                pw.Text(programEmoji,
-                    style: pw.TextStyle(
-                      font: arabicFont, // ✅
-                      fontSize: 36,
-                    )),
+                pw.Text(
+                  programEmoji,
+                  style: pw.TextStyle(
+                    font: arabicFont,
+                    fontSize: 36,
+                  ),
+                ),
               ],
             ),
           ),
@@ -121,27 +125,28 @@ class PdfService {
                 pw.Text(
                   'برنامج $programTitle',
                   style: pw.TextStyle(
-                    font: arabicFont, // ✅
+                    font: arabicBold,
                     fontSize: 18,
-                    fontWeight: pw.FontWeight.bold,
                     color: PdfColor.fromInt(0xFF047857),
                   ),
                 ),
                 pw.SizedBox(height: 6),
-                pw.Text('المحافظة: $governorate',
-                    style: pw.TextStyle(
-                        font: arabicFont, fontSize: 12)),
-                pw.Text('القسم: $sectionName',
-                    style: pw.TextStyle(
-                        font: arabicFont, fontSize: 12)),
                 pw.Text(
-                    'المساحة: ${areaMultiplier.toStringAsFixed(2)} فدان',
-                    style: pw.TextStyle(
-                        font: arabicFont, fontSize: 12)),
+                  'المحافظة: $governorate',
+                  style: pw.TextStyle(font: arabicFont, fontSize: 12),
+                ),
                 pw.Text(
-                    'تاريخ الإصدار: ${_formatDate(DateTime.now())}',
-                    style: pw.TextStyle(
-                        font: arabicFont, fontSize: 11)),
+                  'القسم: $sectionName',
+                  style: pw.TextStyle(font: arabicFont, fontSize: 12),
+                ),
+                pw.Text(
+                  'المساحة: ${areaMultiplier.toStringAsFixed(2)} فدان',
+                  style: pw.TextStyle(font: arabicFont, fontSize: 12),
+                ),
+                pw.Text(
+                  'تاريخ الإصدار: ${_formatDate(DateTime.now())}',
+                  style: pw.TextStyle(font: arabicFont, fontSize: 11),
+                ),
               ],
             ),
           ),
@@ -150,7 +155,7 @@ class PdfService {
 
           // ============ الجدول الزمني ============
           if (sortedTasks.isNotEmpty) ...[
-            _buildSectionTitle('📋 الجدول الزمني', arabicFont),
+            _buildSectionTitle('الجدول الزمني', arabicBold),
             pw.SizedBox(height: 8),
             pw.Table(
               border: pw.TableBorder.all(
@@ -167,17 +172,21 @@ class PdfService {
                   decoration:
                       pw.BoxDecoration(color: PdfColor.fromInt(0xFF047857)),
                   children: [
-                    _buildHeaderCell('اليوم', arabicFont),
-                    _buildHeaderCell('المهمة', arabicFont),
-                    _buildHeaderCell('التفاصيل', arabicFont),
+                    _buildHeaderCell('اليوم', arabicBold),
+                    _buildHeaderCell('المهمة', arabicBold),
+                    _buildHeaderCell('التفاصيل', arabicBold),
                   ],
                 ),
                 ...sortedTasks.map((task) {
                   return pw.TableRow(
                     children: [
-                      _buildDataCell('${task['day_from_start'] ?? 0}',
-                          arabicFont, center: true),
-                      _buildDataCell('${task['title'] ?? ''}', arabicFont),
+                      _buildDataCell(
+                        '${task['day_from_start'] ?? 0}',
+                        arabicFont,
+                        center: true,
+                      ),
+                      _buildDataCell(
+                          '${task['title'] ?? ''}', arabicFont),
                       _buildDataCell(
                           '${task['description'] ?? ''}', arabicFont),
                     ],
@@ -190,7 +199,7 @@ class PdfService {
 
           // ============ المشتريات ============
           if (materials.isNotEmpty) ...[
-            _buildSectionTitle('🛒 قائمة المشتريات', arabicFont),
+            _buildSectionTitle('قائمة المشتريات', arabicBold),
             pw.SizedBox(height: 8),
             pw.Table(
               border: pw.TableBorder.all(
@@ -208,10 +217,10 @@ class PdfService {
                   decoration:
                       pw.BoxDecoration(color: PdfColor.fromInt(0xFF047857)),
                   children: [
-                    _buildHeaderCell('المادة', arabicFont),
-                    _buildHeaderCell('الكمية', arabicFont),
-                    _buildHeaderCell('الوحدة', arabicFont),
-                    _buildHeaderCell('التكلفة', arabicFont),
+                    _buildHeaderCell('المادة', arabicBold),
+                    _buildHeaderCell('الكمية', arabicBold),
+                    _buildHeaderCell('الوحدة', arabicBold),
+                    _buildHeaderCell('التكلفة', arabicBold),
                   ],
                 ),
                 ...materials.map((m) {
@@ -222,13 +231,19 @@ class PdfService {
                   return pw.TableRow(
                     children: [
                       _buildDataCell('${m['name'] ?? ''}', arabicFont),
-                      _buildDataCell(qty.toStringAsFixed(2), arabicFont,
+                      _buildDataCell(
+                        qty.toStringAsFixed(2),
+                        arabicFont,
+                        center: true,
+                      ),
+                      _buildDataCell(
+                          '${m['unit'] ?? ''}', arabicFont,
                           center: true),
-                      _buildDataCell('${m['unit'] ?? ''}', arabicFont,
-                          center: true),
-                      _buildDataCell('${cost.toStringAsFixed(0)} ج.م',
-                          arabicFont,
-                          center: true),
+                      _buildDataCell(
+                        '${cost.toStringAsFixed(0)} ج.م',
+                        arabicFont,
+                        center: true,
+                      ),
                     ],
                   );
                 }),
@@ -236,15 +251,16 @@ class PdfService {
                   decoration:
                       pw.BoxDecoration(color: PdfColor.fromInt(0xFFECFDF5)),
                   children: [
-                    _buildDataCell('الإجمالي', arabicFont,
+                    _buildDataCell('الإجمالي', arabicBold,
                         bold: true, center: true),
                     _buildDataCell('', arabicFont, center: true),
                     _buildDataCell('', arabicFont, center: true),
                     _buildDataCell(
-                        '${totalMaterialsCost.toStringAsFixed(0)} ج.م',
-                        arabicFont,
-                        bold: true,
-                        center: true),
+                      '${totalMaterialsCost.toStringAsFixed(0)} ج.م',
+                      arabicBold,
+                      bold: true,
+                      center: true,
+                    ),
                   ],
                 ),
               ],
@@ -254,7 +270,7 @@ class PdfService {
 
           // ============ التحليل المالي ============
           if (expectedYield > 0 || expectedPrice > 0) ...[
-            _buildSectionTitle('💰 التحليل المالي', arabicFont),
+            _buildSectionTitle('التحليل المالي', arabicBold),
             pw.SizedBox(height: 8),
             pw.Container(
               padding: const pw.EdgeInsets.all(10),
@@ -265,24 +281,31 @@ class PdfService {
               child: pw.Column(
                 children: [
                   _buildFinancialRow(
-                      'الإنتاج المتوقع',
-                      '${expectedYield.toStringAsFixed(2)} ${financial['yield_unit'] ?? 'طن'}',
-                      arabicFont),
+                    'الإنتاج المتوقع',
+                    '${expectedYield.toStringAsFixed(2)} ${financial['yield_unit'] ?? 'طن'}',
+                    arabicFont,
+                    arabicBold,
+                  ),
                   pw.Divider(height: 6),
                   _buildFinancialRow(
-                      'الإيراد المتوقع',
-                      '${totalRevenue.toStringAsFixed(0)} ج.م',
-                      arabicFont),
+                    'الإيراد المتوقع',
+                    '${totalRevenue.toStringAsFixed(0)} ج.م',
+                    arabicFont,
+                    arabicBold,
+                  ),
                   pw.Divider(height: 6),
                   _buildFinancialRow(
-                      'إجمالي التكاليف',
-                      '${totalMaterialsCost.toStringAsFixed(0)} ج.م',
-                      arabicFont),
+                    'إجمالي التكاليف',
+                    '${totalMaterialsCost.toStringAsFixed(0)} ج.م',
+                    arabicFont,
+                    arabicBold,
+                  ),
                   pw.Divider(height: 6),
                   _buildFinancialRow(
                     'صافي الربح',
                     '${netProfit.toStringAsFixed(0)} ج.م',
                     arabicFont,
+                    arabicBold,
                     color: netProfit > 0 ? PdfColors.green : PdfColors.red,
                     bold: true,
                   ),
@@ -291,6 +314,7 @@ class PdfService {
                     'نسبة العائد (ROI)',
                     '${roi.toStringAsFixed(1)}%',
                     arabicFont,
+                    arabicBold,
                     color: roi > 0 ? PdfColors.green : PdfColors.red,
                     bold: true,
                   ),
@@ -313,9 +337,8 @@ class PdfService {
                 pw.Text(
                   'تطبيق نباتي - مستشارك الزراعي الذكي',
                   style: pw.TextStyle(
-                    font: arabicFont, // ✅
+                    font: arabicBold,
                     fontSize: 12,
-                    fontWeight: pw.FontWeight.bold,
                     color: PdfColor.fromInt(0xFF047857),
                   ),
                 ),
@@ -333,7 +356,7 @@ class PdfService {
                 pw.Text(
                   '© 2025 نباتي - جميع الحقوق محفوظة',
                   style: pw.TextStyle(
-                    font: arabicFont, // ✅
+                    font: arabicFont,
                     fontSize: 9,
                     color: PdfColors.grey600,
                   ),
@@ -349,22 +372,22 @@ class PdfService {
           child: pw.Text(
             'نباتي - ${_formatDate(DateTime.now())}',
             style: pw.TextStyle(
-              font: arabicFont, // ✅
+              font: arabicFont,
               fontSize: 8,
               color: PdfColors.grey400,
             ),
           ),
         ),
+        // ============ Header لكل صفحة ============
         header: (pw.Context context) => pw.Container(
           alignment: pw.Alignment.centerRight,
           margin: const pw.EdgeInsets.only(bottom: 10),
           child: pw.Text(
             'نباتي',
             style: pw.TextStyle(
-              font: arabicFont, // ✅
+              font: arabicBold,
               fontSize: 9,
               color: PdfColors.grey400,
-              fontWeight: pw.FontWeight.bold,
             ),
           ),
         ),
@@ -382,7 +405,7 @@ class PdfService {
 
   // ============ Helper Widgets ============
 
-  static pw.Widget _buildSectionTitle(String title, pw.Font font) {
+  static pw.Widget _buildSectionTitle(String title, pw.Font boldFont) {
     return pw.Container(
       padding: const pw.EdgeInsets.symmetric(vertical: 6, horizontal: 10),
       decoration: pw.BoxDecoration(
@@ -392,25 +415,23 @@ class PdfService {
       child: pw.Text(
         title,
         style: pw.TextStyle(
-          font: font, // ✅
+          font: boldFont,
           fontSize: 13,
-          fontWeight: pw.FontWeight.bold,
           color: PdfColors.white,
         ),
       ),
     );
   }
 
-  static pw.Widget _buildHeaderCell(String text, pw.Font font) {
+  static pw.Widget _buildHeaderCell(String text, pw.Font boldFont) {
     return pw.Padding(
       padding: const pw.EdgeInsets.all(6),
       child: pw.Text(
         text,
         textAlign: pw.TextAlign.center,
         style: pw.TextStyle(
-          font: font, // ✅
+          font: boldFont,
           fontSize: 11,
-          fontWeight: pw.FontWeight.bold,
           color: PdfColors.white,
         ),
       ),
@@ -429,9 +450,8 @@ class PdfService {
         text,
         textAlign: center ? pw.TextAlign.center : pw.TextAlign.right,
         style: pw.TextStyle(
-          font: font, // ✅
+          font: font,
           fontSize: 10,
-          fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
         ),
       ),
     );
@@ -440,7 +460,8 @@ class PdfService {
   static pw.Widget _buildFinancialRow(
     String label,
     String value,
-    pw.Font font, {
+    pw.Font font,
+    pw.Font boldFont, {
     PdfColor? color,
     bool bold = false,
   }) {
@@ -450,17 +471,15 @@ class PdfService {
         pw.Text(
           label,
           style: pw.TextStyle(
-            font: font, // ✅
+            font: bold ? boldFont : font,
             fontSize: 11,
-            fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
           ),
         ),
         pw.Text(
           value,
           style: pw.TextStyle(
-            font: font, // ✅
+            font: boldFont,
             fontSize: 11,
-            fontWeight: pw.FontWeight.bold,
             color: color ?? PdfColors.black,
           ),
         ),
