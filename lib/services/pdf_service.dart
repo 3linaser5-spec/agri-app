@@ -31,6 +31,29 @@ class PdfService {
 
     final pdf = pw.Document(theme: theme);
 
+    // ✅ دالة العلامة المائية
+    pw.Widget buildWatermark() {
+      return pw.FullPage(
+        ignoreMargins: true,
+        child: pw.Center(
+          child: pw.Transform.rotate(
+            angle: -0.6,
+            child: pw.Opacity(
+              opacity: 0.08,
+              child: pw.Text(
+                'نباتي',
+                style: pw.TextStyle(
+                  font: arabicBold,
+                  fontSize: 150,
+                  color: PdfColor.fromInt(0xFF047857),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     // حساب القيم
     double areaMultiplier = 1.0;
     final area = inputValues['area'];
@@ -63,7 +86,10 @@ class PdfService {
         margin: const pw.EdgeInsets.fromLTRB(20, 30, 20, 40),
         theme: theme,
 
-        // ✅ الترويسة (Header) — على كل صفحة
+        // ✅ العلامة المائية على كل صفحة
+        buildBackground: (pw.Context context) => buildWatermark(),
+
+        // ✅ الترويسة
         header: (pw.Context context) => pw.Container(
           alignment: pw.Alignment.centerRight,
           margin: const pw.EdgeInsets.only(bottom: 8),
@@ -96,7 +122,7 @@ class PdfService {
           ),
         ),
 
-        // ✅ التذييل (Footer) — على كل صفحة
+        // ✅ التذييل
         footer: (pw.Context context) => pw.Container(
           alignment: pw.Alignment.center,
           margin: const pw.EdgeInsets.only(top: 8),
@@ -388,7 +414,7 @@ class PdfService {
 
           pw.SizedBox(height: 20),
 
-          // ============ تنبيه "هذا البرنامج استرشادي" ============
+          // ============ تنبيه "استرشادي" ============
           pw.Container(
             padding: const pw.EdgeInsets.all(10),
             decoration: pw.BoxDecoration(
@@ -399,28 +425,32 @@ class PdfService {
               ),
               borderRadius: pw.BorderRadius.circular(6),
             ),
-            child: pw.Row(
-              children: [
-                pw.Text(
-                  '!',
-                  style: pw.TextStyle(
-                    font: arabicBold,
-                    fontSize: 18,
-                    color: PdfColor.fromInt(0xFF856404),
-                  ),
-                ),
-                pw.SizedBox(width: 8),
-                pw.Expanded(
-                  child: pw.Text(
-                    'تنبيه: هذا البرنامج استرشادي فقط، ويجب مراجعة المهندس الزراعي المختص قبل التطبيق الفعلي.',
+            child: pw.Directionality(
+              textDirection: pw.TextDirection.rtl,
+              child: pw.Row(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(
+                    '!',
                     style: pw.TextStyle(
                       font: arabicBold,
-                      fontSize: 11,
+                      fontSize: 18,
                       color: PdfColor.fromInt(0xFF856404),
                     ),
                   ),
-                ),
-              ],
+                  pw.SizedBox(width: 8),
+                  pw.Expanded(
+                    child: pw.Text(
+                      'تنبيه: هذا البرنامج استرشادي فقط، ويجب مراجعة المهندس الزراعي المختص قبل التطبيق الفعلي.',
+                      style: pw.TextStyle(
+                        font: arabicBold,
+                        fontSize: 11,
+                        color: PdfColor.fromInt(0xFF856404),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
 
@@ -433,36 +463,39 @@ class PdfService {
               border: pw.Border.all(color: PdfColors.grey300, width: 0.5),
               borderRadius: pw.BorderRadius.circular(6),
             ),
-            child: pw.Column(
-              children: [
-                pw.Text(
-                  'تطبيق نباتي - مستشارك الزراعي الذكي',
-                  style: pw.TextStyle(
-                    font: arabicBold,
-                    fontSize: 12,
-                    color: PdfColor.fromInt(0xFF047857),
+            child: pw.Directionality(
+              textDirection: pw.TextDirection.rtl,
+              child: pw.Column(
+                children: [
+                  pw.Text(
+                    'تطبيق نباتي - مستشارك الزراعي الذكي',
+                    style: pw.TextStyle(
+                      font: arabicBold,
+                      fontSize: 12,
+                      color: PdfColor.fromInt(0xFF047857),
+                    ),
                   ),
-                ),
-                pw.SizedBox(height: 4),
-                pw.Text(
-                  'إشراف: م. علي الدهشوري',
-                  style: pw.TextStyle(font: arabicFont, fontSize: 10),
-                ),
-                pw.SizedBox(height: 2),
-                pw.Text(
-                  'للتواصل: 01284172047',
-                  style: pw.TextStyle(font: arabicFont, fontSize: 10),
-                ),
-                pw.SizedBox(height: 6),
-                pw.Text(
-                  '© 2025 نباتي - جميع الحقوق محفوظة',
-                  style: pw.TextStyle(
-                    font: arabicFont,
-                    fontSize: 9,
-                    color: PdfColors.grey600,
+                  pw.SizedBox(height: 4),
+                  pw.Text(
+                    'إشراف: م. علي الدهشوري',
+                    style: pw.TextStyle(font: arabicFont, fontSize: 10),
                   ),
-                ),
-              ],
+                  pw.SizedBox(height: 2),
+                  pw.Text(
+                    'للتواصل: 01284172047',
+                    style: pw.TextStyle(font: arabicFont, fontSize: 10),
+                  ),
+                  pw.SizedBox(height: 6),
+                  pw.Text(
+                    '© 2025 نباتي - جميع الحقوق محفوظة',
+                    style: pw.TextStyle(
+                      font: arabicFont,
+                      fontSize: 9,
+                      color: PdfColors.grey600,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -533,6 +566,7 @@ class PdfService {
     );
   }
 
+  // ✅ التحليل المالي - مع RTL صريح
   static pw.Widget _buildFinancialRow(
     String label,
     String value,
@@ -541,25 +575,30 @@ class PdfService {
     PdfColor? color,
     bool bold = false,
   }) {
-    return pw.Row(
-      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-      children: [
-        pw.Text(
-          label,
-          style: pw.TextStyle(
-            font: bold ? boldFont : font,
-            fontSize: 11,
+    return pw.Directionality(
+      textDirection: pw.TextDirection.rtl,
+      child: pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        children: [
+          // ✅ العنوان أولاً (هيظهر على اليمين)
+          pw.Text(
+            label,
+            style: pw.TextStyle(
+              font: bold ? boldFont : font,
+              fontSize: 11,
+            ),
           ),
-        ),
-        pw.Text(
-          value,
-          style: pw.TextStyle(
-            font: boldFont,
-            fontSize: 11,
-            color: color ?? PdfColors.black,
+          // ✅ القيمة ثانيًا (هتظهر على الشمال)
+          pw.Text(
+            value,
+            style: pw.TextStyle(
+              font: boldFont,
+              fontSize: 11,
+              color: color ?? PdfColors.black,
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
