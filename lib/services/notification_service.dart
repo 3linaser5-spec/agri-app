@@ -1,13 +1,29 @@
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/material.dart';
+import 'package:timezone/data/latest.dart' as tz;
+import 'package:timezone/timezone.dart' as tz;
+import 'package:flutter_timezone/flutter_timezone.dart';
 
 class NotificationService {
   static final FlutterLocalNotificationsPlugin _localNotifications =
       FlutterLocalNotificationsPlugin();
 
+  // ═══════════════════════════════════════════
   // تهيئة الإشعارات
+  // ═══════════════════════════════════════════
   static Future<void> initialize() async {
+    // 0. تهيئة الـ timezone (مهمة للجدولة)
+    tz.initializeTimeZones();
+    try {
+      final String timeZoneName = await FlutterTimezone.getLocalTimezone();
+      tz.setLocalLocation(tz.getLocation(timeZoneName));
+      debugPrint("✅ Timezone: $timeZoneName");
+    } catch (e) {
+      debugPrint("⚠️ فشل ضبط التوقيت، استخدام القاهرة: $e");
+      tz.setLocalLocation(tz.getLocation('Africa/Cairo'));
+    }
+
     // 1. إعدادات الأندرويد
     const AndroidInitializationSettings androidSettings =
         AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -39,13 +55,21 @@ class NotificationService {
     _listenToFirebaseMessages();
   }
 
+  // ═══════════════════════════════════════════
   // طلب الصلاحيات
+  // ═══════════════════════════════════════════
   static Future<void> _requestPermissions() async {
     // أندرويد 13+
     await _localNotifications
         .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>()
         ?.requestNotificationsPermission();
+
+    // ✅ صلاحية الإشعارات المجدولة الدقيقة (أندرويد 12+)
+    await _localNotifications
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
+        ?.requestExactAlarmsPermission();
 
     // Firebase Messaging
     NotificationSettings firebaseSettings =
@@ -60,7 +84,9 @@ class NotificationService {
     }
   }
 
+  // ═══════════════════════════════════════════
   // الاستماع للإشعارات
+  // ═══════════════════════════════════════════
   static void _listenToFirebaseMessages() {
     // الإشعارات اللي بتيجي والتطبيق مفتوح
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
@@ -79,7 +105,9 @@ class NotificationService {
     });
   }
 
-  // عرض إشعار محلي
+  // ═══════════════════════════════════════════
+  // عرض إشعار محلي (فوري)
+  // ═══════════════════════════════════════════
   static Future<void> showLocalNotification({
     required String title,
     required String body,
@@ -109,19 +137,103 @@ class NotificationService {
     );
   }
 
-  // الاشتراك في موضوع (Topic) لاستقبال تنبيهات الآفات
+  // ═══════════════════════════════════════════
+  // ✅ جدولة إشعارات مهام البرنامج
+  // ═══════════════════════════════════════════
+  /// [programId] معرّف البرنامج (بيتحول لـ int كـ base ID)
+  /// [startDate] تاريخ بداية البرنامج
+  /// [tasks] قائمة المهام، كل مهمة فيها `day_from_start`
+  static Future<void> scheduleProgramNotifications({
+    required String programId,
+    required DateTime startDate,
+    required List<Map<String, dynamic>> tasks,
+  }) async {
+    // base ID فريد لكل برنامج (عشان نتجنب التعارض)
+    final int baseId = programId.hashCode.abs() % 100000;
+
+    for (int i = 0; i < tasks.length; i++) {
+      final task = tasks[i];
+      final int dayFromStart = task['day_from_start'] as int? ?? 0;
+      final String title = task['title']?.toString() ?? 'مهمة';
+      final String description =
+          task['description']?.toString() ?? 'موعد مهمة في مزرعتك';
+
+      // موعد الإشعار = تاريخ البداية + عدد الأيام (الساعة 8 صباحًا)
+      final DateTime scheduledDate = DateTime(
+        startDate.year,
+        startDate.month,
+        startDate.day + dayFromStart,
+        8,
+        0,
+      );
+
+      // تجاهل المهام اللي فات موعدها
+      if (scheduledDate.isBefore(DateTime.now())) continue;
+
+      try {
+        await _localNotifications.zonedSchedule(
+          baseId + i,
+          '🌱 $title',
+          description,
+          tz.TZDateTime.from(scheduledDate, tz.local),
+          const NotificationDetails(
+            android: AndroidNotificationDetails(
+              'farm_tasks',
+              'مهام المزرعة',
+              channelDescription: 'تذكيرات بمهام المزرعة',
+              importance: Importance.high,
+              priority: Priority.high,
+              icon: '@mipmap/ic_launcher',
+            ),
+            iOS: DarwinNotificationDetails(),
+          ),
+          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+          uiLocalNotificationDateInterpretation:
+              UILocalNotificationDateInterpretation.absoluteTime,
+        );
+        debugPrint("✅ تم جدولة: $title (يوم $dayFromStart)");
+      } catch (e) {
+        debugPrint("❌ فشل جدولة $title: $e");
+      }
+    }
+  }
+
+  // ═══════════════════════════════════════════
+  // ✅ إلغاء إشعارات برنامج معيّن
+  // ═══════════════════════════════════════════
+  static Future<void> cancelProgramNotifications(
+    String programId,
+    int tasksCount,
+  ) async {
+    final int baseId = programId.hashCode.abs() % 100000;
+
+    for (int i = 0; i < tasksCount; i++) {
+      await _localNotifications.cancel(baseId + i);
+    }
+    debugPrint("✅ تم إلغاء $tasksCount إشعار للبرنامج: $programId");
+  }
+
+  // ═══════════════════════════════════════════
+  // إلغاء كل الإشعارات
+  // ═══════════════════════════════════════════
+  static Future<void> cancelAll() async {
+    await _localNotifications.cancelAll();
+    debugPrint("✅ تم إلغاء كل الإشعارات");
+  }
+
+  // ═══════════════════════════════════════════
+  // Firebase Topics
+  // ═══════════════════════════════════════════
   static Future<void> subscribeToPestAlerts() async {
     await FirebaseMessaging.instance.subscribeToTopic('pest_alerts');
     debugPrint("✅ تم الاشتراك في تنبيهات الآفات");
   }
 
-  // إلغاء الاشتراك
   static Future<void> unsubscribeFromPestAlerts() async {
     await FirebaseMessaging.instance.unsubscribeFromTopic('pest_alerts');
     debugPrint("❌ تم إلغاء الاشتراك من تنبيهات الآفات");
   }
 
-  // الحصول على التوكن
   static Future<String?> getToken() async {
     return await FirebaseMessaging.instance.getToken();
   }
