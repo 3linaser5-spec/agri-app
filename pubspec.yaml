@@ -27,9 +27,9 @@ dependencies:
   timezone: any
   flutter_timezone: any
 
-  # ✅ PDF
-  pdf: any
-  printing: any
+  # ✅ PDF - نسخ محددة لدعم العلامة المائية
+  pdf: ^3.11.5
+  printing: ^5.13.0
   path_provider: any
 
   # ✅ أدوات
