@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../models/my_farm_model.dart';
 import '../../services/my_farm_service.dart';
 import '../../services/pdf_service.dart';
+import '../../services/notification_service.dart';
 
 class ProgramDetailsScreen extends StatefulWidget {
   final MyFarmProgram program;
@@ -52,12 +53,13 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
     }
   }
 
+  // ✅ حذف البرنامج + إلغاء الإشعارات
   Future<void> _deleteProgram() async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('حذف البرنامج'),
-        content: const Text('هل أنت متأكد من حذف البرنامج من مزرعتك؟'),
+        content: const Text('هل أنت متأكد من حذف البرنامج من مزرعتك؟\n\n⚠️ سيتم إلغاء كل التذكيرات المرتبطة بيه.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -72,11 +74,24 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
     );
 
     if (confirm == true) {
+      // ✅ 1. إلغاء كل الإشعارات المجدولة للبرنامج
+      try {
+        await NotificationService.cancelProgramNotifications(
+          _program.id,
+          _program.tasks.length,
+        );
+        debugPrint("✅ تم إلغاء إشعارات البرنامج: ${_program.id}");
+      } catch (e) {
+        debugPrint("⚠️ فشل إلغاء الإشعارات: $e");
+      }
+
+      // ✅ 2. حذف البرنامج من Firestore
       final ok = await MyFarmService.deleteProgram(_program.id);
+
       if (ok && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('✅ تم حذف البرنامج'),
+            content: Text('✅ تم حذف البرنامج وإلغاء تذكيراتـه'),
             backgroundColor: Color(0xFF047857),
           ),
         );
