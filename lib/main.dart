@@ -27,6 +27,7 @@ import 'services/notification_service.dart';
 import 'services/calculator_service.dart';
 import 'screens/admin/admin_panel_screen.dart';
 import 'screens/calculators/calculator_hub_screen.dart';
+import 'screens/farm/my_farm_screen.dart';
 import 'utils/validators.dart';
 
 void main() async {
@@ -374,7 +375,6 @@ class ThemeController {
     await prefs.setBool('dark_mode', !isCurrentlyDark);
   }
 }
-
 // ---------------- AgriConsultantApp ----------------
 class AgriConsultantApp extends StatefulWidget {
   const AgriConsultantApp({super.key});
@@ -812,13 +812,15 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     );
   }
 }
-
 // ---------------- HomeDashboard ----------------
 class HomeDashboard extends StatefulWidget {
   final String userName;
   final String userPhone;
-  const HomeDashboard(
-      {super.key, required this.userName, required this.userPhone});
+  const HomeDashboard({
+    super.key,
+    required this.userName,
+    required this.userPhone,
+  });
 
   @override
   State<HomeDashboard> createState() => _HomeDashboardState();
@@ -828,12 +830,14 @@ class _HomeDashboardState extends State<HomeDashboard> {
   String weatherTemp = "--";
   String weatherHumidity = "--";
   String weatherStatusText = "جاري تحديد موقعك وجلب الطقس...";
+  String locationName = "";
   bool isWeatherLoaded = false;
+  bool _refreshing = false;
 
   @override
   void initState() {
     super.initState();
-    _fetchWeatherByLocation();
+    _loadCachedWeather();
   }
 
   bool _isAdmin() {
@@ -841,11 +845,47 @@ class _HomeDashboardState extends State<HomeDashboard> {
     return CalculatorService.isAdmin(email);
   }
 
-  Future<void> _fetchWeatherByLocation() async {
+  Future<void> _loadCachedWeather() async {
+    final prefs = await SharedPreferences.getInstance();
+    final cached = prefs.getString('weather_data');
+    if (cached != null) {
+      try {
+        final data = json.decode(cached) as Map<String, dynamic>;
+        setState(() {
+          weatherTemp = data['temp'] ?? "--";
+          weatherHumidity = data['humidity'] ?? "--";
+          weatherStatusText = data['status'] ?? "";
+          locationName = data['location'] ?? "";
+          isWeatherLoaded = data['loaded'] ?? false;
+        });
+      } catch (_) {}
+    }
+    if (!isWeatherLoaded) {
+      _fetchWeatherByLocation();
+    }
+  }
+
+  Future<void> _saveWeatherCache() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+        'weather_data',
+        json.encode({
+          'temp': weatherTemp,
+          'humidity': weatherHumidity,
+          'status': weatherStatusText,
+          'location': locationName,
+          'loaded': isWeatherLoaded,
+        }));
+  }
+
+  Future<void> _fetchWeatherByLocation({bool manual = false}) async {
+    if (manual) setState(() => _refreshing = true);
+
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
         setState(() => weatherStatusText = "⚠️ برجاء تشغيل GPS في هاتفك");
+        if (manual) setState(() => _refreshing = false);
         return;
       }
 
@@ -855,14 +895,15 @@ class _HomeDashboardState extends State<HomeDashboard> {
         if (permission == LocationPermission.denied) {
           setState(() =>
               weatherStatusText = "برجاء إعطاء صلاحية الموقع لمعرفة الطقس");
+          if (manual) setState(() => _refreshing = false);
           return;
         }
       }
 
       if (permission == LocationPermission.deniedForever) {
-        setState(() =>
-            weatherStatusText =
-                "⚠️ تم رفض صلاحية الموقع نهائياً، برجاء تفعيلها من الإعدادات");
+        setState(() => weatherStatusText =
+            "⚠️ تم رفض صلاحية الموقع نهائياً، برجاء تفعيلها من الإعدادات");
+        if (manual) setState(() => _refreshing = false);
         return;
       }
 
@@ -870,6 +911,23 @@ class _HomeDashboardState extends State<HomeDashboard> {
         desiredAccuracy: LocationAccuracy.best,
         timeLimit: const Duration(seconds: 20),
       );
+
+      String cityName = locationName;
+      try {
+        final geoUrl = Uri.parse(
+            'https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${position.latitude}&longitude=${position.longitude}&localityLanguage=ar');
+        final geoResp =
+            await http.get(geoUrl).timeout(const Duration(seconds: 8));
+        if (geoResp.statusCode == 200) {
+          final geoData = json.decode(geoResp.body);
+          cityName = geoData['city'] ??
+              geoData['locality'] ??
+              geoData['principalSubdivision'] ??
+              "";
+        }
+      } catch (e) {
+        debugPrint("Reverse geocode error: $e");
+      }
 
       final url = Uri.parse(
           'https://api.open-meteo.com/v1/forecast?latitude=${position.latitude}&longitude=${position.longitude}&current=temperature_2m,relative_humidity_2m');
@@ -881,17 +939,208 @@ class _HomeDashboardState extends State<HomeDashboard> {
           weatherTemp = data['current']['temperature_2m'].toString();
           weatherHumidity =
               data['current']['relative_humidity_2m'].toString();
+          locationName = cityName;
           weatherStatusText =
               "درجة الحرارة: $weatherTemp°م | الرطوبة: $weatherHumidity%";
           isWeatherLoaded = true;
         });
+        await _saveWeatherCache();
       } else {
         setState(() => weatherStatusText = "تعذر جلب بيانات الطقس حالياً");
       }
     } catch (e) {
       debugPrint("❌ خطأ في جلب الموقع: $e");
-      setState(() => weatherStatusText = "⚠️ برجاء تشغيل GPS والانتظار قليلاً");
+      if (!isWeatherLoaded) {
+        setState(
+            () => weatherStatusText = "⚠️ برجاء تشغيل GPS والانتظار قليلاً");
+      }
     }
+
+    if (manual) setState(() => _refreshing = false);
+  }
+
+  void _showAllActions() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: SafeArea(
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  margin: const EdgeInsets.symmetric(vertical: 10),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 6, 16, 16),
+                  child: Row(
+                    children: [
+                      Icon(Icons.apps, color: Color(0xFF047857), size: 24),
+                      SizedBox(width: 10),
+                      Text('كل الخدمات',
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 17)),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: GridView.count(
+                    shrinkWrap: true,
+                    crossAxisCount: 3,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                    physics: const NeverScrollableScrollPhysics(),
+                    childAspectRatio: 1.1,
+                    children: [
+                      if (_isAdmin())
+                        _buildActionItem(
+                            icon: Icons.admin_panel_settings,
+                            color: Colors.amber.shade700,
+                            title: 'لوحة الأدمن',
+                            onTap: () {
+                              Navigator.pop(context);
+                              Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                      builder: (_) =>
+                                          const AdminPanelScreen()));
+                            }),
+                      _buildActionItem(
+                          icon: Icons.calculate,
+                          color: const Color(0xFF047857),
+                          title: 'الحاسبات',
+                          onTap: () {
+                            Navigator.pop(context);
+                            Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (_) =>
+                                        const CalculatorHubScreen()));
+                          }),
+                      _buildActionItem(
+                          icon: Icons.agriculture,
+                          color: const Color(0xFF10B981),
+                          title: 'مزرعتي',
+                          onTap: () {
+                            Navigator.pop(context);
+                            Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (_) => const MyFarmScreen()));
+                          }),
+                      _buildActionItem(
+                          icon: Icons.menu_book,
+                          color: const Color(0xFF0EA5E9),
+                          title: 'الموسوعة',
+                          onTap: () {
+                            Navigator.pop(context);
+                            Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (_) =>
+                                        const EncyclopediaScreen()));
+                          }),
+                      _buildActionItem(
+                          icon: Icons.history,
+                          color: const Color(0xFFF59E0B),
+                          title: 'السجل',
+                          onTap: () {
+                            Navigator.pop(context);
+                            Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (_) => const HistoryScreen()));
+                          }),
+                      _buildActionItem(
+                          icon: Icons.bar_chart,
+                          color: const Color(0xFF6366F1),
+                          title: 'إحصائيات',
+                          onTap: () {
+                            Navigator.pop(context);
+                            Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (_) =>
+                                        const StatisticsScreen()));
+                          }),
+                      _buildActionItem(
+                          icon: Icons.chat,
+                          color: const Color(0xFF25D366),
+                          title: 'الدعم الفني',
+                          onTap: () async {
+                            Navigator.pop(context);
+                            final uri =
+                                Uri.parse("https://wa.me/201284172047");
+                            try {
+                              await launchUrl(uri,
+                                  mode: LaunchMode.externalApplication);
+                            } catch (e) {}
+                          }),
+                      _buildActionItem(
+                          icon: Icons.info_outline,
+                          color: const Color(0xFF8B5CF6),
+                          title: 'عن التطبيق',
+                          onTap: () {
+                            Navigator.pop(context);
+                            Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (_) => const AboutScreen()));
+                          }),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActionItem({
+    required IconData icon,
+    required Color color,
+    required String title,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: color.withOpacity(0.2)),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: color, size: 30),
+            const SizedBox(height: 6),
+            Text(title,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 11,
+                    color: color)),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildQuickActionCard({
@@ -902,22 +1151,185 @@ class _HomeDashboardState extends State<HomeDashboard> {
   }) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(14),
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 16),
+        padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 8),
         decoration: BoxDecoration(
           color: Theme.of(context).cardColor,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(color: Colors.grey.shade200),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.grey.shade100,
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
         ),
         child: Column(
           children: [
-            Icon(icon, color: color, size: 32),
-            const SizedBox(height: 8),
+            Container(
+              width: 55,
+              height: 55,
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              alignment: Alignment.center,
+              child: Icon(icon, color: color, size: 30),
+            ),
+            const SizedBox(height: 10),
             Text(title,
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                     fontWeight: FontWeight.bold, fontSize: 13)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTipCard() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Colors.amber.shade50,
+            Colors.orange.shade50,
+          ],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.amber.shade200),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: Colors.amber.shade100,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            alignment: Alignment.center,
+            child: Icon(Icons.lightbulb,
+                color: Colors.amber.shade800, size: 24),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'نصيحة اليوم 💡',
+                  style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                      color: Colors.amber.shade900),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'تجنب رش المبيدات في وقت الظهيرة أو عند ارتفاع درجات الحرارة لتفادي احتراق الأوراق، وأفضل وقت للرش هو الصباح الباكر أو بعد كسر حدة الشمس عصراً.',
+                  style: TextStyle(
+                      fontSize: 12, height: 1.6, color: Colors.black87),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWeatherCard() {
+    return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      color: const Color(0xFFECFDF5),
+      elevation: 0,
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Expanded(
+                  child: Text('حالة الطقس في موقعك',
+                      style:
+                          TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                ),
+                if (locationName.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                          color: const Color(0xFF047857).withOpacity(0.3)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.location_on,
+                            size: 12, color: Color(0xFF047857)),
+                        const SizedBox(width: 3),
+                        Text(locationName,
+                            style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF047857))),
+                      ],
+                    ),
+                  ),
+                const SizedBox(width: 4),
+                _refreshing
+                    ? const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Color(0xFF047857),
+                        ),
+                      )
+                    : IconButton(
+                        icon: const Icon(Icons.refresh,
+                            size: 22, color: Color(0xFF047857)),
+                        onPressed: () =>
+                            _fetchWeatherByLocation(manual: true),
+                        tooltip: 'تحديث الموقع والطقس',
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                const SizedBox(width: 8),
+                const Icon(Icons.wb_sunny, color: Colors.orange, size: 28),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(weatherStatusText,
+                style: const TextStyle(
+                    color: Colors.black87, fontWeight: FontWeight.bold)),
+            const Divider(height: 20),
+            Row(
+              children: [
+                const Icon(Icons.water_drop, color: Colors.blue, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    isWeatherLoaded
+                        ? (double.parse(weatherTemp) > 30
+                            ? 'توصية الري: الطقس حار، يفضل الري في الصباح الباكر أو ليلاً لتجنب تبخر المياه.'
+                            : 'توصية الري: اعتدال الطقس مناسب للري، يرجى مراقبة رطوبة التربة.')
+                        : 'جاري تحليل التوصية...',
+                    style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF047857)),
+                  ),
+                ),
+              ],
+            ),
           ],
         ),
       ),
@@ -983,63 +1395,10 @@ class _HomeDashboardState extends State<HomeDashboard> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            Card(
-              shape:
-                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              color: const Color(0xFFECFDF5),
-              elevation: 0,
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text('حالة الطقس في موقعك',
-                            style: TextStyle(
-                                fontWeight: FontWeight.bold, fontSize: 16)),
-                        Icon(Icons.wb_sunny, color: Colors.orange, size: 28),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Text(weatherStatusText,
-                        style: const TextStyle(
-                            color: Colors.black87,
-                            fontWeight: FontWeight.bold)),
-                    const Divider(height: 20),
-                    Row(
-                      children: [
-                        const Icon(Icons.water_drop,
-                            color: Colors.blue, size: 20),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            isWeatherLoaded
-                                ? (double.parse(weatherTemp) > 30
-                                    ? 'توصية الري: الطقس حار، يفضل الري في الصباح الباكر أو ليلاً لتجنب تبخر المياه.'
-                                    : 'توصية الري: اعتدال الطقس مناسب للري، يرجى مراقبة رطوبة التربة.')
-                                : 'جاري تحليل التوصية...',
-                            style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF047857)),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-            const Text('الوصول السريع',
-                style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                    color: Color(0xFF047857))),
-            const SizedBox(height: 12),
-            // صف 1: الحاسبات الزراعية + الموسوعة
+            _buildWeatherCard(),
+            const SizedBox(height: 16),
+            _buildTipCard(),
+            const SizedBox(height: 20),
             Row(
               children: [
                 Expanded(
@@ -1058,6 +1417,23 @@ class _HomeDashboardState extends State<HomeDashboard> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: _buildQuickActionCard(
+                      icon: Icons.agriculture,
+                      color: const Color(0xFF10B981),
+                      title: 'مزرعتي',
+                      onTap: () {
+                        Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (context) => const MyFarmScreen()));
+                      }),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildQuickActionCard(
                       icon: Icons.menu_book,
                       color: const Color(0xFF0EA5E9),
                       title: 'الموسوعة',
@@ -1069,106 +1445,15 @@ class _HomeDashboardState extends State<HomeDashboard> {
                                     const EncyclopediaScreen()));
                       }),
                 ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            // صف 2: سجل التشخيصات + إحصائيات
-            Row(
-              children: [
-                Expanded(
-                  child: _buildQuickActionCard(
-                      icon: Icons.history,
-                      color: const Color(0xFFF59E0B),
-                      title: 'سجل التشخيصات',
-                      onTap: () {
-                        Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (context) => const HistoryScreen()));
-                      }),
-                ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: _buildQuickActionCard(
-                      icon: Icons.bar_chart,
+                      icon: Icons.apps,
                       color: const Color(0xFF6366F1),
-                      title: 'إحصائيات',
-                      onTap: () {
-                        Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (context) =>
-                                    const StatisticsScreen()));
-                      }),
+                      title: 'كل الخدمات',
+                      onTap: _showAllActions),
                 ),
               ],
-            ),
-            const SizedBox(height: 12),
-            // صف 3: الدعم الفني + عن التطبيق
-            Row(
-              children: [
-                Expanded(
-                  child: _buildQuickActionCard(
-                      icon: Icons.chat,
-                      color: const Color(0xFF25D366),
-                      title: 'الدعم الفني',
-                      onTap: () async {
-                        final uri = Uri.parse("https://wa.me/201284172047");
-                        try {
-                          await launchUrl(uri,
-                              mode: LaunchMode.externalApplication);
-                        } catch (e) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                  content:
-                                      Text('حدث خطأ أثناء فتح الواتساب')));
-                        }
-                      }),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _buildQuickActionCard(
-                      icon: Icons.info_outline,
-                      color: const Color(0xFF8B5CF6),
-                      title: 'عن التطبيق',
-                      onTap: () {
-                        Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (context) => const AboutScreen()));
-                      }),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            const Text('نصيحة اليوم 💡',
-                style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                    color: Color(0xFF047857))),
-            const SizedBox(height: 12),
-            Card(
-              shape:
-                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              color: Colors.amber[50],
-              elevation: 0,
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(Icons.eco, color: Colors.amber[800], size: 28),
-                    const SizedBox(width: 12),
-                    const Expanded(
-                      child: Text(
-                        'تجنب رش المبيدات في وقت الظهيرة أو عند ارتفاع درجات الحرارة لتفادي احتراق الأوراق، وأفضل وقت للرش هو الصباح الباكر أو بعد كسر حدة الشمس عصراً.',
-                        style: TextStyle(
-                            fontSize: 13, height: 1.6, color: Colors.black87),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
             ),
           ],
         ),
@@ -1176,7 +1461,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
     );
   }
 }
-
 // ---------------- AiScannerScreen ----------------
 class AiScannerScreen extends StatefulWidget {
   final String userName;
@@ -1836,7 +2120,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 }
-
 // ---------------- ProfileScreen ----------------
 class ProfileScreen extends StatefulWidget {
   final String userName;
@@ -2433,7 +2716,6 @@ class ArticlesTab extends StatelessWidget {
     );
   }
 }
-
 // ---------------- StatisticsScreen ----------------
 class StatisticsScreen extends StatefulWidget {
   const StatisticsScreen({super.key});
