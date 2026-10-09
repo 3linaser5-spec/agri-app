@@ -27,9 +27,9 @@ dependencies:
   timezone: any
   flutter_timezone: any
 
-  # ✅ PDF - نسخ محددة لدعم العلامة المائية
-  pdf: ^3.11.5
-  printing: ^5.13.0
+  # ✅ PDF
+  pdf: any
+  printing: any
   path_provider: any
 
   # ✅ أدوات
@@ -53,6 +53,7 @@ flutter:
   assets:
     - assets/icon/
     - assets/fonts/
+    - assets/images/
   
   # ✅ الخط العربي للـ PDF
   fonts:
