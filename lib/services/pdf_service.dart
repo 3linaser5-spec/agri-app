@@ -22,6 +22,17 @@ class PdfService {
     final arabicFont = pw.Font.ttf(regularData);
     final arabicBold = pw.Font.ttf(boldData);
 
+    // ✅ تحميل صورة العلامة المائية
+    pw.MemoryImage? watermarkImage;
+    try {
+      final watermarkData =
+          await rootBundle.load('assets/images/watermark.png');
+      watermarkImage = pw.MemoryImage(watermarkData.buffer.asUint8List());
+    } catch (e) {
+      // لو الصورة مش موجودة، نكمل بدون علامة مائية
+      watermarkImage = null;
+    }
+
     final theme = pw.ThemeData.withFont(
       base: arabicFont,
       bold: arabicBold,
@@ -31,26 +42,24 @@ class PdfService {
 
     final pdf = pw.Document(theme: theme);
 
-    // ✅ دالة العلامة المائية
+    // ✅ دالة العلامة المائية (تُستخدم في كل صفحة عن طريق Stack)
     pw.Widget buildWatermark() {
-      return pw.FullPage(
-        ignoreMargins: true,
-        child: pw.Center(
-          child: pw.Transform.rotate(
-            angle: -0.6,
+      if (watermarkImage == null) return pw.SizedBox();
+      return pw.Stack(
+        children: [
+          pw.Positioned(
+            top: 250,
+            left: 100,
             child: pw.Opacity(
               opacity: 0.08,
-              child: pw.Text(
-                'نباتي',
-                style: pw.TextStyle(
-                  font: arabicBold,
-                  fontSize: 150,
-                  color: PdfColor.fromInt(0xFF047857),
-                ),
+              child: pw.Image(
+                watermarkImage!,
+                width: 400,
+                height: 400,
               ),
             ),
           ),
-        ),
+        ],
       );
     }
 
@@ -86,10 +95,7 @@ class PdfService {
         margin: const pw.EdgeInsets.fromLTRB(20, 30, 20, 40),
         theme: theme,
 
-        // ✅ العلامة المائية على كل صفحة
-        buildBackground: (pw.Context context) => buildWatermark(),
-
-        // ✅ الترويسة
+        // ✅ الترويسة (Header)
         header: (pw.Context context) => pw.Container(
           alignment: pw.Alignment.centerRight,
           margin: const pw.EdgeInsets.only(bottom: 8),
@@ -99,30 +105,33 @@ class PdfService {
               bottom: pw.BorderSide(color: PdfColors.grey400, width: 0.5),
             ),
           ),
-          child: pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-            children: [
-              pw.Text(
-                'نباتي - مستشارك الزراعي الذكي',
-                style: pw.TextStyle(
-                  font: arabicFont,
-                  fontSize: 9,
-                  color: PdfColors.grey600,
+          child: pw.Directionality(
+            textDirection: pw.TextDirection.rtl,
+            child: pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text(
+                  'نباتي - مستشارك الزراعي الذكي',
+                  style: pw.TextStyle(
+                    font: arabicFont,
+                    fontSize: 9,
+                    color: PdfColors.grey600,
+                  ),
                 ),
-              ),
-              pw.Text(
-                _formatDate(DateTime.now()),
-                style: pw.TextStyle(
-                  font: arabicFont,
-                  fontSize: 9,
-                  color: PdfColors.grey600,
+                pw.Text(
+                  _formatDate(DateTime.now()),
+                  style: pw.TextStyle(
+                    font: arabicFont,
+                    fontSize: 9,
+                    color: PdfColors.grey600,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
 
-        // ✅ التذييل
+        // ✅ التذييل (Footer)
         footer: (pw.Context context) => pw.Container(
           alignment: pw.Alignment.center,
           margin: const pw.EdgeInsets.only(top: 8),
@@ -132,30 +141,57 @@ class PdfService {
               top: pw.BorderSide(color: PdfColors.grey400, width: 0.5),
             ),
           ),
-          child: pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-            children: [
-              pw.Text(
-                '© 2025 نباتي - جميع الحقوق محفوظة',
-                style: pw.TextStyle(
-                  font: arabicFont,
-                  fontSize: 8,
-                  color: PdfColors.grey600,
+          child: pw.Directionality(
+            textDirection: pw.TextDirection.rtl,
+            child: pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text(
+                  '© 2025 نباتي - جميع الحقوق محفوظة',
+                  style: pw.TextStyle(
+                    font: arabicFont,
+                    fontSize: 8,
+                    color: PdfColors.grey600,
+                  ),
                 ),
-              ),
-              pw.Text(
-                'صفحة ${context.pageNumber} من ${context.pagesCount}',
-                style: pw.TextStyle(
-                  font: arabicFont,
-                  fontSize: 8,
-                  color: PdfColors.grey600,
+                pw.Text(
+                  'صفحة ${context.pageNumber} من ${context.pagesCount}',
+                  style: pw.TextStyle(
+                    font: arabicFont,
+                    fontSize: 8,
+                    color: PdfColors.grey600,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
 
         build: (pw.Context context) => [
+          // ═══════════════════════════════════════
+          // ✅ العلامة المائية (في محتوى كل صفحة)
+          // ═══════════════════════════════════════
+          if (watermarkImage != null)
+            pw.Container(
+              height: 0,
+              child: pw.Transform.translate(
+                offset: const PdfPoint(0, -200),
+                child: pw.Opacity(
+                  opacity: 0.06,
+                  child: pw.Center(
+                    child: pw.Transform.rotate(
+                      angle: -0.5,
+                      child: pw.Image(
+                        watermarkImage!,
+                        width: 350,
+                        height: 350,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
           // ============ Header شعار نباتي ============
           pw.Container(
             padding: const pw.EdgeInsets.all(12),
@@ -580,7 +616,6 @@ class PdfService {
       child: pw.Row(
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
-          // ✅ العنوان أولاً (هيظهر على اليمين)
           pw.Text(
             label,
             style: pw.TextStyle(
@@ -588,7 +623,6 @@ class PdfService {
               fontSize: 11,
             ),
           ),
-          // ✅ القيمة ثانيًا (هتظهر على الشمال)
           pw.Text(
             value,
             style: pw.TextStyle(
