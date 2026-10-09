@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../../models/calculator_models.dart';
 import '../../models/my_farm_model.dart';
 import '../../services/my_farm_service.dart';
+import '../../services/pdf_service.dart';
 
 class CalculatorResultScreen extends StatefulWidget {
   final CalculatorTemplate template;
@@ -53,6 +54,59 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
     return total;
   }
 
+  // ✅ تحميل PDF
+  Future<void> _downloadPdf() async {
+    try {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('⏳ جاري تجهيز ملف PDF...'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+
+      await PdfService.generateAndSharePdf(
+        programTitle: widget.template.name,
+        programEmoji: widget.template.emoji,
+        governorate: _inputValues['governorate'] ?? 'غير محدد',
+        sectionName: widget.template.name,
+        inputValues: _inputValues,
+        tasks: widget.template.tasks
+            .map((t) => {
+                  'title': t.title,
+                  'description': t.description,
+                  'day_from_start': t.dayFromStart,
+                  'category': t.category,
+                })
+            .toList(),
+        materials: widget.template.materials
+            .map((m) => {
+                  'name': m.name,
+                  'category': m.category,
+                  'quantity_per_unit': m.quantityPerUnit,
+                  'unit': m.unit,
+                  'price_per_unit': m.estimatedPricePerUnit,
+                })
+            .toList(),
+        financial: {
+          'expected_yield': widget.template.financial.expectedYieldPerUnit,
+          'yield_unit': widget.template.financial.yieldUnit,
+          'expected_price':
+              widget.template.financial.expectedPricePerYieldUnit,
+        },
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ فشل إنشاء PDF: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // ✅ حفظ في مزرعتي
   Future<void> _saveToMyFarm() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
@@ -156,6 +210,11 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
           iconTheme: const IconThemeData(color: Colors.white),
           actions: [
             IconButton(
+              icon: const Icon(Icons.picture_as_pdf, color: Colors.white),
+              tooltip: 'تحميل PDF',
+              onPressed: _downloadPdf,
+            ),
+            IconButton(
               icon: Icon(
                 _saved ? Icons.check_circle : Icons.save,
                 color: Colors.white,
@@ -199,7 +258,6 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
                     ],
                   ),
                 ),
-
               Expanded(
                 child: TabBarView(
                   children: [
@@ -209,7 +267,6 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
                   ],
                 ),
               ),
-
               if (!_saved)
                 Container(
                   padding: const EdgeInsets.all(12),
@@ -409,7 +466,6 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
           ),
         ),
         const SizedBox(height: 16),
-
         ...grouped.entries.map((entry) {
           return Card(
             margin: const EdgeInsets.only(bottom: 12),
@@ -464,7 +520,6 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
             ),
           );
         }),
-
         const SizedBox(height: 8),
         Container(
           padding: const EdgeInsets.all(16),
@@ -558,7 +613,6 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
           ],
         ),
         const SizedBox(height: 12),
-
         Card(
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -582,7 +636,6 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
           ),
         ),
         const SizedBox(height: 16),
-
         if (financial.costDistribution.isNotEmpty) ...[
           const Text('📊 توزيع التكاليف',
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
