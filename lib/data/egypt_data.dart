@@ -144,12 +144,10 @@ class EgyptData {
     'sinai_oases': ['شمال سيناء', 'جنوب سيناء', 'البحر الأحمر', 'الوادي الجديد'],
   };
 
-  // كل المحافظات (قائمة مسطحة)
   static List<String> get allGovernorates {
     return governorates.map((g) => g.name).toList();
   }
 
-  // إيجاد المحافظة بالاسم
   static GovernorateInfo? getGovernorateInfo(String name) {
     try {
       return governorates.firstWhere((g) => g.name == name);
@@ -158,7 +156,6 @@ class EgyptData {
     }
   }
 
-  // إيجاد المنطقة من اسم المحافظة
   static String? getZoneByGovernorate(String governorate) {
     for (var entry in governoratesByZone.entries) {
       if (entry.value.contains(governorate)) {
@@ -168,7 +165,6 @@ class EgyptData {
     return null;
   }
 
-  // تفاصيل المنطقة
   static ClimateZone? getZoneDetails(String zoneId) {
     try {
       return climateZones.firstWhere((z) => z.id == zoneId);
