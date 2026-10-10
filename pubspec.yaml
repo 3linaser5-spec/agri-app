@@ -27,9 +27,10 @@ dependencies:
   timezone: any
   flutter_timezone: any
 
-  # ✅ PDF - Syncfusion لدعم عربي ممتاز
-  syncfusion_flutter_pdf: ^26.2.14
+  # ✅ PDF - flutter_pdf_export
+  flutter_pdf_export: ^1.0.0
   path_provider: any
+  share_plus: any
 
   # ✅ أدوات
   shared_preferences: any
