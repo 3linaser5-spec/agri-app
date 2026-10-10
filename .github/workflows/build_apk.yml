@@ -139,7 +139,6 @@ jobs:
           android {
               namespace "com.dahshory.agri.agri_app"
               compileSdk 34
-              compileSdkVersion 34
 
               compileOptions {
                   sourceCompatibility JavaVersion.VERSION_1_8
@@ -213,7 +212,7 @@ jobs:
       - name: Add Missing Packages Automatically
         run: |
           flutter pub add cloud_firestore google_generative_ai flutter_tts url_launcher firebase_core image_picker http firebase_auth firebase_app_check 'connectivity_plus:^6.0.3' sqflite path firebase_messaging flutter_local_notifications share_plus shared_preferences package_info_plus dio open_filex permission_handler path_provider pdf printing timezone flutter_timezone intl
-          flutter pub add 'geolocator:^13.0.1'
+          flutter pub add location
           sed -i '1i import "package:cloud_firestore/cloud_firestore.dart";' lib/main.dart
           sed -i '1i import "package:firebase_core/firebase_core.dart";' lib/main.dart
           sed -i '1i import "package:firebase_app_check/firebase_app_check.dart";' lib/main.dart
