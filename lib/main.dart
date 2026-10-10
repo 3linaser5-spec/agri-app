@@ -10,7 +10,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:location/location.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -1071,29 +1071,22 @@ class _HomeDashboardState extends State<HomeDashboard> {
     return '${lat.toStringAsFixed(2)}, ${lon.toStringAsFixed(2)}';
   }
 
-  // ✅ تحديث دالة الموقع باستخدام location
+  // ✅ تحديث الموقع (بـ geolocator الأصلي)
   Future<void> _fetchWeatherByLocation({bool manual = false}) async {
     if (manual) setState(() => _refreshing = true);
 
     try {
-      final location = Location();
-
-      // ✅ التأكد من تشغيل خدمة الموقع
-      bool serviceEnabled = await location.serviceEnabled();
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        serviceEnabled = await location.requestService();
-        if (!serviceEnabled) {
-          setState(() => weatherStatusText = "⚠️ برجاء تشغيل GPS في هاتفك");
-          if (manual) setState(() => _refreshing = false);
-          return;
-        }
+        setState(() => weatherStatusText = "⚠️ برجاء تشغيل GPS في هاتفك");
+        if (manual) setState(() => _refreshing = false);
+        return;
       }
 
-      // ✅ التحقق من الصلاحيات
-      PermissionStatus permission = await location.hasPermission();
-      if (permission == PermissionStatus.denied) {
-        permission = await location.requestPermission();
-        if (permission != PermissionStatus.granted) {
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
           setState(() =>
               weatherStatusText = "برجاء إعطاء صلاحية الموقع لمعرفة الطقس");
           if (manual) setState(() => _refreshing = false);
@@ -1101,25 +1094,21 @@ class _HomeDashboardState extends State<HomeDashboard> {
         }
       }
 
-      if (permission == PermissionStatus.deniedForever) {
+      if (permission == LocationPermission.deniedForever) {
         setState(() => weatherStatusText =
             "⚠️ تم رفض صلاحية الموقع نهائياً، برجاء تفعيلها من الإعدادات");
         if (manual) setState(() => _refreshing = false);
         return;
       }
 
-      // ✅ الحصول على الموقع الحالي
-      LocationData position = await location.getLocation();
-
-      if (position.latitude == null || position.longitude == null) {
-        setState(() => weatherStatusText = "⚠️ تعذر تحديد الموقع");
-        if (manual) setState(() => _refreshing = false);
-        return;
-      }
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.best,
+        timeLimit: const Duration(seconds: 20),
+      );
 
       String cityName = await _getCityName(
-        position.latitude!,
-        position.longitude!,
+        position.latitude,
+        position.longitude,
         fallback: locationName,
       );
 
