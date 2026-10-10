@@ -1712,7 +1712,7 @@ $_diagnosis
 
         // ✅ الموديل الجديد + إعدادات التقرير الكامل
         final model = GenerativeModel(
-          model: 'gemini-2.0-flash',
+          model: 'gemini-3.8-flash',
           apiKey: _apiKey,
           generationConfig: GenerationConfig(
             temperature: 0.3,
