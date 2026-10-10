@@ -17,7 +17,7 @@ dependencies:
   google_generative_ai: any
   http: any
   image_picker: any
-  geolocator: any
+  location: ^5.0.3
   url_launcher: any
   flutter_tts: any
 
@@ -54,6 +54,7 @@ flutter:
     - assets/icon/
     - assets/fonts/
     - assets/images/
+    - assets/data/
   
   # ✅ الخط العربي للـ PDF
   fonts:
@@ -62,6 +63,8 @@ flutter:
         - asset: assets/fonts/Cairo-Regular.ttf
         - asset: assets/fonts/Cairo-Bold.ttf
           weight: 700
+
+# ✅ تجاوز نسخة geolocator_android
 dependency_overrides:
   geolocator_android:
     git:
