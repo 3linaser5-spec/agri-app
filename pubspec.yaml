@@ -17,7 +17,7 @@ dependencies:
   google_generative_ai: any
   http: any
   image_picker: any
-  location: ^5.0.3
+  geolocator: any
   url_launcher: any
   flutter_tts: any
 
@@ -63,11 +63,3 @@ flutter:
         - asset: assets/fonts/Cairo-Regular.ttf
         - asset: assets/fonts/Cairo-Bold.ttf
           weight: 700
-
-# ✅ تجاوز نسخة geolocator_android
-dependency_overrides:
-  geolocator_android:
-    git:
-      url: https://github.com/Baseflow/flutter-geolocator.git
-      path: geolocator_android
-      ref: main
