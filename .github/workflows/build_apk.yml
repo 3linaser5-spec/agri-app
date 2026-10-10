@@ -22,7 +22,7 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.24.5'
+          flutter-version: '3.19.6'
           channel: 'stable'
 
       - name: Setup Android Project and Permissions
@@ -35,8 +35,6 @@ jobs:
           
           rm -f android/build.gradle
           rm -f android/settings.gradle
-          rm -f pubspec.lock
-          rm -rf .dart_tool
           
           sed -i 's/<application/<uses-permission android:name="android.permission.INTERNET"\/>\n    <uses-permission android:name="android.permission.CAMERA"\/>\n    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"\/>\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"\/>\n    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"\/>\n    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"\/>\n    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"\/>\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"\/>\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"\/>\n    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"\/>\n    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"\/>\n    <uses-permission android:name="android.permission.USE_EXACT_ALARM"\/>\n    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"\/>\n    <uses-permission android:name="android.permission.VIBRATE"\/>\n    <application/' android/app/src/main/AndroidManifest.xml
           
@@ -67,9 +65,9 @@ jobs:
           }
           plugins {
               id "dev.flutter.flutter-plugin-loader" version "1.0.0"
-              id "com.android.application" version "8.1.0" apply false
+              id "com.android.application" version "7.3.0" apply false
               id "org.jetbrains.kotlin.android" version "1.9.24" apply false
-              id "com.google.gms.google-services" version "4.4.2" apply false
+              id "com.google.gms.google-services" version "4.3.15" apply false
           }
           include ":app"
           EOF
@@ -82,7 +80,7 @@ jobs:
                   mavenCentral()
               }
               dependencies {
-                  classpath 'com.google.gms:google-services:4.4.2'
+                  classpath 'com.google.gms:google-services:4.3.15'
               }
           }
           allprojects {
@@ -213,8 +211,7 @@ jobs:
 
       - name: Add Missing Packages Automatically
         run: |
-          flutter pub add cloud_firestore google_generative_ai flutter_tts url_launcher firebase_core image_picker http firebase_auth firebase_app_check 'connectivity_plus:^6.0.3' sqflite path firebase_messaging flutter_local_notifications share_plus shared_preferences package_info_plus dio open_filex permission_handler path_provider pdf printing timezone flutter_timezone intl
-          flutter pub add location
+          flutter pub add cloud_firestore google_generative_ai flutter_tts url_launcher firebase_core image_picker geolocator http firebase_auth firebase_app_check 'connectivity_plus:^6.0.3' sqflite path firebase_messaging flutter_local_notifications share_plus shared_preferences package_info_plus dio open_filex permission_handler path_provider pdf printing timezone flutter_timezone intl
           sed -i '1i import "package:cloud_firestore/cloud_firestore.dart";' lib/main.dart
           sed -i '1i import "package:firebase_core/firebase_core.dart";' lib/main.dart
           sed -i '1i import "package:firebase_app_check/firebase_app_check.dart";' lib/main.dart
