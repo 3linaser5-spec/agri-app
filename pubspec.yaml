@@ -62,3 +62,9 @@ flutter:
         - asset: assets/fonts/Cairo-Regular.ttf
         - asset: assets/fonts/Cairo-Bold.ttf
           weight: 700
+dependency_overrides:
+  geolocator_android:
+    git:
+      url: https://github.com/Baseflow/flutter-geolocator.git
+      path: geolocator_android
+      ref: main
