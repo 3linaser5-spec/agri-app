@@ -1,8 +1,9 @@
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/services.dart' show rootBundle;
-import 'package:pdf/pdf.dart';
-import 'package:pdf/widgets.dart' as pw;
-import 'package:printing/printing.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:syncfusion_flutter_pdf/pdf.dart';
 
 class PdfService {
   static Future<void> generateAndSharePdf({
@@ -15,33 +16,32 @@ class PdfService {
     required List<Map<String, dynamic>> materials,
     required Map<String, dynamic> financial,
   }) async {
+    // ✅ إنشاء مستند PDF جديد
+    final PdfDocument document = PdfDocument();
+
     // ✅ تحميل الخط العربي
     final regularData =
         await rootBundle.load('assets/fonts/Cairo-Regular.ttf');
     final boldData = await rootBundle.load('assets/fonts/Cairo-Bold.ttf');
-    final arabicFont = pw.Font.ttf(regularData);
-    final arabicBold = pw.Font.ttf(boldData);
 
-    // ✅ تحميل العلامة المائية
-    pw.MemoryImage? watermarkImage;
-    try {
-      final watermarkData =
-          await rootBundle.load('assets/images/watermark.png');
-      watermarkImage = pw.MemoryImage(watermarkData.buffer.asUint8List());
-    } catch (e) {
-      watermarkImage = null;
-    }
-
-    final theme = pw.ThemeData.withFont(
-      base: arabicFont,
-      bold: arabicBold,
-      italic: arabicFont,
-      boldItalic: arabicBold,
+    final regularFont = PdfTrueTypeFont(
+      regularData.buffer.asUint8List(),
+      12,
+    );
+    final boldFont = PdfTrueTypeFont(
+      boldData.buffer.asUint8List(),
+      14,
+    );
+    final titleFont = PdfTrueTypeFont(
+      boldData.buffer.asUint8List(),
+      18,
+    );
+    final smallFont = PdfTrueTypeFont(
+      regularData.buffer.asUint8List(),
+      9,
     );
 
-    final pdf = pw.Document(theme: theme);
-
-    // حساب القيم
+    // ✅ حساب القيم
     double areaMultiplier = 1.0;
     final area = inputValues['area'];
     if (area is num) areaMultiplier = area.toDouble();
@@ -66,531 +66,383 @@ class PdfService {
     sortedTasks.sort((a, b) => (a['day_from_start'] as int? ?? 0)
         .compareTo(b['day_from_start'] as int? ?? 0));
 
-    pdf.addPage(
-      pw.MultiPage(
-        pageFormat: PdfPageFormat.a4,
-        textDirection: pw.TextDirection.rtl,
-        margin: const pw.EdgeInsets.fromLTRB(20, 30, 20, 40),
-        theme: theme,
+    // ✅ حجم الصفحة A4
+    final PdfPageSettings pageSettings = PdfPageSettings()
+      ..size = PdfPageSize.a4
+      ..margins.all = 40;
 
-        // ✅ الترويسة (Header) — مع شعار صغير
-        header: (pw.Context context) => pw.Container(
-          margin: const pw.EdgeInsets.only(bottom: 8),
-          padding: const pw.EdgeInsets.only(bottom: 4),
-          decoration: const pw.BoxDecoration(
-            border: pw.Border(
-              bottom: pw.BorderSide(color: PdfColors.grey400, width: 0.5),
-            ),
-          ),
-          child: pw.Directionality(
-            textDirection: pw.TextDirection.rtl,
-            child: pw.Row(
-              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-              crossAxisAlignment: pw.CrossAxisAlignment.center,
-              children: [
-                if (watermarkImage != null)
-                  pw.Image(watermarkImage, width: 25, height: 25)
-                else
-                  pw.SizedBox(width: 25),
-                pw.Text(
-                  'نباتي - مستشارك الزراعي الذكي',
-                  style: pw.TextStyle(
-                    font: arabicFont,
-                    fontSize: 9,
-                    color: PdfColors.grey600,
-                  ),
-                ),
-                pw.Text(
-                  _formatDate(DateTime.now()),
-                  style: pw.TextStyle(
-                    font: arabicFont,
-                    fontSize: 9,
-                    color: PdfColors.grey600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
+    // ✅ إنشاء صفحة أولى
+    PdfPage page = document.pages.add();
+    PdfGraphics graphics = page.graphics;
 
-        // ✅ التذييل
-        footer: (pw.Context context) => pw.Container(
-          alignment: pw.Alignment.center,
-          margin: const pw.EdgeInsets.only(top: 8),
-          padding: const pw.EdgeInsets.only(top: 4),
-          decoration: const pw.BoxDecoration(
-            border: pw.Border(
-              top: pw.BorderSide(color: PdfColors.grey400, width: 0.5),
-            ),
-          ),
-          child: pw.Directionality(
-            textDirection: pw.TextDirection.rtl,
-            child: pw.Row(
-              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-              children: [
-                pw.Text(
-                  'جميع الحقوق محفوظة - نباتي 2025',
-                  style: pw.TextStyle(
-                    font: arabicFont,
-                    fontSize: 8,
-                    color: PdfColors.grey600,
-                  ),
-                ),
-                pw.Text(
-                  'صفحة ${context.pageNumber} من ${context.pagesCount}',
-                  style: pw.TextStyle(
-                    font: arabicFont,
-                    fontSize: 8,
-                    color: PdfColors.grey600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-
-        build: (pw.Context context) => [
-          // ============ Header شعار نباتي ============
-          pw.Container(
-            padding: const pw.EdgeInsets.all(12),
-            decoration: pw.BoxDecoration(
-              color: PdfColor.fromInt(0xFF047857),
-              borderRadius: pw.BorderRadius.circular(8),
-            ),
-            child: pw.Row(
-              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-              children: [
-                pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Text(
-                      'نباتي',
-                      style: pw.TextStyle(
-                        font: arabicBold,
-                        fontSize: 24,
-                        color: PdfColors.white,
-                      ),
-                    ),
-                    pw.SizedBox(height: 2),
-                    pw.Text(
-                      'مستشارك الزراعي الذكي',
-                      style: pw.TextStyle(
-                        font: arabicFont,
-                        fontSize: 11,
-                        color: PdfColors.white,
-                      ),
-                    ),
-                  ],
-                ),
-                pw.Text(
-                  programEmoji,
-                  style: pw.TextStyle(
-                    font: arabicFont,
-                    fontSize: 36,
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          pw.SizedBox(height: 16),
-
-          // ============ عنوان البرنامج ============
-          pw.Container(
-            padding: const pw.EdgeInsets.all(10),
-            decoration: pw.BoxDecoration(
-              color: PdfColor.fromInt(0xFFECFDF5),
-              borderRadius: pw.BorderRadius.circular(6),
-            ),
-            child: pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Text(
-                  'برنامج $programTitle',
-                  style: pw.TextStyle(
-                    font: arabicBold,
-                    fontSize: 18,
-                    color: PdfColor.fromInt(0xFF047857),
-                  ),
-                ),
-                pw.SizedBox(height: 6),
-                pw.Text(
-                  'المحافظة - $governorate',
-                  style: pw.TextStyle(font: arabicFont, fontSize: 12),
-                ),
-                pw.Text(
-                  'القسم - $sectionName',
-                  style: pw.TextStyle(font: arabicFont, fontSize: 12),
-                ),
-                pw.Text(
-                  'المساحة - ${areaMultiplier.toStringAsFixed(2)} فدان',
-                  style: pw.TextStyle(font: arabicFont, fontSize: 12),
-                ),
-                pw.Text(
-                  'تاريخ الإصدار - ${_formatDate(DateTime.now())}',
-                  style: pw.TextStyle(font: arabicFont, fontSize: 11),
-                ),
-              ],
-            ),
-          ),
-
-          pw.SizedBox(height: 16),
-
-          // ============ الجدول الزمني ============
-          if (sortedTasks.isNotEmpty) ...[
-            _buildSectionTitle('الجدول الزمني', arabicBold),
-            pw.SizedBox(height: 8),
-            pw.Table(
-              border: pw.TableBorder.all(
-                color: PdfColors.grey300,
-                width: 0.5,
-              ),
-              columnWidths: {
-                0: const pw.FixedColumnWidth(45),
-                1: const pw.FlexColumnWidth(2),
-                2: const pw.FlexColumnWidth(3),
-              },
-              children: [
-                pw.TableRow(
-                  decoration:
-                      pw.BoxDecoration(color: PdfColor.fromInt(0xFF047857)),
-                  children: [
-                    _buildHeaderCell('اليوم', arabicBold),
-                    _buildHeaderCell('المهمة', arabicBold),
-                    _buildHeaderCell('التفاصيل', arabicBold),
-                  ],
-                ),
-                ...sortedTasks.map((task) {
-                  return pw.TableRow(
-                    children: [
-                      _buildDataCell(
-                        '${task['day_from_start'] ?? 0}',
-                        arabicFont,
-                        center: true,
-                      ),
-                      _buildDataCell(
-                          '${task['title'] ?? ''}', arabicFont),
-                      _buildDataCell(
-                          '${task['description'] ?? ''}', arabicFont),
-                    ],
-                  );
-                }),
-              ],
-            ),
-            pw.SizedBox(height: 16),
-          ],
-
-          // ============ المشتريات ============
-          if (materials.isNotEmpty) ...[
-            _buildSectionTitle('قائمة المشتريات', arabicBold),
-            pw.SizedBox(height: 8),
-            pw.Table(
-              border: pw.TableBorder.all(
-                color: PdfColors.grey300,
-                width: 0.5,
-              ),
-              columnWidths: {
-                0: const pw.FlexColumnWidth(3),
-                1: const pw.FixedColumnWidth(60),
-                2: const pw.FixedColumnWidth(70),
-                3: const pw.FixedColumnWidth(80),
-              },
-              children: [
-                pw.TableRow(
-                  decoration:
-                      pw.BoxDecoration(color: PdfColor.fromInt(0xFF047857)),
-                  children: [
-                    _buildHeaderCell('المادة', arabicBold),
-                    _buildHeaderCell('الكمية', arabicBold),
-                    _buildHeaderCell('الوحدة', arabicBold),
-                    _buildHeaderCell('التكلفة', arabicBold),
-                  ],
-                ),
-                ...materials.map((m) {
-                  final qty =
-                      (m['quantity_per_unit'] as num? ?? 0) * areaMultiplier;
-                  final price = m['price_per_unit'] as num? ?? 0;
-                  final cost = qty * price;
-                  return pw.TableRow(
-                    children: [
-                      _buildDataCell('${m['name'] ?? ''}', arabicFont),
-                      _buildDataCell(
-                        qty.toStringAsFixed(2),
-                        arabicFont,
-                        center: true,
-                      ),
-                      _buildDataCell(
-                          '${m['unit'] ?? ''}', arabicFont,
-                          center: true),
-                      _buildDataCell(
-                        '${cost.toStringAsFixed(0)} ج.م',
-                        arabicFont,
-                        center: true,
-                      ),
-                    ],
-                  );
-                }),
-                pw.TableRow(
-                  decoration:
-                      pw.BoxDecoration(color: PdfColor.fromInt(0xFFECFDF5)),
-                  children: [
-                    _buildDataCell('الإجمالي', arabicBold,
-                        bold: true, center: true),
-                    _buildDataCell('', arabicFont, center: true),
-                    _buildDataCell('', arabicFont, center: true),
-                    _buildDataCell(
-                      '${totalMaterialsCost.toStringAsFixed(0)} ج.م',
-                      arabicBold,
-                      bold: true,
-                      center: true,
-                    ),
-                  ],
-                ),
-              ],
-            ),
-            pw.SizedBox(height: 16),
-          ],
-
-          // ============ التحليل المالي ============
-          if (expectedYield > 0 || expectedPrice > 0) ...[
-            _buildSectionTitle('التحليل المالي', arabicBold),
-            pw.SizedBox(height: 8),
-            pw.Container(
-              padding: const pw.EdgeInsets.all(10),
-              decoration: pw.BoxDecoration(
-                border: pw.Border.all(color: PdfColors.grey300, width: 0.5),
-                borderRadius: pw.BorderRadius.circular(6),
-              ),
-              child: pw.Column(
-                children: [
-                  _buildFinancialRow(
-                    'الإنتاج المتوقع',
-                    '${expectedYield.toStringAsFixed(2)} ${financial['yield_unit'] ?? 'طن'}',
-                    arabicFont,
-                    arabicBold,
-                  ),
-                  pw.Divider(height: 6),
-                  _buildFinancialRow(
-                    'الإيراد المتوقع',
-                    '${totalRevenue.toStringAsFixed(0)} ج.م',
-                    arabicFont,
-                    arabicBold,
-                  ),
-                  pw.Divider(height: 6),
-                  _buildFinancialRow(
-                    'إجمالي التكاليف',
-                    '${totalMaterialsCost.toStringAsFixed(0)} ج.م',
-                    arabicFont,
-                    arabicBold,
-                  ),
-                  pw.Divider(height: 6),
-                  _buildFinancialRow(
-                    'صافي الربح',
-                    '${netProfit.toStringAsFixed(0)} ج.م',
-                    arabicFont,
-                    arabicBold,
-                    color: netProfit > 0 ? PdfColors.green : PdfColors.red,
-                    bold: true,
-                  ),
-                  pw.Divider(height: 6),
-                  _buildFinancialRow(
-                    'نسبة العائد ROI',
-                    '${roi.toStringAsFixed(1)}%',
-                    arabicFont,
-                    arabicBold,
-                    color: roi > 0 ? PdfColors.green : PdfColors.red,
-                    bold: true,
-                  ),
-                ],
-              ),
-            ),
-          ],
-
-          pw.SizedBox(height: 20),
-
-          // ============ تنبيه "استرشادي" ============
-          pw.Container(
-            padding: const pw.EdgeInsets.all(10),
-            decoration: pw.BoxDecoration(
-              color: PdfColor.fromInt(0xFFFFF3CD),
-              border: pw.Border.all(
-                color: PdfColor.fromInt(0xFFFFC107),
-                width: 1,
-              ),
-              borderRadius: pw.BorderRadius.circular(6),
-            ),
-            child: pw.Directionality(
-              textDirection: pw.TextDirection.rtl,
-              child: pw.Row(
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
-                children: [
-                  pw.Text(
-                    '!',
-                    style: pw.TextStyle(
-                      font: arabicBold,
-                      fontSize: 18,
-                      color: PdfColor.fromInt(0xFF856404),
-                    ),
-                  ),
-                  pw.SizedBox(width: 8),
-                  pw.Expanded(
-                    child: pw.Text(
-                      'البرنامج استرشادي - يرجى مراجعة المهندس الزراعي المختص قبل التطبيق الفعلي',
-                      style: pw.TextStyle(
-                        font: arabicBold,
-                        fontSize: 11,
-                        color: PdfColor.fromInt(0xFF856404),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          pw.SizedBox(height: 12),
-
-          // ============ Footer الرئيسي ============
-          pw.Container(
-            padding: const pw.EdgeInsets.all(10),
-            decoration: pw.BoxDecoration(
-              border: pw.Border.all(color: PdfColors.grey300, width: 0.5),
-              borderRadius: pw.BorderRadius.circular(6),
-            ),
-            child: pw.Directionality(
-              textDirection: pw.TextDirection.rtl,
-              child: pw.Column(
-                children: [
-                  pw.Text(
-                    'تطبيق نباتي - مستشارك الزراعي الذكي',
-                    style: pw.TextStyle(
-                      font: arabicBold,
-                      fontSize: 12,
-                      color: PdfColor.fromInt(0xFF047857),
-                    ),
-                  ),
-                  pw.SizedBox(height: 4),
-                  pw.Text(
-                    'المشرف العام - علي الدهشوري',
-                    style: pw.TextStyle(font: arabicFont, fontSize: 10),
-                  ),
-                  pw.SizedBox(height: 2),
-                  pw.Text(
-                    'للتواصل - 01284172047',
-                    style: pw.TextStyle(font: arabicFont, fontSize: 10),
-                  ),
-                  pw.SizedBox(height: 6),
-                  pw.Text(
-                    'جميع الحقوق محفوظة - نباتي 2025',
-                    style: pw.TextStyle(
-                      font: arabicFont,
-                      fontSize: 9,
-                      color: PdfColors.grey600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
+    // ✅ استخدام RTL (من اليمين لليسار)
+    final PdfStringFormat rtlFormat = PdfStringFormat(
+      alignment: PdfTextAlignment.right,
+      textDirection: PdfTextDirection.rightToLeft,
+    );
+    final PdfStringFormat centerFormat = PdfStringFormat(
+      alignment: PdfTextAlignment.center,
+      textDirection: PdfTextDirection.rightToLeft,
     );
 
-    final Uint8List bytes = await pdf.save();
-    await Printing.sharePdf(
-      bytes: bytes,
-      filename:
-          'nabati_${programTitle}_${DateTime.now().millisecondsSinceEpoch}.pdf',
+    // ═══════════════════════════════════════
+    // الهيدر - شعار نباتي
+    // ═══════════════════════════════════════
+    final double pageWidth = page.getClientSize().width;
+    final double pageHeight = page.getClientSize().height;
+    double y = 0;
+
+    // خلفية خضراء للهيدر
+    graphics.drawRectangle(
+      brush: PdfSolidBrush(PdfColor(4, 120, 87)),
+      bounds: Rect.fromLTWH(0, 0, pageWidth, 60),
     );
-  }
 
-  // ═══════════════════════════════════════
-  // Helper Widgets
-  // ═══════════════════════════════════════
+    // شعار "نباتي"
+    graphics.drawString(
+      'نباتي',
+      titleFont,
+      brush: PdfBrushes.white,
+      bounds: Rect.fromLTWH(0, 8, pageWidth - 20, 30),
+      format: rtlFormat,
+    );
 
-  static pw.Widget _buildSectionTitle(String title, pw.Font boldFont) {
-    return pw.Container(
-      padding: const pw.EdgeInsets.symmetric(vertical: 6, horizontal: 10),
-      decoration: pw.BoxDecoration(
-        color: PdfColor.fromInt(0xFF047857),
-        borderRadius: pw.BorderRadius.circular(4),
-      ),
-      child: pw.Text(
-        title,
-        style: pw.TextStyle(
+    graphics.drawString(
+      'مستشارك الزراعي الذكي',
+      smallFont,
+      brush: PdfBrushes.white,
+      bounds: Rect.fromLTWH(0, 38, pageWidth - 20, 20),
+      format: rtlFormat,
+    );
+
+    y = 75;
+
+    // ═══════════════════════════════════════
+    // عنوان البرنامج
+    // ═══════════════════════════════════════
+    graphics.drawRectangle(
+      brush: PdfSolidBrush(PdfColor(236, 253, 245)),
+      bounds: Rect.fromLTWH(0, y, pageWidth, 90),
+    );
+
+    graphics.drawString(
+      'برنامج $programTitle $programEmoji',
+      titleFont,
+      brush: PdfSolidBrush(PdfColor(4, 120, 87)),
+      bounds: Rect.fromLTWH(0, y + 8, pageWidth - 15, 30),
+      format: rtlFormat,
+    );
+
+    graphics.drawString(
+      'المحافظة: $governorate',
+      regularFont,
+      brush: PdfSolidBrush(PdfColor(0, 0, 0)),
+      bounds: Rect.fromLTWH(0, y + 40, pageWidth - 15, 20),
+      format: rtlFormat,
+    );
+
+    graphics.drawString(
+      'القسم: $sectionName',
+      regularFont,
+      brush: PdfSolidBrush(PdfColor(0, 0, 0)),
+      bounds: Rect.fromLTWH(0, y + 58, pageWidth - 15, 20),
+      format: rtlFormat,
+    );
+
+    graphics.drawString(
+      'المساحة: ${areaMultiplier.toStringAsFixed(2)} فدان | تاريخ الإصدار: ${_formatDate(DateTime.now())}',
+      smallFont,
+      brush: PdfSolidBrush(PdfColor(100, 100, 100)),
+      bounds: Rect.fromLTWH(0, y + 76, pageWidth - 15, 15),
+      format: rtlFormat,
+    );
+
+    y += 105;
+
+    // ═══════════════════════════════════════
+    // الجدول الزمني
+    // ═══════════════════════════════════════
+    if (sortedTasks.isNotEmpty) {
+      // عنوان القسم
+      graphics.drawRectangle(
+        brush: PdfSolidBrush(PdfColor(4, 120, 87)),
+        bounds: Rect.fromLTWH(0, y, pageWidth, 22),
+      );
+      graphics.drawString(
+        '  الجدول الزمني',
+        boldFont,
+        brush: PdfBrushes.white,
+        bounds: Rect.fromLTWH(5, y + 2, pageWidth, 20),
+        format: rtlFormat,
+      );
+      y += 30;
+
+      // إنشاء الجدول
+      final PdfGrid grid = PdfGrid();
+      grid.columns.add(count: 3);
+      grid.style = PdfGridStyle(
+        font: regularFont,
+        cellPadding: PdfPaddings(left: 5, right: 5, top: 3, bottom: 3),
+      );
+
+      // رأس الجدول
+      final PdfGridRow header = grid.headers.add(1)[0];
+      header.style = PdfGridRowStyle(
+        backgroundBrush: PdfSolidBrush(PdfColor(4, 120, 87)),
+        textBrush: PdfBrushes.white,
+        font: boldFont,
+      );
+      header.cells[0].value = 'اليوم';
+      header.cells[1].value = 'المهمة';
+      header.cells[2].value = 'التفاصيل';
+
+      // محتوى الجدول
+      for (var task in sortedTasks) {
+        final PdfGridRow row = grid.rows.add();
+        row.cells[0].value = '${task['day_from_start'] ?? 0}';
+        row.cells[1].value = '${task['title'] ?? ''}';
+        row.cells[2].value = '${task['description'] ?? ''}';
+
+        row.cells[0].style = PdfGridCellStyle(
+          format: centerFormat,
+          font: regularFont,
+        );
+        row.cells[1].style = PdfGridCellStyle(
+          format: rtlFormat,
+          font: regularFont,
+        );
+        row.cells[2].style = PdfGridCellStyle(
+          format: rtlFormat,
+          font: regularFont,
+        );
+      }
+
+      // رسم الجدول
+      final PdfLayoutResult result = grid.draw(
+        page: page,
+        bounds: Rect.fromLTWH(0, y, pageWidth, pageHeight - y - 80),
+      )!;
+      y = result.bounds.bottom + 15;
+    }
+
+    // ═══════════════════════════════════════
+    // المشتريات
+    // ═══════════════════════════════════════
+    if (materials.isNotEmpty) {
+      // تحقق من المساحة - لو مش كفاية، أضف صفحة جديدة
+      if (y > pageHeight - 200) {
+        page = document.pages.add();
+        graphics = page.graphics;
+        y = 20;
+      }
+
+      // عنوان القسم
+      graphics.drawRectangle(
+        brush: PdfSolidBrush(PdfColor(4, 120, 87)),
+        bounds: Rect.fromLTWH(0, y, pageWidth, 22),
+      );
+      graphics.drawString(
+        '  قائمة المشتريات',
+        boldFont,
+        brush: PdfBrushes.white,
+        bounds: Rect.fromLTWH(5, y + 2, pageWidth, 20),
+        format: rtlFormat,
+      );
+      y += 30;
+
+      // جدول المشتريات
+      final PdfGrid grid = PdfGrid();
+      grid.columns.add(count: 4);
+      grid.style = PdfGridStyle(
+        font: regularFont,
+        cellPadding: PdfPaddings(left: 5, right: 5, top: 3, bottom: 3),
+      );
+
+      final PdfGridRow header = grid.headers.add(1)[0];
+      header.style = PdfGridRowStyle(
+        backgroundBrush: PdfSolidBrush(PdfColor(4, 120, 87)),
+        textBrush: PdfBrushes.white,
+        font: boldFont,
+      );
+      header.cells[0].value = 'المادة';
+      header.cells[1].value = 'الكمية';
+      header.cells[2].value = 'الوحدة';
+      header.cells[3].value = 'التكلفة';
+
+      for (var m in materials) {
+        final qty = (m['quantity_per_unit'] as num? ?? 0) * areaMultiplier;
+        final price = m['price_per_unit'] as num? ?? 0;
+        final cost = qty * price;
+
+        final PdfGridRow row = grid.rows.add();
+        row.cells[0].value = '${m['name'] ?? ''}';
+        row.cells[1].value = qty.toStringAsFixed(2);
+        row.cells[2].value = '${m['unit'] ?? ''}';
+        row.cells[3].value = '${cost.toStringAsFixed(0)} ج.م';
+
+        row.cells[0].style = PdfGridCellStyle(format: rtlFormat);
+        row.cells[1].style = PdfGridCellStyle(format: centerFormat);
+        row.cells[2].style = PdfGridCellStyle(format: centerFormat);
+        row.cells[3].style = PdfGridCellStyle(format: centerFormat);
+      }
+
+      // صف الإجمالي
+      final PdfGridRow totalRow = grid.rows.add();
+      totalRow.style = PdfGridRowStyle(
+        backgroundBrush: PdfSolidBrush(PdfColor(236, 253, 245)),
+        font: boldFont,
+      );
+      totalRow.cells[0].value = 'الإجمالي';
+      totalRow.cells[1].value = '';
+      totalRow.cells[2].value = '';
+      totalRow.cells[3].value =
+          '${totalMaterialsCost.toStringAsFixed(0)} ج.م';
+
+      totalRow.cells[0].style = PdfGridCellStyle(
+        format: centerFormat,
+        font: boldFont,
+      );
+      totalRow.cells[3].style = PdfGridCellStyle(
+        format: centerFormat,
+        font: boldFont,
+      );
+
+      final PdfLayoutResult result = grid.draw(
+        page: page,
+        bounds: Rect.fromLTWH(0, y, pageWidth, pageHeight - y - 80),
+      )!;
+      y = result.bounds.bottom + 15;
+    }
+
+    // ═══════════════════════════════════════
+    // التحليل المالي
+    // ═══════════════════════════════════════
+    if (expectedYield > 0 || expectedPrice > 0) {
+      if (y > pageHeight - 150) {
+        page = document.pages.add();
+        graphics = page.graphics;
+        y = 20;
+      }
+
+      graphics.drawRectangle(
+        brush: PdfSolidBrush(PdfColor(4, 120, 87)),
+        bounds: Rect.fromLTWH(0, y, pageWidth, 22),
+      );
+      graphics.drawString(
+        '  التحليل المالي',
+        boldFont,
+        brush: PdfBrushes.white,
+        bounds: Rect.fromLTWH(5, y + 2, pageWidth, 20),
+        format: rtlFormat,
+      );
+      y += 30;
+
+      // الجدول المالي
+      final PdfGrid grid = PdfGrid();
+      grid.columns.add(count: 2);
+      grid.style = PdfGridStyle(
+        font: regularFont,
+        cellPadding: PdfPaddings(left: 8, right: 8, top: 5, bottom: 5),
+      );
+
+      final items = [
+        ['الإنتاج المتوقع', '${expectedYield.toStringAsFixed(2)} ${financial['yield_unit'] ?? 'طن'}'],
+        ['الإيراد المتوقع', '${totalRevenue.toStringAsFixed(0)} ج.م'],
+        ['إجمالي التكاليف', '${totalMaterialsCost.toStringAsFixed(0)} ج.م'],
+        ['صافي الربح', '${netProfit.toStringAsFixed(0)} ج.م'],
+        ['نسبة العائد (ROI)', '${roi.toStringAsFixed(1)}%'],
+      ];
+
+      for (var item in items) {
+        final PdfGridRow row = grid.rows.add();
+        row.cells[0].value = item[0];
+        row.cells[1].value = item[1];
+
+        row.cells[0].style = PdfGridCellStyle(
+          format: rtlFormat,
           font: boldFont,
-          fontSize: 13,
-          color: PdfColors.white,
-        ),
-      ),
-    );
-  }
-
-  static pw.Widget _buildHeaderCell(String text, pw.Font boldFont) {
-    return pw.Padding(
-      padding: const pw.EdgeInsets.all(6),
-      child: pw.Text(
-        text,
-        textAlign: pw.TextAlign.center,
-        style: pw.TextStyle(
+        );
+        row.cells[1].style = PdfGridCellStyle(
+          format: rtlFormat,
           font: boldFont,
-          fontSize: 11,
-          color: PdfColors.white,
-        ),
-      ),
-    );
-  }
+        );
+      }
 
-  static pw.Widget _buildDataCell(
-    String text,
-    pw.Font font, {
-    bool bold = false,
-    bool center = false,
-  }) {
-    return pw.Padding(
-      padding: const pw.EdgeInsets.all(5),
-      child: pw.Text(
-        text,
-        textAlign: center ? pw.TextAlign.center : pw.TextAlign.right,
-        style: pw.TextStyle(
-          font: font,
-          fontSize: 10,
-        ),
-      ),
-    );
-  }
+      final PdfLayoutResult result = grid.draw(
+        page: page,
+        bounds: Rect.fromLTWH(0, y, pageWidth, pageHeight - y - 80),
+      )!;
+      y = result.bounds.bottom + 20;
+    }
 
-  // ✅ التحليل المالي — العنوان يمين والقيمة شمال
-  static pw.Widget _buildFinancialRow(
-    String label,
-    String value,
-    pw.Font font,
-    pw.Font boldFont, {
-    PdfColor? color,
-    bool bold = false,
-  }) {
-    return pw.Directionality(
-      textDirection: pw.TextDirection.rtl,
-      child: pw.Row(
-        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-        children: [
-          pw.Text(
-            value,
-            style: pw.TextStyle(
-              font: boldFont,
-              fontSize: 11,
-              color: color ?? PdfColors.black,
-            ),
-          ),
-          pw.Text(
-            label,
-            style: pw.TextStyle(
-              font: bold ? boldFont : font,
-              fontSize: 11,
-            ),
-          ),
-        ],
-      ),
+    // ═══════════════════════════════════════
+    // التنبيه الاسترشادي
+    // ═══════════════════════════════════════
+    if (y > pageHeight - 100) {
+      page = document.pages.add();
+      graphics = page.graphics;
+      y = 20;
+    }
+
+    graphics.drawRectangle(
+      brush: PdfSolidBrush(PdfColor(255, 243, 205)),
+      bounds: Rect.fromLTWH(0, y, pageWidth, 45),
+    );
+
+    graphics.drawString(
+      'البرنامج استرشادي - يجب مراجعة المهندس الزراعي المختص قبل التطبيق الفعلي',
+      boldFont,
+      brush: PdfSolidBrush(PdfColor(133, 100, 4)),
+      bounds: Rect.fromLTWH(10, y + 12, pageWidth - 20, 25),
+      format: centerFormat,
+    );
+
+    y += 60;
+
+    // ═══════════════════════════════════════
+    // الفوتر
+    // ═══════════════════════════════════════
+    graphics.drawString(
+      'تطبيق نباتي - مستشارك الزراعي الذكي',
+      boldFont,
+      brush: PdfSolidBrush(PdfColor(4, 120, 87)),
+      bounds: Rect.fromLTWH(0, y, pageWidth, 20),
+      format: centerFormat,
+    );
+
+    graphics.drawString(
+      'إشراف: علي الدهشوري - للتواصل: 01284172047',
+      smallFont,
+      brush: PdfSolidBrush(PdfColor(100, 100, 100)),
+      bounds: Rect.fromLTWH(0, y + 22, pageWidth, 15),
+      format: centerFormat,
+    );
+
+    graphics.drawString(
+      '© 2025 نباتي - جميع الحقوق محفوظة',
+      smallFont,
+      brush: PdfSolidBrush(PdfColor(150, 150, 150)),
+      bounds: Rect.fromLTWH(0, y + 40, pageWidth, 15),
+      format: centerFormat,
+    );
+
+    // ═══════════════════════════════════════
+    // حفظ ومشاركة
+    // ═══════════════════════════════════════
+    final List<int> bytes = await document.save();
+    document.dispose();
+
+    // حفظ الملف
+    final dir = await getTemporaryDirectory();
+    final filePath =
+        '${dir.path}/nabati_${programTitle}_${DateTime.now().millisecondsSinceEpoch}.pdf';
+    final file = File(filePath);
+    await file.writeAsBytes(bytes);
+
+    // مشاركة الملف
+    await Share.shareXFiles(
+      [XFile(filePath)],
+      subject: 'برنامج $programTitle',
     );
   }
 
