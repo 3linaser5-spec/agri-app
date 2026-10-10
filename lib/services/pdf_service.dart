@@ -1,12 +1,14 @@
 import 'dart:io';
 import 'dart:ui' show Rect;
 import 'dart:typed_data';
+import 'dart:isolate';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 
 class PdfService {
+  /// ✅ الدالة الرئيسية — بتحمّل الخطوط وتبدأ الـ Isolate
   static Future<void> generateAndSharePdf({
     required String programTitle,
     required String programEmoji,
@@ -17,35 +19,114 @@ class PdfService {
     required List<Map<String, dynamic>> materials,
     required Map<String, dynamic> financial,
   }) async {
+    // ✅ 1. تحميل الخطوط في الـ main thread (سريع)
+    final regularBytes =
+        (await rootBundle.load('assets/fonts/Cairo-Regular.ttf'))
+            .buffer
+            .asUint8List();
+    final boldBytes =
+        (await rootBundle.load('assets/fonts/Cairo-Bold.ttf'))
+            .buffer
+            .asUint8List();
+
+    // ✅ 2. تجهيز البيانات للـ Isolate
+    final isolateData = _PdfIsolateData(
+      regularFontBytes: regularBytes,
+      boldFontBytes: boldBytes,
+      programTitle: programTitle,
+      programEmoji: programEmoji,
+      governorate: governorate,
+      sectionName: sectionName,
+      inputValues: inputValues,
+      tasks: tasks,
+      materials: materials,
+      financial: financial,
+    );
+
+    // ✅ 3. تشغيل الـ Isolate
+    final Uint8List? pdfBytes = await _runPdfIsolate(isolateData);
+
+    if (pdfBytes == null) {
+      throw Exception('فشل إنشاء ملف PDF');
+    }
+
+    // ✅ 4. حفظ الملف
+    final dir = await getTemporaryDirectory();
+    final filePath =
+        '${dir.path}/nabati_${programTitle}_${DateTime.now().millisecondsSinceEpoch}.pdf';
+    final file = File(filePath);
+    await file.writeAsBytes(pdfBytes);
+
+    // ✅ 5. مشاركة الملف
+    await Share.shareXFiles(
+      [XFile(filePath)],
+      subject: 'برنامج $programTitle',
+    );
+  }
+
+  /// ✅ تشغيل الـ Isolate
+  static Future<Uint8List?> _runPdfIsolate(_PdfIsolateData data) async {
+    final receivePort = ReceivePort();
+    final completer = Completer<Uint8List?>();
+
+    await Isolate.spawn(
+      _pdfIsolateEntry,
+      _PdfIsolateMessage(receivePort.sendPort, data),
+    );
+
+    receivePort.listen((message) {
+      if (message is Uint8List) {
+        completer.complete(message);
+      } else if (message is String) {
+        completer.completeError(Exception(message));
+      }
+      receivePort.close();
+    });
+
+    return completer.future;
+  }
+
+  /// ✅ نقطة الدخول للـ Isolate
+  static void _pdfIsolateEntry(_PdfIsolateMessage message) {
+    try {
+      final bytes = _generatePdfBytes(message.data);
+      message.sendPort.send(bytes);
+    } catch (e) {
+      message.sendPort.send('خطأ: $e');
+    }
+  }
+
+  /// ✅ توليد PDF (يعمل داخل الـ Isolate)
+  static Uint8List _generatePdfBytes(_PdfIsolateData data) {
     final PdfDocument document = PdfDocument();
 
-    // تحميل الخط العربي
-    final regularData =
-        await rootBundle.load('assets/fonts/Cairo-Regular.ttf');
-    final boldData = await rootBundle.load('assets/fonts/Cairo-Bold.ttf');
-
-    final regularFont = PdfTrueTypeFont(regularData.buffer.asUint8List(), 11);
-    final boldFont = PdfTrueTypeFont(boldData.buffer.asUint8List(), 12);
-    final titleFont = PdfTrueTypeFont(boldData.buffer.asUint8List(), 16);
-    final smallFont = PdfTrueTypeFont(regularData.buffer.asUint8List(), 8);
+    // تحميل الخطوط
+    final regularFont =
+        PdfTrueTypeFont(data.regularFontBytes, 11);
+    final boldFont =
+        PdfTrueTypeFont(data.boldFontBytes, 12);
+    final titleFont =
+        PdfTrueTypeFont(data.boldFontBytes, 16);
+    final smallFont =
+        PdfTrueTypeFont(data.regularFontBytes, 8);
 
     // حساب القيم
     double areaMultiplier = 1.0;
-    final area = inputValues['area'];
+    final area = data.inputValues['area'];
     if (area is num) areaMultiplier = area.toDouble();
 
     double totalMaterialsCost = 0;
-    for (var m in materials) {
+    for (var m in data.materials) {
       final qty = (m['quantity_per_unit'] as num? ?? 0) * areaMultiplier;
       final price = m['price_per_unit'] as num? ?? 0;
       totalMaterialsCost += qty * price;
     }
 
-    // ✅ إصلاح: تحويل لـ double
     final double expectedYield =
-        ((financial['expected_yield'] as num? ?? 0) * areaMultiplier).toDouble();
+        ((data.financial['expected_yield'] as num? ?? 0) * areaMultiplier)
+            .toDouble();
     final double expectedPrice =
-        (financial['expected_price'] as num? ?? 0).toDouble();
+        (data.financial['expected_price'] as num? ?? 0).toDouble();
     final double totalRevenue =
         (expectedYield * expectedPrice).toDouble();
     final double netProfit =
@@ -54,7 +135,7 @@ class PdfService {
         ? ((netProfit / totalMaterialsCost) * 100).toDouble()
         : 0.0;
 
-    final sortedTasks = List<Map<String, dynamic>>.from(tasks);
+    final sortedTasks = List<Map<String, dynamic>>.from(data.tasks);
     sortedTasks.sort((a, b) => (a['day_from_start'] as int? ?? 0)
         .compareTo(b['day_from_start'] as int? ?? 0));
 
@@ -68,7 +149,7 @@ class PdfService {
       textDirection: PdfTextDirection.rightToLeft,
     );
 
-    // إنشاء صفحة أولى
+    // الصفحة الأولى
     PdfPage page = document.pages.add();
     PdfGraphics graphics = page.graphics;
 
@@ -76,85 +157,60 @@ class PdfService {
     final double pageHeight = page.getClientSize().height;
     double y = 0;
 
-    // ═══════════════════════════════════════
     // Header
-    // ═══════════════════════════════════════
     graphics.drawRectangle(
       brush: PdfSolidBrush(PdfColor(4, 120, 87)),
       bounds: Rect.fromLTWH(0, 0, pageWidth, 50),
     );
 
-    final PdfTextElement titleElement = PdfTextElement(
+    PdfTextElement(
       text: 'نباتي',
       font: titleFont,
       brush: PdfBrushes.white,
       format: rtlFormat,
-    );
-    titleElement.draw(
-      page: page,
-      bounds: Rect.fromLTWH(0, 5, pageWidth - 10, 25),
-    );
+    ).draw(page: page, bounds: Rect.fromLTWH(0, 5, pageWidth - 10, 25));
 
-    final PdfTextElement subtitleElement = PdfTextElement(
+    PdfTextElement(
       text: 'مستشارك الزراعي الذكي',
       font: smallFont,
       brush: PdfBrushes.white,
       format: rtlFormat,
-    );
-    subtitleElement.draw(
-      page: page,
-      bounds: Rect.fromLTWH(0, 30, pageWidth - 10, 15),
-    );
+    ).draw(page: page, bounds: Rect.fromLTWH(0, 30, pageWidth - 10, 15));
 
     y = 60;
 
     // عنوان البرنامج
-    final PdfTextElement programTitleElement = PdfTextElement(
-      text: 'برنامج $programTitle $programEmoji',
+    PdfTextElement(
+      text: 'برنامج ${data.programTitle} ${data.programEmoji}',
       font: titleFont,
       brush: PdfSolidBrush(PdfColor(4, 120, 87)),
       format: rtlFormat,
-    );
-    programTitleElement.draw(
-      page: page,
-      bounds: Rect.fromLTWH(0, y, pageWidth - 10, 25),
-    );
+    ).draw(page: page, bounds: Rect.fromLTWH(0, y, pageWidth - 10, 25));
     y += 28;
 
-    final PdfTextElement govElement = PdfTextElement(
-      text: 'المحافظة: $governorate',
+    PdfTextElement(
+      text: 'المحافظة: ${data.governorate}',
       font: regularFont,
       brush: PdfSolidBrush(PdfColor(0, 0, 0)),
       format: rtlFormat,
-    );
-    govElement.draw(
-      page: page,
-      bounds: Rect.fromLTWH(0, y, pageWidth - 10, 18),
-    );
+    ).draw(page: page, bounds: Rect.fromLTWH(0, y, pageWidth - 10, 18));
     y += 18;
 
-    final PdfTextElement sectionElement = PdfTextElement(
-      text: 'القسم: $sectionName',
+    PdfTextElement(
+      text: 'القسم: ${data.sectionName}',
       font: regularFont,
       brush: PdfSolidBrush(PdfColor(0, 0, 0)),
       format: rtlFormat,
-    );
-    sectionElement.draw(
-      page: page,
-      bounds: Rect.fromLTWH(0, y, pageWidth - 10, 18),
-    );
+    ).draw(page: page, bounds: Rect.fromLTWH(0, y, pageWidth - 10, 18));
     y += 18;
 
-    final PdfTextElement areaElement = PdfTextElement(
-      text: 'المساحة: ${areaMultiplier.toStringAsFixed(2)} فدان | تاريخ: ${_formatDate(DateTime.now())}',
+    PdfTextElement(
+      text:
+          'المساحة: ${areaMultiplier.toStringAsFixed(2)} فدان | تاريخ: ${_formatDate(DateTime.now())}',
       font: smallFont,
       brush: PdfSolidBrush(PdfColor(100, 100, 100)),
       format: rtlFormat,
-    );
-    areaElement.draw(
-      page: page,
-      bounds: Rect.fromLTWH(0, y, pageWidth - 10, 15),
-    );
+    ).draw(page: page, bounds: Rect.fromLTWH(0, y, pageWidth - 10, 15));
     y += 25;
 
     // الجدول الزمني
@@ -163,26 +219,22 @@ class PdfService {
         brush: PdfSolidBrush(PdfColor(4, 120, 87)),
         bounds: Rect.fromLTWH(0, y, pageWidth, 20),
       );
-      final PdfTextElement tasksTitleElement = PdfTextElement(
+      PdfTextElement(
         text: 'الجدول الزمني',
         font: boldFont,
         brush: PdfBrushes.white,
         format: rtlFormat,
-      );
-      tasksTitleElement.draw(
-        page: page,
-        bounds: Rect.fromLTWH(5, y + 3, pageWidth - 10, 15),
-      );
+      ).draw(page: page, bounds: Rect.fromLTWH(5, y + 3, pageWidth - 10, 15));
       y += 25;
 
-      final PdfGrid taskGrid = _buildTaskGrid(
+      final taskGrid = _buildTaskGrid(
         sortedTasks,
         regularFont,
         boldFont,
         rtlFormat,
         centerRtlFormat,
       );
-      final PdfLayoutResult result = taskGrid.draw(
+      final result = taskGrid.draw(
         page: page,
         bounds: Rect.fromLTWH(0, y, pageWidth, pageHeight - y - 30),
       )!;
@@ -192,7 +244,7 @@ class PdfService {
     }
 
     // المشتريات
-    if (materials.isNotEmpty) {
+    if (data.materials.isNotEmpty) {
       if (y > pageHeight - 150) {
         page = document.pages.add();
         graphics = page.graphics;
@@ -203,20 +255,16 @@ class PdfService {
         brush: PdfSolidBrush(PdfColor(4, 120, 87)),
         bounds: Rect.fromLTWH(0, y, pageWidth, 20),
       );
-      final PdfTextElement materialsTitleElement = PdfTextElement(
+      PdfTextElement(
         text: 'قائمة المشتريات',
         font: boldFont,
         brush: PdfBrushes.white,
         format: rtlFormat,
-      );
-      materialsTitleElement.draw(
-        page: page,
-        bounds: Rect.fromLTWH(5, y + 3, pageWidth - 10, 15),
-      );
+      ).draw(page: page, bounds: Rect.fromLTWH(5, y + 3, pageWidth - 10, 15));
       y += 25;
 
-      final PdfGrid materialGrid = _buildMaterialGrid(
-        materials,
+      final materialGrid = _buildMaterialGrid(
+        data.materials,
         areaMultiplier,
         totalMaterialsCost,
         regularFont,
@@ -224,7 +272,7 @@ class PdfService {
         rtlFormat,
         centerRtlFormat,
       );
-      final PdfLayoutResult result = materialGrid.draw(
+      final result = materialGrid.draw(
         page: page,
         bounds: Rect.fromLTWH(0, y, pageWidth, pageHeight - y - 30),
       )!;
@@ -245,31 +293,27 @@ class PdfService {
         brush: PdfSolidBrush(PdfColor(4, 120, 87)),
         bounds: Rect.fromLTWH(0, y, pageWidth, 20),
       );
-      final PdfTextElement financialTitleElement = PdfTextElement(
+      PdfTextElement(
         text: 'التحليل المالي',
         font: boldFont,
         brush: PdfBrushes.white,
         format: rtlFormat,
-      );
-      financialTitleElement.draw(
-        page: page,
-        bounds: Rect.fromLTWH(5, y + 3, pageWidth - 10, 15),
-      );
+      ).draw(page: page, bounds: Rect.fromLTWH(5, y + 3, pageWidth - 10, 15));
       y += 25;
 
-      final PdfGrid financialGrid = _buildFinancialGrid(
+      final financialGrid = _buildFinancialGrid(
         expectedYield,
         expectedPrice,
         totalRevenue,
         totalMaterialsCost,
         netProfit,
         roi,
-        financial,
+        data.financial,
         regularFont,
         boldFont,
         rtlFormat,
       );
-      final PdfLayoutResult result = financialGrid.draw(
+      final result = financialGrid.draw(
         page: page,
         bounds: Rect.fromLTWH(0, y, pageWidth, pageHeight - y - 30),
       )!;
@@ -290,16 +334,13 @@ class PdfService {
       bounds: Rect.fromLTWH(0, y, pageWidth, 35),
     );
 
-    final PdfTextElement warningElement = PdfTextElement(
-      text: 'البرنامج استرشادي - يجب مراجعة المهندس الزراعي المختص قبل التطبيق الفعلي',
+    PdfTextElement(
+      text:
+          'البرنامج استرشادي - يجب مراجعة المهندس الزراعي المختص قبل التطبيق الفعلي',
       font: boldFont,
       brush: PdfSolidBrush(PdfColor(133, 100, 4)),
       format: centerRtlFormat,
-    );
-    warningElement.draw(
-      page: page,
-      bounds: Rect.fromLTWH(5, y + 8, pageWidth - 10, 20),
-    );
+    ).draw(page: page, bounds: Rect.fromLTWH(5, y + 8, pageWidth - 10, 20));
     y += 45;
 
     // الفوتر
@@ -309,55 +350,34 @@ class PdfService {
       y = 20;
     }
 
-    final PdfTextElement footer1Element = PdfTextElement(
+    PdfTextElement(
       text: 'تطبيق نباتي - مستشارك الزراعي الذكي',
       font: boldFont,
       brush: PdfSolidBrush(PdfColor(4, 120, 87)),
       format: centerRtlFormat,
-    );
-    footer1Element.draw(
-      page: page,
-      bounds: Rect.fromLTWH(0, y, pageWidth, 18),
-    );
+    ).draw(page: page, bounds: Rect.fromLTWH(0, y, pageWidth, 18));
     y += 20;
 
-    final PdfTextElement footer2Element = PdfTextElement(
+    PdfTextElement(
       text: 'إشراف: علي الدهشوري - للتواصل: 01284172047',
       font: smallFont,
       brush: PdfSolidBrush(PdfColor(100, 100, 100)),
       format: centerRtlFormat,
-    );
-    footer2Element.draw(
-      page: page,
-      bounds: Rect.fromLTWH(0, y, pageWidth, 15),
-    );
+    ).draw(page: page, bounds: Rect.fromLTWH(0, y, pageWidth, 15));
     y += 18;
 
-    final PdfTextElement footer3Element = PdfTextElement(
+    PdfTextElement(
       text: '© 2025 نباتي - جميع الحقوق محفوظة',
       font: smallFont,
       brush: PdfSolidBrush(PdfColor(150, 150, 150)),
       format: centerRtlFormat,
-    );
-    footer3Element.draw(
-      page: page,
-      bounds: Rect.fromLTWH(0, y, pageWidth, 15),
-    );
+    ).draw(page: page, bounds: Rect.fromLTWH(0, y, pageWidth, 15));
 
-    // حفظ ومشاركة
-    final List<int> bytes = await document.save();
+    // حفظ
+    final List<int> bytes = document.save();
     document.dispose();
 
-    final dir = await getTemporaryDirectory();
-    final filePath =
-        '${dir.path}/nabati_${programTitle}_${DateTime.now().millisecondsSinceEpoch}.pdf';
-    final file = File(filePath);
-    await file.writeAsBytes(bytes);
-
-    await Share.shareXFiles(
-      [XFile(filePath)],
-      subject: 'برنامج $programTitle',
-    );
+    return Uint8List.fromList(bytes);
   }
 
   // جدول المهام
@@ -370,7 +390,6 @@ class PdfService {
   ) {
     final PdfGrid grid = PdfGrid();
     grid.columns.add(count: 3);
-
     grid.columns[0].width = 40;
     grid.columns[1].width = 150;
     grid.columns[2].width = 300;
@@ -380,7 +399,7 @@ class PdfService {
       cellPadding: PdfPaddings(left: 4, right: 4, top: 3, bottom: 3),
     );
 
-    final PdfGridRow header = grid.headers.add(1)[0];
+    final header = grid.headers.add(1)[0];
     header.style = PdfGridRowStyle(
       backgroundBrush: PdfSolidBrush(PdfColor(4, 120, 87)),
       textBrush: PdfBrushes.white,
@@ -395,7 +414,7 @@ class PdfService {
     header.cells[2].style = PdfGridCellStyle(format: centerRtlFormat);
 
     for (var task in tasks) {
-      final PdfGridRow row = grid.rows.add();
+      final row = grid.rows.add();
       row.cells[0].value = '${task['day_from_start'] ?? 0}';
       row.cells[1].value = '${task['title'] ?? ''}';
       row.cells[2].value = '${task['description'] ?? ''}';
@@ -418,9 +437,8 @@ class PdfService {
     PdfStringFormat rtlFormat,
     PdfStringFormat centerRtlFormat,
   ) {
-    final PdfGrid grid = PdfGrid();
+    final grid = PdfGrid();
     grid.columns.add(count: 4);
-
     grid.columns[0].width = 200;
     grid.columns[1].width = 80;
     grid.columns[2].width = 70;
@@ -431,7 +449,7 @@ class PdfService {
       cellPadding: PdfPaddings(left: 4, right: 4, top: 3, bottom: 3),
     );
 
-    final PdfGridRow header = grid.headers.add(1)[0];
+    final header = grid.headers.add(1)[0];
     header.style = PdfGridRowStyle(
       backgroundBrush: PdfSolidBrush(PdfColor(4, 120, 87)),
       textBrush: PdfBrushes.white,
@@ -452,7 +470,7 @@ class PdfService {
       final price = m['price_per_unit'] as num? ?? 0;
       final cost = qty * price;
 
-      final PdfGridRow row = grid.rows.add();
+      final row = grid.rows.add();
       row.cells[0].value = '${m['name'] ?? ''}';
       row.cells[1].value = qty.toStringAsFixed(2);
       row.cells[2].value = '${m['unit'] ?? ''}';
@@ -464,7 +482,7 @@ class PdfService {
       row.cells[3].style = PdfGridCellStyle(format: centerRtlFormat);
     }
 
-    final PdfGridRow totalRow = grid.rows.add();
+    final totalRow = grid.rows.add();
     totalRow.style = PdfGridRowStyle(
       backgroundBrush: PdfSolidBrush(PdfColor(236, 253, 245)),
       font: boldFont,
@@ -499,9 +517,8 @@ class PdfService {
     PdfTrueTypeFont boldFont,
     PdfStringFormat rtlFormat,
   ) {
-    final PdfGrid grid = PdfGrid();
+    final grid = PdfGrid();
     grid.columns.add(count: 2);
-
     grid.columns[0].width = 200;
     grid.columns[1].width = 250;
 
@@ -511,7 +528,10 @@ class PdfService {
     );
 
     final items = [
-      ['الإنتاج المتوقع', '${expectedYield.toStringAsFixed(2)} ${financial['yield_unit'] ?? 'طن'}'],
+      [
+        'الإنتاج المتوقع',
+        '${expectedYield.toStringAsFixed(2)} ${financial['yield_unit'] ?? 'طن'}'
+      ],
       ['الإيراد المتوقع', '${totalRevenue.toStringAsFixed(0)} ج.م'],
       ['إجمالي التكاليف', '${totalMaterialsCost.toStringAsFixed(0)} ج.م'],
       ['صافي الربح', '${netProfit.toStringAsFixed(0)} ج.م'],
@@ -519,18 +539,11 @@ class PdfService {
     ];
 
     for (var item in items) {
-      final PdfGridRow row = grid.rows.add();
+      final row = grid.rows.add();
       row.cells[0].value = item[0];
       row.cells[1].value = item[1];
-
-      row.cells[0].style = PdfGridCellStyle(
-        format: rtlFormat,
-        font: boldFont,
-      );
-      row.cells[1].style = PdfGridCellStyle(
-        format: rtlFormat,
-        font: boldFont,
-      );
+      row.cells[0].style = PdfGridCellStyle(format: rtlFormat, font: boldFont);
+      row.cells[1].style = PdfGridCellStyle(format: rtlFormat, font: boldFont);
     }
 
     return grid;
@@ -539,4 +552,41 @@ class PdfService {
   static String _formatDate(DateTime date) {
     return '${date.day}/${date.month}/${date.year}';
   }
+}
+
+// ═══════════════════════════════════════
+// Helper Classes للـ Isolate
+// ═══════════════════════════════════════
+
+class _PdfIsolateData {
+  final Uint8List regularFontBytes;
+  final Uint8List boldFontBytes;
+  final String programTitle;
+  final String programEmoji;
+  final String governorate;
+  final String sectionName;
+  final Map<String, dynamic> inputValues;
+  final List<Map<String, dynamic>> tasks;
+  final List<Map<String, dynamic>> materials;
+  final Map<String, dynamic> financial;
+
+  _PdfIsolateData({
+    required this.regularFontBytes,
+    required this.boldFontBytes,
+    required this.programTitle,
+    required this.programEmoji,
+    required this.governorate,
+    required this.sectionName,
+    required this.inputValues,
+    required this.tasks,
+    required this.materials,
+    required this.financial,
+  });
+}
+
+class _PdfIsolateMessage {
+  final SendPort sendPort;
+  final _PdfIsolateData data;
+
+  _PdfIsolateMessage(this.sendPort, this.data);
 }
