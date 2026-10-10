@@ -21,16 +21,37 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
     _program = widget.program;
   }
 
-  // ✅ تحميل PDF
+  // ✅ تحميل PDF — مع Loading Dialog
   Future<void> _downloadPdf() async {
-    try {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('⏳ جاري تجهيز ملف PDF...'),
-          duration: Duration(seconds: 2),
+    // ✅ عرض Loading Dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: Card(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(color: Color(0xFF047857)),
+                SizedBox(height: 16),
+                Text('⏳ جاري تجهيز PDF...',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+                SizedBox(height: 4),
+                Text('قد يستغرق بضع ثوانٍ',
+                    style: TextStyle(fontSize: 11, color: Colors.grey)),
+              ],
+            ),
+          ),
         ),
-      );
+      ),
+    );
 
+    // ✅ استنى لحظة عشان الـ Dialog يظهر
+    await Future.delayed(const Duration(milliseconds: 100));
+
+    try {
       await PdfService.generateAndSharePdf(
         programTitle: _program.templateName,
         programEmoji: _program.templateEmoji,
@@ -42,6 +63,7 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
         financial: _program.financial,
       );
     } catch (e) {
+      debugPrint('❌ فشل إنشاء PDF: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -50,6 +72,9 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
           ),
         );
       }
+    } finally {
+      // ✅ إغلاق الـ Dialog
+      if (mounted) Navigator.of(context, rootNavigator: true).pop();
     }
   }
 
@@ -59,7 +84,8 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('حذف البرنامج'),
-        content: const Text('هل أنت متأكد من حذف البرنامج من مزرعتك؟\n\n⚠️ سيتم إلغاء كل التذكيرات المرتبطة بيه.'),
+        content: const Text(
+            'هل أنت متأكد من حذف البرنامج من مزرعتك؟\n\n⚠️ سيتم إلغاء كل التذكيرات المرتبطة بيه.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
