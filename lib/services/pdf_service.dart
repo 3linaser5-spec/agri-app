@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui' show Rect;
 import 'dart:typed_data';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
@@ -16,32 +17,19 @@ class PdfService {
     required List<Map<String, dynamic>> materials,
     required Map<String, dynamic> financial,
   }) async {
-    // ✅ إنشاء مستند PDF جديد
     final PdfDocument document = PdfDocument();
 
-    // ✅ تحميل الخط العربي
+    // تحميل الخط العربي
     final regularData =
         await rootBundle.load('assets/fonts/Cairo-Regular.ttf');
     final boldData = await rootBundle.load('assets/fonts/Cairo-Bold.ttf');
 
-    final regularFont = PdfTrueTypeFont(
-      regularData.buffer.asUint8List(),
-      11,
-    );
-    final boldFont = PdfTrueTypeFont(
-      boldData.buffer.asUint8List(),
-      12,
-    );
-    final titleFont = PdfTrueTypeFont(
-      boldData.buffer.asUint8List(),
-      16,
-    );
-    final smallFont = PdfTrueTypeFont(
-      regularData.buffer.asUint8List(),
-      8,
-    );
+    final regularFont = PdfTrueTypeFont(regularData.buffer.asUint8List(), 11);
+    final boldFont = PdfTrueTypeFont(boldData.buffer.asUint8List(), 12);
+    final titleFont = PdfTrueTypeFont(boldData.buffer.asUint8List(), 16);
+    final smallFont = PdfTrueTypeFont(regularData.buffer.asUint8List(), 8);
 
-    // ✅ حساب القيم
+    // حساب القيم
     double areaMultiplier = 1.0;
     final area = inputValues['area'];
     if (area is num) areaMultiplier = area.toDouble();
@@ -53,20 +41,24 @@ class PdfService {
       totalMaterialsCost += qty * price;
     }
 
-    final expectedYield =
-        (financial['expected_yield'] as num? ?? 0) * areaMultiplier;
-    final expectedPrice = financial['expected_price'] as num? ?? 0;
-    final totalRevenue = expectedYield * expectedPrice;
-    final netProfit = totalRevenue - totalMaterialsCost;
-    final roi = totalMaterialsCost > 0
-        ? (netProfit / totalMaterialsCost) * 100
+    // ✅ إصلاح: تحويل لـ double
+    final double expectedYield =
+        ((financial['expected_yield'] as num? ?? 0) * areaMultiplier).toDouble();
+    final double expectedPrice =
+        (financial['expected_price'] as num? ?? 0).toDouble();
+    final double totalRevenue =
+        (expectedYield * expectedPrice).toDouble();
+    final double netProfit =
+        (totalRevenue - totalMaterialsCost).toDouble();
+    final double roi = totalMaterialsCost > 0
+        ? ((netProfit / totalMaterialsCost) * 100).toDouble()
         : 0.0;
 
     final sortedTasks = List<Map<String, dynamic>>.from(tasks);
     sortedTasks.sort((a, b) => (a['day_from_start'] as int? ?? 0)
         .compareTo(b['day_from_start'] as int? ?? 0));
 
-    // ✅ RTL Format
+    // RTL Format
     final PdfStringFormat rtlFormat = PdfStringFormat(
       alignment: PdfTextAlignment.right,
       textDirection: PdfTextDirection.rightToLeft,
@@ -75,20 +67,8 @@ class PdfService {
       alignment: PdfTextAlignment.center,
       textDirection: PdfTextDirection.rightToLeft,
     );
-    final PdfStringFormat leftRtlFormat = PdfStringFormat(
-      alignment: PdfTextAlignment.left,
-      textDirection: PdfTextDirection.rightToLeft,
-    );
 
-    // ✅ Layout Format للـ TextElement (بيسمح بتقسيم الصفحات)
-    final PdfLayoutFormat layoutFormat = PdfLayoutFormat(
-      layoutType: PdfLayoutType.paginate,
-      breakType: PdfLayoutBreakType.fitPage,
-    );
-
-    // ═══════════════════════════════════════
-    // إنشاء الصفحة الأولى
-    // ═══════════════════════════════════════
+    // إنشاء صفحة أولى
     PdfPage page = document.pages.add();
     PdfGraphics graphics = page.graphics;
 
@@ -97,14 +77,13 @@ class PdfService {
     double y = 0;
 
     // ═══════════════════════════════════════
-    // Header — شعار نباتي (خلفية خضراء)
+    // Header
     // ═══════════════════════════════════════
     graphics.drawRectangle(
       brush: PdfSolidBrush(PdfColor(4, 120, 87)),
       bounds: Rect.fromLTWH(0, 0, pageWidth, 50),
     );
 
-    // "نباتي"
     final PdfTextElement titleElement = PdfTextElement(
       text: 'نباتي',
       font: titleFont,
@@ -116,7 +95,6 @@ class PdfService {
       bounds: Rect.fromLTWH(0, 5, pageWidth - 10, 25),
     );
 
-    // "مستشارك الزراعي الذكي"
     final PdfTextElement subtitleElement = PdfTextElement(
       text: 'مستشارك الزراعي الذكي',
       font: smallFont,
@@ -130,9 +108,7 @@ class PdfService {
 
     y = 60;
 
-    // ═══════════════════════════════════════
     // عنوان البرنامج
-    // ═══════════════════════════════════════
     final PdfTextElement programTitleElement = PdfTextElement(
       text: 'برنامج $programTitle $programEmoji',
       font: titleFont,
@@ -181,11 +157,8 @@ class PdfService {
     );
     y += 25;
 
-    // ═══════════════════════════════════════
-    // الجدول الزمني — عنوان + جدول
-    // ═══════════════════════════════════════
+    // الجدول الزمني
     if (sortedTasks.isNotEmpty) {
-      // عنوان القسم
       graphics.drawRectangle(
         brush: PdfSolidBrush(PdfColor(4, 120, 87)),
         bounds: Rect.fromLTWH(0, y, pageWidth, 20),
@@ -202,7 +175,6 @@ class PdfService {
       );
       y += 25;
 
-      // جدول المهام
       final PdfGrid taskGrid = _buildTaskGrid(
         sortedTasks,
         regularFont,
@@ -214,24 +186,19 @@ class PdfService {
         page: page,
         bounds: Rect.fromLTWH(0, y, pageWidth, pageHeight - y - 30),
       )!;
-      // ✅ تحديث الصفحة والموقع بعد الرسم
       page = result.page;
       graphics = page.graphics;
       y = result.bounds.bottom + 15;
     }
 
-    // ═══════════════════════════════════════
-    // قائمة المشتريات
-    // ═══════════════════════════════════════
+    // المشتريات
     if (materials.isNotEmpty) {
-      // تحقق من المساحة
       if (y > pageHeight - 150) {
         page = document.pages.add();
         graphics = page.graphics;
         y = 20;
       }
 
-      // عنوان القسم
       graphics.drawRectangle(
         brush: PdfSolidBrush(PdfColor(4, 120, 87)),
         bounds: Rect.fromLTWH(0, y, pageWidth, 20),
@@ -248,7 +215,6 @@ class PdfService {
       );
       y += 25;
 
-      // جدول المشتريات
       final PdfGrid materialGrid = _buildMaterialGrid(
         materials,
         areaMultiplier,
@@ -267,9 +233,7 @@ class PdfService {
       y = result.bounds.bottom + 15;
     }
 
-    // ═══════════════════════════════════════
     // التحليل المالي
-    // ═══════════════════════════════════════
     if (expectedYield > 0 || expectedPrice > 0) {
       if (y > pageHeight - 180) {
         page = document.pages.add();
@@ -277,7 +241,6 @@ class PdfService {
         y = 20;
       }
 
-      // عنوان القسم
       graphics.drawRectangle(
         brush: PdfSolidBrush(PdfColor(4, 120, 87)),
         bounds: Rect.fromLTWH(0, y, pageWidth, 20),
@@ -294,7 +257,6 @@ class PdfService {
       );
       y += 25;
 
-      // جدول التحليل المالي
       final PdfGrid financialGrid = _buildFinancialGrid(
         expectedYield,
         expectedPrice,
@@ -316,9 +278,7 @@ class PdfService {
       y = result.bounds.bottom + 15;
     }
 
-    // ═══════════════════════════════════════
-    // التنبيه الاسترشادي
-    // ═══════════════════════════════════════
+    // التنبيه
     if (y > pageHeight - 80) {
       page = document.pages.add();
       graphics = page.graphics;
@@ -342,9 +302,7 @@ class PdfService {
     );
     y += 45;
 
-    // ═══════════════════════════════════════
     // الفوتر
-    // ═══════════════════════════════════════
     if (y > pageHeight - 80) {
       page = document.pages.add();
       graphics = page.graphics;
@@ -386,9 +344,7 @@ class PdfService {
       bounds: Rect.fromLTWH(0, y, pageWidth, 15),
     );
 
-    // ═══════════════════════════════════════
     // حفظ ومشاركة
-    // ═══════════════════════════════════════
     final List<int> bytes = await document.save();
     document.dispose();
 
@@ -404,9 +360,7 @@ class PdfService {
     );
   }
 
-  // ═══════════════════════════════════════
-  // Helper: جدول المهام
-  // ═══════════════════════════════════════
+  // جدول المهام
   static PdfGrid _buildTaskGrid(
     List<Map<String, dynamic>> tasks,
     PdfTrueTypeFont regularFont,
@@ -417,7 +371,6 @@ class PdfService {
     final PdfGrid grid = PdfGrid();
     grid.columns.add(count: 3);
 
-    // ✅ عرض الأعمدة
     grid.columns[0].width = 40;
     grid.columns[1].width = 150;
     grid.columns[2].width = 300;
@@ -427,7 +380,6 @@ class PdfService {
       cellPadding: PdfPaddings(left: 4, right: 4, top: 3, bottom: 3),
     );
 
-    // ✅ Header مع RTL
     final PdfGridRow header = grid.headers.add(1)[0];
     header.style = PdfGridRowStyle(
       backgroundBrush: PdfSolidBrush(PdfColor(4, 120, 87)),
@@ -442,7 +394,6 @@ class PdfService {
     header.cells[1].style = PdfGridCellStyle(format: centerRtlFormat);
     header.cells[2].style = PdfGridCellStyle(format: centerRtlFormat);
 
-    // ✅ محتوى الجدول
     for (var task in tasks) {
       final PdfGridRow row = grid.rows.add();
       row.cells[0].value = '${task['day_from_start'] ?? 0}';
@@ -454,15 +405,10 @@ class PdfService {
       row.cells[2].style = PdfGridCellStyle(format: rtlFormat);
     }
 
-    // ✅ Allow row to break across pages
-    grid.style.allowRowBreakAcrossPages = true;
-
     return grid;
   }
 
-  // ═══════════════════════════════════════
-  // Helper: جدول المشتريات
-  // ═══════════════════════════════════════
+  // جدول المشتريات
   static PdfGrid _buildMaterialGrid(
     List<Map<String, dynamic>> materials,
     double areaMultiplier,
@@ -475,7 +421,6 @@ class PdfService {
     final PdfGrid grid = PdfGrid();
     grid.columns.add(count: 4);
 
-    // ✅ عرض الأعمدة
     grid.columns[0].width = 200;
     grid.columns[1].width = 80;
     grid.columns[2].width = 70;
@@ -486,7 +431,6 @@ class PdfService {
       cellPadding: PdfPaddings(left: 4, right: 4, top: 3, bottom: 3),
     );
 
-    // Header
     final PdfGridRow header = grid.headers.add(1)[0];
     header.style = PdfGridRowStyle(
       backgroundBrush: PdfSolidBrush(PdfColor(4, 120, 87)),
@@ -503,7 +447,6 @@ class PdfService {
     header.cells[2].style = PdfGridCellStyle(format: centerRtlFormat);
     header.cells[3].style = PdfGridCellStyle(format: centerRtlFormat);
 
-    // محتوى
     for (var m in materials) {
       final qty = (m['quantity_per_unit'] as num? ?? 0) * areaMultiplier;
       final price = m['price_per_unit'] as num? ?? 0;
@@ -521,7 +464,6 @@ class PdfService {
       row.cells[3].style = PdfGridCellStyle(format: centerRtlFormat);
     }
 
-    // صف الإجمالي
     final PdfGridRow totalRow = grid.rows.add();
     totalRow.style = PdfGridRowStyle(
       backgroundBrush: PdfSolidBrush(PdfColor(236, 253, 245)),
@@ -541,14 +483,10 @@ class PdfService {
       font: boldFont,
     );
 
-    grid.style.allowRowBreakAcrossPages = true;
-
     return grid;
   }
 
-  // ═══════════════════════════════════════
-  // Helper: جدول التحليل المالي
-  // ═══════════════════════════════════════
+  // جدول التحليل المالي
   static PdfGrid _buildFinancialGrid(
     double expectedYield,
     double expectedPrice,
