@@ -35,7 +35,7 @@ import 'utils/validators.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
@@ -51,7 +51,6 @@ void main() async {
     } catch (e) {
       debugPrint("خطأ في تهيئة الإشعارات: $e");
     }
-
   } catch (e) {
     debugPrint("Firebase initialization error: $e");
   }
@@ -618,6 +617,7 @@ class AuthWrapper extends StatelessWidget {
     );
   }
 }
+
 // ---------------- AuthScreen ----------------
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -815,7 +815,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     );
   }
 }
-
 // ---------------- HomeDashboard ----------------
 class HomeDashboard extends StatefulWidget {
   final String userName;
@@ -837,6 +836,8 @@ class _HomeDashboardState extends State<HomeDashboard> {
   String locationName = "";
   bool isWeatherLoaded = false;
   bool _refreshing = false;
+  String _selectedGovernorate = "";
+  List<Map<String, dynamic>> _governorates = [];
 
   @override
   void initState() {
@@ -849,8 +850,166 @@ class _HomeDashboardState extends State<HomeDashboard> {
     return CalculatorService.isAdmin(email);
   }
 
+  // ✅ تحميل قائمة المحافظات
+  Future<void> _loadGovernorates() async {
+    if (_governorates.isNotEmpty) return;
+    try {
+      final jsonString =
+          await rootBundle.loadString('assets/data/governorates.json');
+      final data = json.decode(jsonString) as Map<String, dynamic>;
+      final list =
+          (data['governorates'] as List).cast<Map<String, dynamic>>();
+      setState(() {
+        _governorates = list;
+      });
+    } catch (e) {
+      debugPrint("❌ خطأ في تحميل المحافظات: $e");
+    }
+  }
+
+  // ✅ عرض قائمة اختيار المحافظة
+  Future<void> _showGovernoratePicker() async {
+    await _loadGovernorates();
+    if (!mounted) return;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          height: MediaQuery.of(context).size.height * 0.7,
+          child: Column(
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 12),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const Row(
+                children: [
+                  Icon(Icons.location_city, color: Color(0xFF047857)),
+                  SizedBox(width: 8),
+                  Text('اختر المحافظة',
+                      style: TextStyle(
+                          fontSize: 17, fontWeight: FontWeight.bold)),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFECFDF5),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: ListTile(
+                  leading: const Icon(Icons.my_location,
+                      color: Color(0xFF047857)),
+                  title: const Text('تحديد تلقائي (GPS)',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: const Text('استخدام موقعك الحالي',
+                      style: TextStyle(fontSize: 11)),
+                  onTap: () async {
+                    Navigator.pop(context);
+                    await _fetchWeatherByLocation(manual: true);
+                  },
+                ),
+              ),
+              const Divider(),
+              Expanded(
+                child: _governorates.isEmpty
+                    ? const Center(child: CircularProgressIndicator())
+                    : ListView.builder(
+                        itemCount: _governorates.length,
+                        itemBuilder: (context, index) {
+                          final gov = _governorates[index];
+                          final name = gov['name'] as String? ?? '';
+                          final isSelected = name == _selectedGovernorate;
+                          return ListTile(
+                            leading: Icon(
+                              Icons.location_on,
+                              color: isSelected
+                                  ? const Color(0xFF047857)
+                                  : Colors.grey,
+                            ),
+                            title: Text(name),
+                            trailing: isSelected
+                                ? const Icon(Icons.check,
+                                    color: Color(0xFF047857))
+                                : null,
+                            onTap: () async {
+                              Navigator.pop(context);
+                              await _fetchWeatherForGovernorate(
+                                name,
+                                (gov['lat'] as num).toDouble(),
+                                (gov['lon'] as num).toDouble(),
+                              );
+                            },
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ✅ جلب الطقس لمحافظة
+  Future<void> _fetchWeatherForGovernorate(
+    String govName,
+    double lat,
+    double lon,
+  ) async {
+    setState(() {
+      _refreshing = true;
+      _selectedGovernorate = govName;
+      locationName = govName;
+    });
+
+    try {
+      final url = Uri.parse(
+          'https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&current=temperature_2m,relative_humidity_2m');
+      final response =
+          await http.get(url).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        setState(() {
+          weatherTemp = data['current']['temperature_2m'].toString();
+          weatherHumidity =
+              data['current']['relative_humidity_2m'].toString();
+          weatherStatusText =
+              "درجة الحرارة: $weatherTemp°م | الرطوبة: $weatherHumidity%";
+          isWeatherLoaded = true;
+        });
+
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('selected_gov', govName);
+        await _saveWeatherCache();
+      } else {
+        setState(() => weatherStatusText = "تعذر جلب بيانات الطقس حالياً");
+      }
+    } catch (e) {
+      debugPrint("❌ خطأ: $e");
+      setState(() => weatherStatusText = "⚠️ تعذر الاتصال بالخدمة");
+    }
+
+    if (mounted) setState(() => _refreshing = false);
+  }
+
   Future<void> _loadCachedWeather() async {
     final prefs = await SharedPreferences.getInstance();
+    _selectedGovernorate = prefs.getString('selected_gov') ?? "";
     final cached = prefs.getString('weather_data');
     if (cached != null) {
       try {
@@ -897,7 +1056,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
       if (resp.statusCode == 200) {
         final data = json.decode(resp.body);
         final address = data['address'] ?? {};
-
         final city = address['city'] ??
             address['town'] ??
             address['municipality'] ??
@@ -907,11 +1065,9 @@ class _HomeDashboardState extends State<HomeDashboard> {
             address['neighbourhood'] ??
             address['city_district'] ??
             address['state_district'];
-
         if (city != null && city.toString().trim().isNotEmpty) {
           return city.toString();
         }
-
         final state =
             address['state'] ?? address['governorate'] ?? address['region'];
         if (state != null && state.toString().trim().isNotEmpty) {
@@ -921,26 +1077,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
     } catch (e) {
       debugPrint("Nominatim error: $e");
     }
-
-    try {
-      final url = Uri.parse(
-          'https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=$lat&longitude=$lon&localityLanguage=ar');
-      final resp = await http.get(url).timeout(const Duration(seconds: 8));
-
-      if (resp.statusCode == 200) {
-        final data = json.decode(resp.body);
-        final city =
-            data['city'] ?? data['locality'] ?? data['principalSubdivision'];
-        if (city != null && city.toString().trim().isNotEmpty) {
-          return city.toString();
-        }
-      }
-    } catch (e) {
-      debugPrint("BigDataCloud error: $e");
-    }
-
     if (fallback.isNotEmpty) return fallback;
-
     return '${lat.toStringAsFixed(2)}, ${lon.toStringAsFixed(2)}';
   }
 
@@ -987,7 +1124,8 @@ class _HomeDashboardState extends State<HomeDashboard> {
       final url = Uri.parse(
           'https://api.open-meteo.com/v1/forecast?latitude=${position.latitude}&longitude=${position.longitude}&current=temperature_2m,relative_humidity_2m');
 
-      final response = await http.get(url).timeout(const Duration(seconds: 10));
+      final response =
+          await http.get(url).timeout(const Duration(seconds: 10));
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         setState(() {
@@ -995,6 +1133,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
           weatherHumidity =
               data['current']['relative_humidity_2m'].toString();
           locationName = cityName;
+          _selectedGovernorate = "";
           weatherStatusText =
               "درجة الحرارة: $weatherTemp°م | الرطوبة: $weatherHumidity%";
           isWeatherLoaded = true;
@@ -1314,8 +1453,11 @@ class _HomeDashboardState extends State<HomeDashboard> {
                       style:
                           TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                 ),
-                if (locationName.isNotEmpty)
-                  Container(
+                // ✅ زر اختيار المحافظة
+                InkWell(
+                  onTap: _showGovernoratePicker,
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
                     padding: const EdgeInsets.symmetric(
                         horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
@@ -1330,14 +1472,22 @@ class _HomeDashboardState extends State<HomeDashboard> {
                         const Icon(Icons.location_on,
                             size: 12, color: Color(0xFF047857)),
                         const SizedBox(width: 3),
-                        Text(locationName,
-                            style: const TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF047857))),
+                        Text(
+                          locationName.isNotEmpty
+                              ? locationName
+                              : 'اختر المحافظة',
+                          style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF047857)),
+                        ),
+                        const SizedBox(width: 3),
+                        const Icon(Icons.arrow_drop_down,
+                            size: 16, color: Color(0xFF047857)),
                       ],
                     ),
                   ),
+                ),
                 const SizedBox(width: 4),
                 _refreshing
                     ? const SizedBox(
@@ -1664,7 +1814,6 @@ $_diagnosis
     super.dispose();
   }
 
-  // ✅ دالة الـ submit بعد التعديل — موديل 2.0-flash + تقرير كامل
   Future<void> _submit() async {
     final question = _questionCtrl.text.trim();
     if (question.isEmpty && _imageFile == null) {
@@ -1711,7 +1860,6 @@ $_diagnosis
       try {
         attempt++;
 
-        // ✅ الموديل الجديد + إعدادات التقرير الكامل
         final model = GenerativeModel(
           model: 'gemini-3.8-flash',
           apiKey: _apiKey,
@@ -1723,7 +1871,6 @@ $_diagnosis
           ),
         );
 
-        // ✅ Prompt التقرير الكامل
         final prompt = """
 أنت مهندس زراعي خبير ومستشار زراعي مصري بخبرة 20 سنة.
 اسم المزارع: ${widget.userName}
@@ -1789,7 +1936,7 @@ $_diagnosis
         if (attempt >= maxRetries) {
           setState(() {
             _diagnosis =
-                'عذراً، خدمة الذكاء الاصطناعي مشغولة حالياً بسبب الضغط العالي.\nبرجاء المحاولة مرة أخرى بعد قليل.';
+                'عذراً، خدمة الذكاء الاصطناعي مشغولة حالياً.\nبرجاء المحاولة مرة أخرى بعد قليل.';
           });
           debugPrint("❌ فشل بعد $attempt محاولات. الخطأ: $e");
         } else {
@@ -1969,6 +2116,7 @@ $_diagnosis
     );
   }
 }
+
 // ---------------- HistoryScreen ----------------
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
@@ -2225,7 +2373,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 }
-
 // ---------------- ProfileScreen ----------------
 class ProfileScreen extends StatefulWidget {
   final String userName;
@@ -2975,7 +3122,6 @@ class EncyclopediaSectionView extends StatelessWidget {
     );
   }
 }
-
 // ---------------- StatisticsScreen ----------------
 class StatisticsScreen extends StatefulWidget {
   const StatisticsScreen({super.key});
