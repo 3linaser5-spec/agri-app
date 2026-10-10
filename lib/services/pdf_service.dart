@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui' show Rect;
 import 'dart:typed_data';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
@@ -65,11 +66,6 @@ class PdfService {
     final sortedTasks = List<Map<String, dynamic>>.from(tasks);
     sortedTasks.sort((a, b) => (a['day_from_start'] as int? ?? 0)
         .compareTo(b['day_from_start'] as int? ?? 0));
-
-    // ✅ حجم الصفحة A4
-    final PdfPageSettings pageSettings = PdfPageSettings()
-      ..size = PdfPageSize.a4
-      ..margins.all = 40;
 
     // ✅ إنشاء صفحة أولى
     PdfPage page = document.pages.add();
@@ -163,7 +159,6 @@ class PdfService {
     // الجدول الزمني
     // ═══════════════════════════════════════
     if (sortedTasks.isNotEmpty) {
-      // عنوان القسم
       graphics.drawRectangle(
         brush: PdfSolidBrush(PdfColor(4, 120, 87)),
         bounds: Rect.fromLTWH(0, y, pageWidth, 22),
@@ -177,7 +172,6 @@ class PdfService {
       );
       y += 30;
 
-      // إنشاء الجدول
       final PdfGrid grid = PdfGrid();
       grid.columns.add(count: 3);
       grid.style = PdfGridStyle(
@@ -185,7 +179,6 @@ class PdfService {
         cellPadding: PdfPaddings(left: 5, right: 5, top: 3, bottom: 3),
       );
 
-      // رأس الجدول
       final PdfGridRow header = grid.headers.add(1)[0];
       header.style = PdfGridRowStyle(
         backgroundBrush: PdfSolidBrush(PdfColor(4, 120, 87)),
@@ -196,7 +189,6 @@ class PdfService {
       header.cells[1].value = 'المهمة';
       header.cells[2].value = 'التفاصيل';
 
-      // محتوى الجدول
       for (var task in sortedTasks) {
         final PdfGridRow row = grid.rows.add();
         row.cells[0].value = '${task['day_from_start'] ?? 0}';
@@ -217,7 +209,6 @@ class PdfService {
         );
       }
 
-      // رسم الجدول
       final PdfLayoutResult result = grid.draw(
         page: page,
         bounds: Rect.fromLTWH(0, y, pageWidth, pageHeight - y - 80),
@@ -229,14 +220,12 @@ class PdfService {
     // المشتريات
     // ═══════════════════════════════════════
     if (materials.isNotEmpty) {
-      // تحقق من المساحة - لو مش كفاية، أضف صفحة جديدة
       if (y > pageHeight - 200) {
         page = document.pages.add();
         graphics = page.graphics;
         y = 20;
       }
 
-      // عنوان القسم
       graphics.drawRectangle(
         brush: PdfSolidBrush(PdfColor(4, 120, 87)),
         bounds: Rect.fromLTWH(0, y, pageWidth, 22),
@@ -250,7 +239,6 @@ class PdfService {
       );
       y += 30;
 
-      // جدول المشتريات
       final PdfGrid grid = PdfGrid();
       grid.columns.add(count: 4);
       grid.style = PdfGridStyle(
@@ -286,7 +274,6 @@ class PdfService {
         row.cells[3].style = PdfGridCellStyle(format: centerFormat);
       }
 
-      // صف الإجمالي
       final PdfGridRow totalRow = grid.rows.add();
       totalRow.style = PdfGridRowStyle(
         backgroundBrush: PdfSolidBrush(PdfColor(236, 253, 245)),
@@ -337,7 +324,6 @@ class PdfService {
       );
       y += 30;
 
-      // الجدول المالي
       final PdfGrid grid = PdfGrid();
       grid.columns.add(count: 2);
       grid.style = PdfGridStyle(
@@ -432,14 +418,12 @@ class PdfService {
     final List<int> bytes = await document.save();
     document.dispose();
 
-    // حفظ الملف
     final dir = await getTemporaryDirectory();
     final filePath =
         '${dir.path}/nabati_${programTitle}_${DateTime.now().millisecondsSinceEpoch}.pdf';
     final file = File(filePath);
     await file.writeAsBytes(bytes);
 
-    // مشاركة الملف
     await Share.shareXFiles(
       [XFile(filePath)],
       subject: 'برنامج $programTitle',
