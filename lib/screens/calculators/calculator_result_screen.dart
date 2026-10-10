@@ -55,16 +55,37 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
     return total;
   }
 
-  // ✅ تحميل PDF
+  // ✅ تحميل PDF — مع Loading Dialog
   Future<void> _downloadPdf() async {
-    try {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('⏳ جاري تجهيز ملف PDF...'),
-          duration: Duration(seconds: 2),
+    // ✅ عرض Loading Dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: Card(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(color: Color(0xFF047857)),
+                SizedBox(height: 16),
+                Text('⏳ جاري تجهيز PDF...',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+                SizedBox(height: 4),
+                Text('قد يستغرق بضع ثوانٍ',
+                    style: TextStyle(fontSize: 11, color: Colors.grey)),
+              ],
+            ),
+          ),
         ),
-      );
+      ),
+    );
 
+    // ✅ استنى لحظة عشان الـ Dialog يظهر
+    await Future.delayed(const Duration(milliseconds: 100));
+
+    try {
       await PdfService.generateAndSharePdf(
         programTitle: widget.template.name,
         programEmoji: widget.template.emoji,
@@ -96,6 +117,7 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
         },
       );
     } catch (e) {
+      debugPrint('❌ فشل إنشاء PDF: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -104,6 +126,9 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
           ),
         );
       }
+    } finally {
+      // ✅ إغلاق الـ Dialog
+      if (mounted) Navigator.of(context, rootNavigator: true).pop();
     }
   }
 
