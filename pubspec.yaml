@@ -31,7 +31,7 @@ dependencies:
   pdf: any
   printing: any
   path_provider: any
-  arabic_reshaper: ^1.0.0
+  arabic_reshaper: ^0.0.1
 
   # ✅ أدوات
   shared_preferences: any
