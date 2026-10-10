@@ -1,14 +1,12 @@
 import 'dart:io';
 import 'dart:ui' show Rect;
 import 'dart:typed_data';
-import 'dart:isolate';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 
 class PdfService {
-  /// ✅ الدالة الرئيسية — بتحمّل الخطوط وتبدأ الـ Isolate
   static Future<void> generateAndSharePdf({
     required String programTitle,
     required String programEmoji,
@@ -19,20 +17,15 @@ class PdfService {
     required List<Map<String, dynamic>> materials,
     required Map<String, dynamic> financial,
   }) async {
-    // ✅ 1. تحميل الخطوط في الـ main thread (سريع)
-    final regularBytes =
-        (await rootBundle.load('assets/fonts/Cairo-Regular.ttf'))
-            .buffer
-            .asUint8List();
-    final boldBytes =
-        (await rootBundle.load('assets/fonts/Cairo-Bold.ttf'))
-            .buffer
-            .asUint8List();
+    // تحميل الخطوط
+    final regularData =
+        await rootBundle.load('assets/fonts/Cairo-Regular.ttf');
+    final boldData = await rootBundle.load('assets/fonts/Cairo-Bold.ttf');
 
-    // ✅ 2. تجهيز البيانات للـ Isolate
-    final isolateData = _PdfIsolateData(
-      regularFontBytes: regularBytes,
-      boldFontBytes: boldBytes,
+    // ✅ توليد الـ bytes
+    final bytes = _generatePdfBytes(
+      regularFontBytes: regularData.buffer.asUint8List(),
+      boldFontBytes: boldData.buffer.asUint8List(),
       programTitle: programTitle,
       programEmoji: programEmoji,
       governorate: governorate,
@@ -43,90 +36,57 @@ class PdfService {
       financial: financial,
     );
 
-    // ✅ 3. تشغيل الـ Isolate
-    final Uint8List? pdfBytes = await _runPdfIsolate(isolateData);
-
-    if (pdfBytes == null) {
-      throw Exception('فشل إنشاء ملف PDF');
-    }
-
-    // ✅ 4. حفظ الملف
+    // حفظ الملف
     final dir = await getTemporaryDirectory();
     final filePath =
         '${dir.path}/nabati_${programTitle}_${DateTime.now().millisecondsSinceEpoch}.pdf';
     final file = File(filePath);
-    await file.writeAsBytes(pdfBytes);
+    await file.writeAsBytes(bytes);
 
-    // ✅ 5. مشاركة الملف
+    // مشاركة
     await Share.shareXFiles(
       [XFile(filePath)],
       subject: 'برنامج $programTitle',
     );
   }
 
-  /// ✅ تشغيل الـ Isolate
-  static Future<Uint8List?> _runPdfIsolate(_PdfIsolateData data) async {
-    final receivePort = ReceivePort();
-    final completer = Completer<Uint8List?>();
-
-    await Isolate.spawn(
-      _pdfIsolateEntry,
-      _PdfIsolateMessage(receivePort.sendPort, data),
-    );
-
-    receivePort.listen((message) {
-      if (message is Uint8List) {
-        completer.complete(message);
-      } else if (message is String) {
-        completer.completeError(Exception(message));
-      }
-      receivePort.close();
-    });
-
-    return completer.future;
-  }
-
-  /// ✅ نقطة الدخول للـ Isolate
-  static void _pdfIsolateEntry(_PdfIsolateMessage message) {
-    try {
-      final bytes = _generatePdfBytes(message.data);
-      message.sendPort.send(bytes);
-    } catch (e) {
-      message.sendPort.send('خطأ: $e');
-    }
-  }
-
-  /// ✅ توليد PDF (يعمل داخل الـ Isolate)
-  static Uint8List _generatePdfBytes(_PdfIsolateData data) {
+  // ✅ توليد PDF bytes
+  static Uint8List _generatePdfBytes({
+    required Uint8List regularFontBytes,
+    required Uint8List boldFontBytes,
+    required String programTitle,
+    required String programEmoji,
+    required String governorate,
+    required String sectionName,
+    required Map<String, dynamic> inputValues,
+    required List<Map<String, dynamic>> tasks,
+    required List<Map<String, dynamic>> materials,
+    required Map<String, dynamic> financial,
+  }) {
     final PdfDocument document = PdfDocument();
 
-    // تحميل الخطوط
-    final regularFont =
-        PdfTrueTypeFont(data.regularFontBytes, 11);
-    final boldFont =
-        PdfTrueTypeFont(data.boldFontBytes, 12);
-    final titleFont =
-        PdfTrueTypeFont(data.boldFontBytes, 16);
-    final smallFont =
-        PdfTrueTypeFont(data.regularFontBytes, 8);
+    final regularFont = PdfTrueTypeFont(regularFontBytes, 11);
+    final boldFont = PdfTrueTypeFont(boldFontBytes, 12);
+    final titleFont = PdfTrueTypeFont(boldFontBytes, 16);
+    final smallFont = PdfTrueTypeFont(regularFontBytes, 8);
 
     // حساب القيم
     double areaMultiplier = 1.0;
-    final area = data.inputValues['area'];
+    final area = inputValues['area'];
     if (area is num) areaMultiplier = area.toDouble();
 
     double totalMaterialsCost = 0;
-    for (var m in data.materials) {
+    for (var m in materials) {
       final qty = (m['quantity_per_unit'] as num? ?? 0) * areaMultiplier;
       final price = m['price_per_unit'] as num? ?? 0;
       totalMaterialsCost += qty * price;
     }
 
     final double expectedYield =
-        ((data.financial['expected_yield'] as num? ?? 0) * areaMultiplier)
+        ((financial['expected_yield'] as num? ?? 0) * areaMultiplier)
             .toDouble();
     final double expectedPrice =
-        (data.financial['expected_price'] as num? ?? 0).toDouble();
+        (financial['expected_price'] as num? ?? 0).toDouble();
     final double totalRevenue =
         (expectedYield * expectedPrice).toDouble();
     final double netProfit =
@@ -135,21 +95,19 @@ class PdfService {
         ? ((netProfit / totalMaterialsCost) * 100).toDouble()
         : 0.0;
 
-    final sortedTasks = List<Map<String, dynamic>>.from(data.tasks);
+    final sortedTasks = List<Map<String, dynamic>>.from(tasks);
     sortedTasks.sort((a, b) => (a['day_from_start'] as int? ?? 0)
         .compareTo(b['day_from_start'] as int? ?? 0));
 
-    // RTL Format
-    final PdfStringFormat rtlFormat = PdfStringFormat(
+    final rtlFormat = PdfStringFormat(
       alignment: PdfTextAlignment.right,
       textDirection: PdfTextDirection.rightToLeft,
     );
-    final PdfStringFormat centerRtlFormat = PdfStringFormat(
+    final centerRtlFormat = PdfStringFormat(
       alignment: PdfTextAlignment.center,
       textDirection: PdfTextDirection.rightToLeft,
     );
 
-    // الصفحة الأولى
     PdfPage page = document.pages.add();
     PdfGraphics graphics = page.graphics;
 
@@ -179,9 +137,8 @@ class PdfService {
 
     y = 60;
 
-    // عنوان البرنامج
     PdfTextElement(
-      text: 'برنامج ${data.programTitle} ${data.programEmoji}',
+      text: 'برنامج $programTitle $programEmoji',
       font: titleFont,
       brush: PdfSolidBrush(PdfColor(4, 120, 87)),
       format: rtlFormat,
@@ -189,7 +146,7 @@ class PdfService {
     y += 28;
 
     PdfTextElement(
-      text: 'المحافظة: ${data.governorate}',
+      text: 'المحافظة: $governorate',
       font: regularFont,
       brush: PdfSolidBrush(PdfColor(0, 0, 0)),
       format: rtlFormat,
@@ -197,7 +154,7 @@ class PdfService {
     y += 18;
 
     PdfTextElement(
-      text: 'القسم: ${data.sectionName}',
+      text: 'القسم: $sectionName',
       font: regularFont,
       brush: PdfSolidBrush(PdfColor(0, 0, 0)),
       format: rtlFormat,
@@ -244,7 +201,7 @@ class PdfService {
     }
 
     // المشتريات
-    if (data.materials.isNotEmpty) {
+    if (materials.isNotEmpty) {
       if (y > pageHeight - 150) {
         page = document.pages.add();
         graphics = page.graphics;
@@ -264,7 +221,7 @@ class PdfService {
       y += 25;
 
       final materialGrid = _buildMaterialGrid(
-        data.materials,
+        materials,
         areaMultiplier,
         totalMaterialsCost,
         regularFont,
@@ -308,7 +265,7 @@ class PdfService {
         totalMaterialsCost,
         netProfit,
         roi,
-        data.financial,
+        financial,
         regularFont,
         boldFont,
         rtlFormat,
@@ -373,14 +330,14 @@ class PdfService {
       format: centerRtlFormat,
     ).draw(page: page, bounds: Rect.fromLTWH(0, y, pageWidth, 15));
 
-    // حفظ
-    final List<int> bytes = document.save();
+    // ✅ Syncfusion بحاجة `saveSync` مش `save`
+    final List<int> bytes = document.saveSync();
     document.dispose();
 
     return Uint8List.fromList(bytes);
   }
 
-  // جدول المهام
+  // Helper: جدول المهام
   static PdfGrid _buildTaskGrid(
     List<Map<String, dynamic>> tasks,
     PdfTrueTypeFont regularFont,
@@ -388,7 +345,7 @@ class PdfService {
     PdfStringFormat rtlFormat,
     PdfStringFormat centerRtlFormat,
   ) {
-    final PdfGrid grid = PdfGrid();
+    final grid = PdfGrid();
     grid.columns.add(count: 3);
     grid.columns[0].width = 40;
     grid.columns[1].width = 150;
@@ -427,7 +384,7 @@ class PdfService {
     return grid;
   }
 
-  // جدول المشتريات
+  // Helper: جدول المشتريات
   static PdfGrid _buildMaterialGrid(
     List<Map<String, dynamic>> materials,
     double areaMultiplier,
@@ -504,7 +461,7 @@ class PdfService {
     return grid;
   }
 
-  // جدول التحليل المالي
+  // Helper: جدول التحليل المالي
   static PdfGrid _buildFinancialGrid(
     double expectedYield,
     double expectedPrice,
@@ -552,41 +509,4 @@ class PdfService {
   static String _formatDate(DateTime date) {
     return '${date.day}/${date.month}/${date.year}';
   }
-}
-
-// ═══════════════════════════════════════
-// Helper Classes للـ Isolate
-// ═══════════════════════════════════════
-
-class _PdfIsolateData {
-  final Uint8List regularFontBytes;
-  final Uint8List boldFontBytes;
-  final String programTitle;
-  final String programEmoji;
-  final String governorate;
-  final String sectionName;
-  final Map<String, dynamic> inputValues;
-  final List<Map<String, dynamic>> tasks;
-  final List<Map<String, dynamic>> materials;
-  final Map<String, dynamic> financial;
-
-  _PdfIsolateData({
-    required this.regularFontBytes,
-    required this.boldFontBytes,
-    required this.programTitle,
-    required this.programEmoji,
-    required this.governorate,
-    required this.sectionName,
-    required this.inputValues,
-    required this.tasks,
-    required this.materials,
-    required this.financial,
-  });
-}
-
-class _PdfIsolateMessage {
-  final SendPort sendPort;
-  final _PdfIsolateData data;
-
-  _PdfIsolateMessage(this.sendPort, this.data);
 }
