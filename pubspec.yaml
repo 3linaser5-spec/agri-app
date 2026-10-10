@@ -27,11 +27,10 @@ dependencies:
   timezone: any
   flutter_timezone: any
 
-  # ✅ PDF - pdf + arabic_reshaper
-  pdf: any
-  printing: any
+  # ✅ PDF - flutter_pdf_export
+  flutter_pdf_export: ^1.0.0
+  share_plus: ^7.2.2
   path_provider: any
-  arabic_reshaper: ^0.0.1
 
   # ✅ أدوات
   shared_preferences: any
@@ -57,7 +56,7 @@ flutter:
     - assets/images/
     - assets/data/
   
-  # ✅ الخط العربي للـ PDF
+  # ✅ الخط العربي
   fonts:
     - family: Cairo
       fonts:
