@@ -22,6 +22,7 @@ import 'package:path_provider/path_provider.dart';
 import 'dart:convert';
 import 'package:google_generative_ai/google_generative_ai.dart';
 import 'firebase_options.dart';
+import 'data/egypt_data.dart';
 import 'services/auth_service.dart';
 import 'services/offline_service.dart';
 import 'services/notification_service.dart';
@@ -837,7 +838,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
   bool isWeatherLoaded = false;
   bool _refreshing = false;
   String _selectedGovernorate = "";
-  List<Map<String, dynamic>> _governorates = [];
+  List<GovernorateInfo> _governorates = [];
 
   @override
   void initState() {
@@ -850,26 +851,17 @@ class _HomeDashboardState extends State<HomeDashboard> {
     return CalculatorService.isAdmin(email);
   }
 
-  // ✅ تحميل قائمة المحافظات
-  Future<void> _loadGovernorates() async {
+  // ✅ تحميل قائمة المحافظات من EgyptData
+  void _loadGovernorates() {
     if (_governorates.isNotEmpty) return;
-    try {
-      final jsonString =
-          await rootBundle.loadString('assets/data/governorates.json');
-      final data = json.decode(jsonString) as Map<String, dynamic>;
-      final list =
-          (data['governorates'] as List).cast<Map<String, dynamic>>();
-      setState(() {
-        _governorates = list;
-      });
-    } catch (e) {
-      debugPrint("❌ خطأ في تحميل المحافظات: $e");
-    }
+    setState(() {
+      _governorates = EgyptData.governorates;
+    });
   }
 
   // ✅ عرض قائمة اختيار المحافظة
-  Future<void> _showGovernoratePicker() async {
-    await _loadGovernorates();
+  void _showGovernoratePicker() {
+    _loadGovernorates();
     if (!mounted) return;
 
     showModalBottomSheet(
@@ -882,7 +874,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
         textDirection: TextDirection.rtl,
         child: Container(
           padding: const EdgeInsets.all(16),
-          height: MediaQuery.of(context).size.height * 0.7,
+          height: MediaQuery.of(context).size.height * 0.75,
           child: Column(
             children: [
               Container(
@@ -925,37 +917,35 @@ class _HomeDashboardState extends State<HomeDashboard> {
               ),
               const Divider(),
               Expanded(
-                child: _governorates.isEmpty
-                    ? const Center(child: CircularProgressIndicator())
-                    : ListView.builder(
-                        itemCount: _governorates.length,
-                        itemBuilder: (context, index) {
-                          final gov = _governorates[index];
-                          final name = gov['name'] as String? ?? '';
-                          final isSelected = name == _selectedGovernorate;
-                          return ListTile(
-                            leading: Icon(
-                              Icons.location_on,
-                              color: isSelected
-                                  ? const Color(0xFF047857)
-                                  : Colors.grey,
-                            ),
-                            title: Text(name),
-                            trailing: isSelected
-                                ? const Icon(Icons.check,
-                                    color: Color(0xFF047857))
-                                : null,
-                            onTap: () async {
-                              Navigator.pop(context);
-                              await _fetchWeatherForGovernorate(
-                                name,
-                                (gov['lat'] as num).toDouble(),
-                                (gov['lon'] as num).toDouble(),
-                              );
-                            },
-                          );
-                        },
+                child: ListView.builder(
+                  itemCount: _governorates.length,
+                  itemBuilder: (context, index) {
+                    final gov = _governorates[index];
+                    final name = gov.name;
+                    final isSelected = name == _selectedGovernorate;
+                    return ListTile(
+                      leading: Icon(
+                        Icons.location_on,
+                        color: isSelected
+                            ? const Color(0xFF047857)
+                            : Colors.grey,
                       ),
+                      title: Text(name),
+                      trailing: isSelected
+                          ? const Icon(Icons.check,
+                              color: Color(0xFF047857))
+                          : null,
+                      onTap: () async {
+                        Navigator.pop(context);
+                        await _fetchWeatherForGovernorate(
+                          name,
+                          gov.lat,
+                          gov.lon,
+                        );
+                      },
+                    );
+                  },
+                ),
               ),
             ],
           ),
@@ -1453,7 +1443,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
                       style:
                           TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                 ),
-                // ✅ زر اختيار المحافظة
                 InkWell(
                   onTap: _showGovernoratePicker,
                   borderRadius: BorderRadius.circular(8),
