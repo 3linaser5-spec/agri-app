@@ -16,7 +16,7 @@ class PdfService {
     required List<Map<String, dynamic>> materials,
     required Map<String, dynamic> financial,
   }) async {
-    // ✅ 1. تحميل الخط العربي من assets (مش من Google Fonts)
+    // ✅ تحميل الخط العربي من assets
     final regularData =
         await rootBundle.load('assets/fonts/Cairo-Regular.ttf');
     final boldData = await rootBundle.load('assets/fonts/Cairo-Bold.ttf');
@@ -24,7 +24,7 @@ class PdfService {
     final arabicFont = pw.Font.ttf(regularData);
     final arabicFontBold = pw.Font.ttf(boldData);
 
-    // ✅ 2. حساب القيم
+    // حساب القيم
     double areaMultiplier = 1.0;
     final area = inputValues['area'];
     if (area is num) areaMultiplier = area.toDouble();
@@ -53,7 +53,6 @@ class PdfService {
     sortedTasks.sort((a, b) => (a['day_from_start'] as int? ?? 0)
         .compareTo(b['day_from_start'] as int? ?? 0));
 
-    // ✅ 3. إعداد المستند
     final pdf = pw.Document();
 
     pdf.addPage(
@@ -67,7 +66,7 @@ class PdfService {
         ),
         build: (pw.Context context) {
           return [
-            // --- القسم الأول: الهيدر والبيانات الأساسية ---
+            // --- القسم الأول: الهيدر ---
             pw.Directionality(
               textDirection: pw.TextDirection.rtl,
               child: pw.Column(
@@ -85,7 +84,8 @@ class PdfService {
                       ),
                       pw.Text(
                         'تاريخ الإصدار: ${_formatDate(DateTime.now())}',
-                        style: const pw.TextStyle(
+                        style: pw.TextStyle(
+                          font: arabicFont,
                           fontSize: 10,
                           color: PdfColors.grey700,
                         ),
@@ -111,7 +111,7 @@ class PdfService {
             pw.SizedBox(height: 10),
             pw.Divider(),
 
-            // --- القسم الثاني: الجدول الزمني ---
+            // --- الجدول الزمني ---
             if (sortedTasks.isNotEmpty) ...[
               pw.SizedBox(height: 5),
               pw.Text(
@@ -156,7 +156,7 @@ class PdfService {
               pw.Divider(),
             ],
 
-            // --- القسم الثالث: قائمة المشتريات ---
+            // --- المشتريات ---
             if (materials.isNotEmpty) ...[
               pw.SizedBox(height: 5),
               pw.Text(
@@ -191,7 +191,7 @@ class PdfService {
               pw.Divider(),
             ],
 
-            // --- القسم الرابع: التحليل المالي ---
+            // --- التحليل المالي ---
             if (expectedYield > 0 || expectedPrice > 0) ...[
               pw.SizedBox(height: 5),
               pw.Text(
@@ -230,7 +230,7 @@ class PdfService {
               pw.Divider(),
             ],
 
-            // --- القسم الخامس: الفوتر والتنبيه ---
+            // --- الفوتر والتنبيه ---
             pw.SizedBox(height: 5),
             pw.Text(
               'البرنامج استرشادي - يجب مراجعة المهندس الزراعي المختص قبل التطبيق الفعلي',
@@ -270,7 +270,7 @@ class PdfService {
       ),
     );
 
-    // ✅ 4. استخراج الملف ومشاركته
+    // استخراج الملف ومشاركته
     try {
       final output = await getTemporaryDirectory();
       final file = File(
