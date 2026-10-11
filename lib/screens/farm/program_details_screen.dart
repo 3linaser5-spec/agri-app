@@ -49,7 +49,7 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
     );
 
     // ✅ استنى لحظة عشان الـ Dialog يظهر
-    await Future.delayed(const Duration(milliseconds: 100));
+    await Future.delayed(const Duration(milliseconds: 500));
 
     try {
       await PdfService.generateAndSharePdf(
