@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../models/encyclopedia_model.dart';
 import '../../services/encyclopedia_service.dart';
 import 'encyclopedia_items_screen.dart';
+import 'encyclopedia_import_screen.dart';
 
 class EncyclopediaAdminScreen extends StatelessWidget {
   const EncyclopediaAdminScreen({super.key});
@@ -37,6 +38,21 @@ class EncyclopediaAdminScreen extends StatelessWidget {
             style: TextStyle(color: Colors.white)),
         backgroundColor: const Color(0xFF047857),
         iconTheme: const IconThemeData(color: Colors.white),
+        actions: [
+          // ✅ زر استيراد JSON
+          IconButton(
+            icon: const Icon(Icons.cloud_upload, color: Colors.white),
+            tooltip: 'استيراد من JSON',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const EncyclopediaImportScreen(),
+                ),
+              );
+            },
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showAddEditDialog(context, null),
@@ -77,7 +93,7 @@ class EncyclopediaAdminScreen extends StatelessWidget {
                         style: TextStyle(
                             fontSize: 18, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 8),
-                    const Text('دوس "قسم جديد" لتبدأ',
+                    const Text('دوس "قسم جديد" أو "استيراد JSON"',
                         style: TextStyle(fontSize: 13, color: Colors.grey)),
                   ],
                 ),
