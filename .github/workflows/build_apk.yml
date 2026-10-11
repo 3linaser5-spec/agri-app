@@ -42,8 +42,8 @@ jobs:
           rm -f android/build.gradle
           rm -f android/settings.gradle
           
-          # تعديل إصدار Dart SDK ليتوافق مع Flutter 3.24 (وهو Dart 3.5)
-          sed -i 's/sdk: .*/sdk: ">=3.5.0 <4.0.0"/' pubspec.yaml
+          # التعديل المصحح: تغيير إصدار Dart فقط وتجاهل أسطر فلاتر الأساسية
+          sed -i '/sdk: flutter/!s/sdk: .*/sdk: ">=3.5.0 <4.0.0"/' pubspec.yaml
           
           # إعداد Gradle Wrapper متوافق مع Flutter 3.24
           mkdir -p android/gradle/wrapper
