@@ -45,12 +45,10 @@ jobs:
           # التعديل المصحح: تغيير إصدار Dart فقط وتجاهل أسطر فلاتر الأساسية
           sed -i '/sdk: flutter/!s/sdk: .*/sdk: ">=3.5.0 <4.0.0"/' pubspec.yaml
           
-          # حل مشكلة geolocator_android بشكل جذري عبر إضافة dependency_overrides في نهاية pubspec.yaml
-          cat << 'EOF' >> pubspec.yaml
-
-dependency_overrides:
-  geolocator_android: 4.6.1
-EOF
+          # حل مشكلة geolocator_android بطريقة آمنة لتنسيق YAML
+          echo "" >> pubspec.yaml
+          echo "dependency_overrides:" >> pubspec.yaml
+          echo "  geolocator_android: 4.6.1" >> pubspec.yaml
           
           # إعداد Gradle Wrapper متوافق مع Flutter 3.24
           mkdir -p android/gradle/wrapper
