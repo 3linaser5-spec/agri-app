@@ -48,7 +48,6 @@ dependencies:
 
   # ✅ PDF - Syncfusion (مؤقت)
   syncfusion_flutter_pdf: ^28.0.0
-  path_provider: ^2.1.5
 
   # ✅ أدوات إضافية
   intl: ^0.20.2
