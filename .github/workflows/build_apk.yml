@@ -161,6 +161,8 @@ jobs:
               compileSdk 34
 
               compileOptions {
+                  // تفعيل coreLibraryDesugaring لحل مشكلة الإشعارات
+                  coreLibraryDesugaringEnabled true
                   sourceCompatibility JavaVersion.VERSION_1_8
                   targetCompatibility JavaVersion.VERSION_1_8
               }
@@ -197,6 +199,11 @@ jobs:
                       minifyEnabled false
                       shrinkResources false
                   }
+              }
+              
+              dependencies {
+                  // إضافة المكتبة المسؤولة عن دعم coreLibraryDesugaring
+                  coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
               }
           }
 
