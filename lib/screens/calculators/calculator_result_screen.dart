@@ -57,7 +57,6 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
 
   // ✅ تحميل PDF — مع Loading Dialog
   Future<void> _downloadPdf() async {
-    // ✅ عرض Loading Dialog
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -82,8 +81,7 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
       ),
     );
 
-    // ✅ استنى لحظة عشان الـ Dialog يظهر
-    await Future.delayed(const Duration(milliseconds: 300));
+    await Future.delayed(const Duration(milliseconds: 500));
 
     try {
       await PdfService.generateAndSharePdf(
@@ -127,7 +125,6 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
         );
       }
     } finally {
-      // ✅ إغلاق الـ Dialog
       if (mounted) Navigator.of(context, rootNavigator: true).pop();
     }
   }
@@ -205,7 +202,6 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
     if (!mounted) return;
 
     if (id != null) {
-      // ✅ جدولة الإشعارات بعد الحفظ بنجاح
       try {
         final scheduledCount =
             await NotificationService.scheduleProgramNotifications(
