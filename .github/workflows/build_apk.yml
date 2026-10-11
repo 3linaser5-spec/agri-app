@@ -180,7 +180,7 @@ jobs:
 
               defaultConfig {
                   applicationId "com.dahshory.agri.agri_app"
-                  minSdkVersion 24 # <-- التعديل هنا: تم رفعه لـ 24 لحل مشكلة حزمة الصوت
+                  minSdkVersion 24
                   targetSdkVersion 34
                   versionCode flutterVersionCode.toInteger()
                   versionName flutterVersionName
