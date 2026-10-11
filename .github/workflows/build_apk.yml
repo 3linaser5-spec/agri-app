@@ -69,7 +69,7 @@ jobs:
           echo "--- AndroidManifest.xml receivers count ---"
           grep -c 'ScheduledNotification' android/app/src/main/AndroidManifest.xml
           
-          # تحديث AGP للإصدار 8.3.2 المطلوب لـ Flutter 3.24
+          # تحديث AGP للإصدار 8.3.2 و Kotlin للإصدار 2.0.20 لحل مشكلة flutter_tts
           cat << 'EOF' > android/settings.gradle
           pluginManagement {
               def flutterSdkPath = {
@@ -89,7 +89,7 @@ jobs:
           plugins {
               id "dev.flutter.flutter-plugin-loader" version "1.0.0"
               id "com.android.application" version "8.3.2" apply false
-              id "org.jetbrains.kotlin.android" version "1.9.24" apply false
+              id "org.jetbrains.kotlin.android" version "2.0.20" apply false
               id "com.google.gms.google-services" version "4.4.1" apply false
           }
           include ":app"
@@ -97,7 +97,7 @@ jobs:
           
           cat << 'EOF' > android/build.gradle
           buildscript {
-              ext.kotlin_version = '1.9.24'
+              ext.kotlin_version = '2.0.20'
               repositories {
                   google()
                   mavenCentral()
