@@ -30,6 +30,9 @@ jobs:
           cp lib/main.dart /tmp/main.dart
           cp pubspec.yaml /tmp/pubspec.yaml
           
+          # مسح المجلد المفقود من pubspec برمجياً لتجنب خطأ unable to find directory
+          sed -i '/- assets\/data\//d' /tmp/pubspec.yaml
+          
           # إضافة --no-pub لمنع فلاتر من محاولة تحميل الحزم القديمة وتجنب الخطأ
           flutter create --no-pub --org com.dahshory.agri --project-name agri_app .
           
@@ -202,8 +205,8 @@ jobs:
               }
               
               dependencies {
-                  // إضافة المكتبة المسؤولة عن دعم coreLibraryDesugaring
-                  coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
+                  // تعديل الإصدار لـ 2.1.5 استجابة لطلب حزمة الإشعارات
+                  coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
               }
           }
 
