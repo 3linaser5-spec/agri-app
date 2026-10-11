@@ -29,9 +29,15 @@ jobs:
         run: |
           cp lib/main.dart /tmp/main.dart
           cp pubspec.yaml /tmp/pubspec.yaml
-          flutter create --org com.dahshory.agri --project-name agri_app .
+          
+          # إضافة --no-pub لمنع فلاتر من محاولة تحميل الحزم القديمة وتجنب الخطأ
+          flutter create --no-pub --org com.dahshory.agri --project-name agri_app .
+          
           cp /tmp/main.dart lib/main.dart
           cp /tmp/pubspec.yaml pubspec.yaml
+          
+          # حذف الحزمة القديمة المسببة للمشكلة من ملف pubspec.yaml برمجياً
+          sed -i '/flutter_pdf_export/d' pubspec.yaml
           
           rm -f android/build.gradle
           rm -f android/settings.gradle
@@ -135,4 +141,117 @@ jobs:
           def localProperties = new Properties()
           def localPropertiesFile = rootProject.file('local.properties')
           if (localPropertiesFile.exists()) {
-              localProperties
+              localPropertiesFile.withReader('UTF-8') { reader ->
+                  localProperties.load(reader)
+              }
+          }
+
+          def flutterVersionCode = localProperties.getProperty('flutter.versionCode')
+          if (flutterVersionCode == null) {
+              flutterVersionCode = '1'
+          }
+
+          def flutterVersionName = localProperties.getProperty('flutter.versionName')
+          if (flutterVersionName == null) {
+              flutterVersionName = '1.0'
+          }
+
+          android {
+              namespace "com.dahshory.agri.agri_app"
+              compileSdk 34
+
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_1_8
+                  targetCompatibility JavaVersion.VERSION_1_8
+              }
+
+              kotlinOptions {
+                  jvmTarget = '1.8'
+              }
+
+              sourceSets {
+                  main.java.srcDirs += 'src/main/kotlin'
+              }
+
+              defaultConfig {
+                  applicationId "com.dahshory.agri.agri_app"
+                  minSdkVersion 23
+                  targetSdkVersion 34
+                  versionCode flutterVersionCode.toInteger()
+                  versionName flutterVersionName
+                  multiDexEnabled true
+              }
+
+              signingConfigs {
+                  release {
+                      keyAlias keystoreProperties['keyAlias']
+                      keyPassword keystoreProperties['keyPassword']
+                      storeFile file(keystoreProperties['storeFile'])
+                      storePassword keystoreProperties['storePassword']
+                  }
+              }
+
+              buildTypes {
+                  release {
+                      signingConfig signingConfigs.release
+                      minifyEnabled false
+                      shrinkResources false
+                  }
+              }
+          }
+
+          flutter {
+              source '../..'
+          }
+          GRADLE_EOF
+          echo "--- BUILD.GRADLE REPLACED ---"
+          cat android/app/build.gradle
+
+      - name: Create google-services.json
+        run: |
+          echo '${{ secrets.GOOGLE_SERVICES_JSON }}' | base64 -d > android/app/google-services.json
+          echo "--- google-services.json SIZE ---"
+          wc -c android/app/google-services.json
+
+      - name: Decode Keystore
+        run: |
+          echo '${{ secrets.KEYSTORE_BASE64 }}' | base64 -d > android/app/agri-release-key.jks
+          echo "--- KEYSTORE SIZE ---"
+          wc -c android/app/agri-release-key.jks
+
+      - name: Create key.properties
+        run: |
+          cat << EOF > android/key.properties
+          storePassword=${{ secrets.KEYSTORE_PASSWORD }}
+          keyPassword=${{ secrets.KEY_PASSWORD }}
+          keyAlias=${{ secrets.KEY_ALIAS }}
+          storeFile=agri-release-key.jks
+          EOF
+          echo "--- key.properties created ---"
+
+      - name: Add Missing Packages Automatically
+        run: |
+          flutter pub add cloud_firestore google_generative_ai flutter_tts url_launcher firebase_core image_picker geolocator http firebase_auth firebase_app_check 'connectivity_plus:^6.0.3' sqflite path firebase_messaging flutter_local_notifications 'share_plus:^7.2.2' shared_preferences package_info_plus dio open_filex permission_handler path_provider pdf printing timezone flutter_timezone intl
+          sed -i '1i import "package:cloud_firestore/cloud_firestore.dart";' lib/main.dart
+          sed -i '1i import "package:firebase_core/firebase_core.dart";' lib/main.dart
+          sed -i '1i import "package:firebase_app_check/firebase_app_check.dart";' lib/main.dart
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Generate Launcher Icons
+        run: |
+          flutter pub add flutter_launcher_icons
+          flutter pub run flutter_launcher_icons
+
+      - name: Fix Code Typo Automatically
+        run: find lib -type f -name "*.dart" -exec sed -i 's/MainAxisAlignment.between/MainAxisAlignment.spaceBetween/g' {} +
+
+      - name: Build Signed APK
+        run: flutter build apk --release --no-tree-shake-icons --dart-define=GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release
+          path: build/app/outputs/flutter-apk/app-release.apk
