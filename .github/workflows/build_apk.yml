@@ -239,9 +239,8 @@ jobs:
           EOF
           echo "--- key.properties created ---"
 
-      - name: Add Missing Packages Automatically
+      - name: Add Missing Imports to main.dart
         run: |
-          flutter pub add cloud_firestore google_generative_ai flutter_tts url_launcher firebase_core image_picker geolocator http firebase_auth firebase_app_check 'connectivity_plus:^6.0.3' sqflite path firebase_messaging flutter_local_notifications 'share_plus:^7.2.2' shared_preferences package_info_plus dio open_filex permission_handler path_provider pdf printing 'arabic_reshaper:0.0.1' timezone flutter_timezone intl
           sed -i '1i import "package:cloud_firestore/cloud_firestore.dart";' lib/main.dart
           sed -i '1i import "package:firebase_core/firebase_core.dart";' lib/main.dart
           sed -i '1i import "package:firebase_app_check/firebase_app_check.dart";' lib/main.dart
