@@ -64,7 +64,7 @@ flutter:
         - asset: assets/fonts/Cairo-Bold.ttf
           weight: 700
 
-# ✅ التجاوز الإجباري لحل مشاكل بناء الأندرويد (compileSdkVersion) مع تحديث فلاتر 3.24
+# ✅ التجاوز الإجباري لحل مشاكل بناء الأندرويد مع فلاتر 3.24
 dependency_overrides:
   geolocator_android: 4.6.1
   package_info_plus: ^8.0.0
