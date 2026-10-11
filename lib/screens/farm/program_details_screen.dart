@@ -23,7 +23,6 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
 
   // ✅ تحميل PDF — مع Loading Dialog
   Future<void> _downloadPdf() async {
-    // ✅ عرض Loading Dialog
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -48,8 +47,7 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
       ),
     );
 
-    // ✅ استنى لحظة عشان الـ Dialog يظهر
-    await Future.delayed(const Duration(milliseconds: 300));
+    await Future.delayed(const Duration(milliseconds: 500));
 
     try {
       await PdfService.generateAndSharePdf(
@@ -73,7 +71,6 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
         );
       }
     } finally {
-      // ✅ إغلاق الـ Dialog
       if (mounted) Navigator.of(context, rootNavigator: true).pop();
     }
   }
@@ -100,7 +97,6 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
     );
 
     if (confirm == true) {
-      // ✅ 1. إلغاء كل الإشعارات المجدولة للبرنامج
       try {
         await NotificationService.cancelProgramNotifications(
           _program.id,
@@ -111,7 +107,6 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
         debugPrint("⚠️ فشل إلغاء الإشعارات: $e");
       }
 
-      // ✅ 2. حذف البرنامج من Firestore
       final ok = await MyFarmService.deleteProgram(_program.id);
 
       if (ok && mounted) {
