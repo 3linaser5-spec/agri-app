@@ -27,7 +27,7 @@ dependencies:
   timezone: any
   flutter_timezone: any
 
-  # ✅ PDF (تم استبدال الحزمة القديمة بالحزم الرسمية الحديثة)
+  # ✅ PDF
   pdf: any
   printing: any
   share_plus: ^7.2.2
@@ -55,7 +55,6 @@ flutter:
     - assets/icon/
     - assets/fonts/
     - assets/images/
-    - assets/data/
   
   # ✅ الخط العربي
   fonts:
