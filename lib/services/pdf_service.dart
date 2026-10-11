@@ -32,8 +32,7 @@ class PdfService {
     final double expectedPrice =
         (financial['expected_price'] as num? ?? 0).toDouble();
     final double totalRevenue = (expectedYield * expectedPrice).toDouble();
-    final double netProfit =
-        (totalRevenue - totalMaterialsCost).toDouble();
+    final double netProfit = (totalRevenue - totalMaterialsCost).toDouble();
     final double roi = totalMaterialsCost > 0
         ? ((netProfit / totalMaterialsCost) * 100).toDouble()
         : 0.0;
@@ -43,30 +42,22 @@ class PdfService {
         .compareTo(b['day_from_start'] as int? ?? 0));
 
     // ═══════════════════════════════════════
-    // ✅ بناء الأقسام بشكل منظم
+    // ✅ بناء الأقسام
     // ═══════════════════════════════════════
     final sections = <PdfSection>[];
 
-    // ─── الهيدر ───
-    sections.add(PdfSection.h1('🌱 نباتي - مستشارك الزراعي الذكي'));
+    // ─── الهيدر + معلومات البرنامج ───
+    sections.add(PdfSection.h1('نباتي - مستشارك الزراعي الذكي'));
+    sections.add(PdfSection.h2('برنامج $programTitle'));
+    sections.add(PdfSection.paragraph('المحافظة: $governorate'));
+    sections.add(PdfSection.paragraph('القسم: $sectionName'));
+    sections.add(PdfSection.paragraph(
+        'المساحة: ${areaMultiplier.toStringAsFixed(2)} فدان | تاريخ: ${_formatDate(DateTime.now())}'));
     sections.add(PdfSection.divider());
 
-    // ─── معلومات البرنامج ───
-    sections.add(PdfSection.h2('📋 برنامج $programTitle $programEmoji'));
-    sections.add(PdfSection.paragraph('🏛️ المحافظة: $governorate'));
-    sections.add(PdfSection.paragraph('📂 القسم: $sectionName'));
-    sections.add(PdfSection.paragraph(
-        '📐 المساحة: ${areaMultiplier.toStringAsFixed(2)} فدان'));
-    sections.add(PdfSection.paragraph(
-        '📅 تاريخ الإصدار: ${_formatDate(DateTime.now())}'));
-    sections.add(PdfSection.divider());
-
-    // ─── الجدول الزمني ───
+    // ─── الجدول الزمني (ذكي: سطر أو سطرين حسب الطول) ───
     if (sortedTasks.isNotEmpty) {
-      sections.add(PdfSection.h2('⏱️ الجدول الزمني'));
-      sections.add(PdfSection.paragraph(
-          'عدد المهام: ${sortedTasks.length}'));
-      sections.add(PdfSection.paragraph(''));
+      sections.add(PdfSection.h2('الجدول الزمني (${sortedTasks.length} مهمة)'));
 
       for (var task in sortedTasks) {
         final day = task['day_from_start'] ?? 0;
@@ -74,96 +65,72 @@ class PdfService {
         final desc = task['description'] ?? '';
         final category = task['category'] ?? '';
 
-        // عنوان المهمة
-        sections.add(PdfSection.paragraph(
-            '📌 اليوم $day: $title'));
+        // ✅ السطر الأساسي (اليوم + العنوان + التصنيف)
+        String mainLine = 'اليوم $day: $title';
         if (category.toString().isNotEmpty) {
-          sections.add(PdfSection.paragraph(
-              '   🏷️ التصنيف: $category'));
+          mainLine += ' [$category]';
         }
+
+        // ✅ لو فيه وصف → نضيفه (في سطر واحد أو سطرين حسب الطول)
         if (desc.toString().isNotEmpty) {
-          sections.add(PdfSection.paragraph(
-              '   📝 $desc'));
+          final descStr = desc.toString();
+          // لو الوصف طويل (أكتر من 80 حرف) → في سطر منفصل
+          // لو قصير → في نفس السطر
+          if (descStr.length > 80) {
+            sections.add(PdfSection.paragraph(mainLine));
+            sections.add(PdfSection.paragraph(descStr));
+          } else {
+            sections.add(PdfSection.paragraph('$mainLine - $descStr'));
+          }
+        } else {
+          sections.add(PdfSection.paragraph(mainLine));
         }
-        sections.add(PdfSection.paragraph('')); // مسافة
       }
       sections.add(PdfSection.divider());
     }
 
-    // ─── المشتريات ───
+    // ─── المشتريات (كل صنف في سطر واحد) ───
     if (materials.isNotEmpty) {
-      sections.add(PdfSection.h2('🛒 قائمة المشتريات'));
-      sections.add(PdfSection.paragraph(
-          'عدد الأصناف: ${materials.length}'));
-      sections.add(PdfSection.paragraph(''));
+      sections.add(PdfSection.h2('قائمة المشتريات (${materials.length} صنف)'));
 
       for (int i = 0; i < materials.length; i++) {
         final m = materials[i];
-        final qty =
-            (m['quantity_per_unit'] as num? ?? 0) * areaMultiplier;
+        final qty = (m['quantity_per_unit'] as num? ?? 0) * areaMultiplier;
         final price = m['price_per_unit'] as num? ?? 0;
         final cost = qty * price;
         final name = m['name'] ?? '';
         final unit = m['unit'] ?? '';
 
         sections.add(PdfSection.paragraph(
-            '${i + 1}. ${name}'));
-        sections.add(PdfSection.paragraph(
-            '   📦 الكمية: ${qty.toStringAsFixed(2)} $unit'));
-        sections.add(PdfSection.paragraph(
-            '   💵 التكلفة: ${_formatNumber(cost)} ج.م'));
-        sections.add(PdfSection.paragraph(''));
+            '${i + 1}. $name - ${qty.toStringAsFixed(2)} $unit - ${_formatNumber(cost)} ج.م'));
       }
 
       sections.add(PdfSection.paragraph(
-          '━━━━━━━━━━━━━━━━━━━━━━━━'));
-      sections.add(PdfSection.paragraph(
-          '💰 الإجمالي: ${_formatNumber(totalMaterialsCost)} ج.م'));
+          'الإجمالي: ${_formatNumber(totalMaterialsCost)} ج.م'));
       sections.add(PdfSection.divider());
     }
 
     // ─── التحليل المالي ───
     if (expectedYield > 0 || expectedPrice > 0) {
-      sections.add(PdfSection.h2('💰 التحليل المالي'));
-      sections.add(PdfSection.paragraph(''));
-
+      sections.add(PdfSection.h2('التحليل المالي'));
       sections.add(PdfSection.paragraph(
-          '📊 الإنتاج المتوقع: ${expectedYield.toStringAsFixed(2)} ${financial['yield_unit'] ?? 'طن'}'));
-      sections.add(PdfSection.paragraph(''));
-
+          'الإنتاج المتوقع: ${expectedYield.toStringAsFixed(2)} ${financial['yield_unit'] ?? 'طن'}'));
       sections.add(PdfSection.paragraph(
-          '💵 الإيراد المتوقع: ${_formatNumber(totalRevenue)} ج.م'));
-      sections.add(PdfSection.paragraph(''));
-
+          'الإيراد المتوقع: ${_formatNumber(totalRevenue)} ج.م'));
       sections.add(PdfSection.paragraph(
-          '💸 إجمالي التكاليف: ${_formatNumber(totalMaterialsCost)} ج.م'));
-      sections.add(PdfSection.paragraph(''));
-
+          'إجمالي التكاليف: ${_formatNumber(totalMaterialsCost)} ج.م'));
       sections.add(PdfSection.paragraph(
-          '✅ صافي الربح: ${_formatNumber(netProfit)} ج.م'));
-      sections.add(PdfSection.paragraph(''));
-
+          'صافي الربح: ${_formatNumber(netProfit)} ج.م'));
       sections.add(PdfSection.paragraph(
-          '📈 نسبة العائد (ROI): ${roi.toStringAsFixed(1)}%'));
+          'نسبة العائد (ROI): ${roi.toStringAsFixed(1)}%'));
       sections.add(PdfSection.divider());
     }
 
-    // ─── التنبيه ───
+    // ─── التنبيه + الفوتر ───
     sections.add(PdfSection.paragraph(
-        '⚠️ تنبيه هام:'));
+        'تنبيه: هذا البرنامج استرشادي، ويجب مراجعة المهندس الزراعي المختص قبل التطبيق الفعلي.'));
     sections.add(PdfSection.paragraph(
-        'هذا البرنامج استرشادي فقط، ويجب مراجعة المهندس الزراعي المختص قبل التطبيق الفعلي.'));
-    sections.add(PdfSection.divider());
-
-    // ─── الفوتر ───
-    sections.add(PdfSection.paragraph(
-        '━━━━━━━━━━━━━━━━━━━━━━━━'));
-    sections.add(PdfSection.paragraph(
-        '🌱 تطبيق نباتي - مستشارك الزراعي الذكي'));
-    sections.add(PdfSection.paragraph(
-        '👨‍🌾 إشراف: م. علي الدهشوري'));
-    sections.add(PdfSection.paragraph(
-        '📞 للتواصل: 01284172047'));
+        'تطبيق نباتي - مستشارك الزراعي الذكي | إشراف: م. علي الدهشوري | للتواصل: 01284172047'));
     sections.add(PdfSection.paragraph(
         '© 2025 نباتي - جميع الحقوق محفوظة'));
 
