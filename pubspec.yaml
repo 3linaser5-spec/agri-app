@@ -77,3 +77,8 @@ flutter:
         - asset: assets/fonts/Cairo-Regular.ttf
         - asset: assets/fonts/Cairo-Bold.ttf
           weight: 700
+
+# ✅ حل تعارض archive و image
+dependency_overrides:
+  archive: ^4.0.7
+  image: ^4.2.0
