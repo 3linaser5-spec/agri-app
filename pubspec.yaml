@@ -4,7 +4,7 @@ publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: '>=3.8.0 <4.0.0'
+  sdk: '>=3.10.0 <4.0.0'
 
 dependencies:
   flutter:
@@ -12,11 +12,11 @@ dependencies:
   cupertino_icons: ^1.0.8
 
   # ✅ Firebase (محدثة)
-  firebase_core: ^3.10.0
-  firebase_auth: ^5.5.0
-  cloud_firestore: ^5.6.0
-  firebase_app_check: ^0.3.2+3
-  firebase_messaging: ^15.2.0
+  firebase_core: ^4.0.0
+  firebase_auth: ^6.0.0
+  cloud_firestore: ^6.0.0
+  firebase_app_check: ^0.4.0
+  firebase_messaging: ^16.0.0
 
   # ✅ AI
   google_generative_ai: ^0.4.7
@@ -27,27 +27,28 @@ dependencies:
 
   # ✅ الصور والموقع
   image_picker: ^1.1.2
-  geolocator: ^13.0.1
+  geolocator: ^14.0.0
 
   # ✅ الأدوات
   url_launcher: ^6.3.1
   flutter_tts: ^4.2.0
-  share_plus: ^10.1.0
-  shared_preferences: ^2.3.4
-  package_info_plus: ^8.0.2
+  share_plus: ^11.0.0
+  shared_preferences: ^2.5.0
+  package_info_plus: ^9.0.0
   open_filex: ^4.5.0
-  permission_handler: ^11.3.1
+  permission_handler: ^12.0.0
   path_provider: ^2.1.5
   connectivity_plus: ^6.1.2
   sqflite: ^2.4.1
 
   # ✅ الإشعارات
-  flutter_local_notifications: ^18.0.1
+  flutter_local_notifications: ^19.0.0
   timezone: ^0.10.0
-  flutter_timezone: ^3.0.1
+  flutter_timezone: ^4.0.0
 
-  # ✅ PDF - flutter_pdf_export
-  flutter_pdf_export: ^1.0.0
+  # ✅ PDF - Syncfusion (مؤقت)
+  syncfusion_flutter_pdf: ^28.0.0
+  path_provider: ^2.1.5
 
   # ✅ أدوات إضافية
   intl: ^0.20.2
@@ -71,7 +72,6 @@ flutter:
     - assets/fonts/
     - assets/images/
   
-  # ✅ الخط العربي
   fonts:
     - family: Cairo
       fonts:
