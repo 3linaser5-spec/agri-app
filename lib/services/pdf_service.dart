@@ -4,17 +4,13 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:arabic_reshaper/arabic_reshaper.dart';
 
 class PdfService {
   // ✅ دالة معالجة النص العربي
-  static String _fixArabic(String text) {
+  static String _safeArabic(String text) {
     if (text.isEmpty) return text;
-    try {
-      return ArabicReshaper.instance.reshape(text);
-    } catch (e) {
-      return text;
-    }
+    // إضافة علامة RTL في الآخر لحل مشكلة الحرف الأخير
+    return '$text\u200F';
   }
 
   static Future<void> generateAndSharePdf({
@@ -27,7 +23,7 @@ class PdfService {
     required List<Map<String, dynamic>> materials,
     required Map<String, dynamic> financial,
   }) async {
-    // ✅ تحميل الخط العربي
+    // تحميل الخط العربي
     final regularData =
         await rootBundle.load('assets/fonts/Cairo-Regular.ttf');
     final boldData = await rootBundle.load('assets/fonts/Cairo-Bold.ttf');
@@ -77,7 +73,7 @@ class PdfService {
         ),
         build: (pw.Context context) {
           return [
-            // --- القسم الأول: الهيدر ---
+            // --- الهيدر ---
             pw.Directionality(
               textDirection: pw.TextDirection.rtl,
               child: pw.Column(
@@ -87,14 +83,14 @@ class PdfService {
                     mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                     children: [
                       pw.Text(
-                        _fixArabic('برنامج $programTitle $programEmoji'),
+                        _safeArabic('برنامج $programTitle $programEmoji'),
                         style: pw.TextStyle(
                           font: arabicFontBold,
                           fontSize: 20,
                         ),
                       ),
                       pw.Text(
-                        _fixArabic(
+                        _safeArabic(
                             'تاريخ الإصدار: ${_formatDate(DateTime.now())}'),
                         style: pw.TextStyle(
                           font: arabicFont,
@@ -106,15 +102,15 @@ class PdfService {
                   ),
                   pw.SizedBox(height: 6),
                   pw.Text(
-                    _fixArabic('المحافظة: $governorate'),
+                    _safeArabic('المحافظة: $governorate'),
                     style: pw.TextStyle(font: arabicFont, fontSize: 12),
                   ),
                   pw.Text(
-                    _fixArabic('القسم: $sectionName'),
+                    _safeArabic('القسم: $sectionName'),
                     style: pw.TextStyle(font: arabicFont, fontSize: 12),
                   ),
                   pw.Text(
-                    _fixArabic(
+                    _safeArabic(
                         'المساحة: ${areaMultiplier.toStringAsFixed(2)} فدان'),
                     style: pw.TextStyle(font: arabicFont, fontSize: 12),
                   ),
@@ -128,7 +124,7 @@ class PdfService {
             if (sortedTasks.isNotEmpty) ...[
               pw.SizedBox(height: 5),
               pw.Text(
-                _fixArabic('الجدول الزمني'),
+                _safeArabic('الجدول الزمني'),
                 style: pw.TextStyle(
                   font: arabicFontBold,
                   fontSize: 16,
@@ -146,7 +142,7 @@ class PdfService {
                     crossAxisAlignment: pw.CrossAxisAlignment.start,
                     children: [
                       pw.Text(
-                        _fixArabic('اليوم $day - $title'),
+                        _safeArabic('اليوم $day - $title'),
                         style: pw.TextStyle(
                           font: arabicFontBold,
                           fontSize: 11,
@@ -155,7 +151,7 @@ class PdfService {
                       ),
                       if (desc.toString().isNotEmpty)
                         pw.Text(
-                          _fixArabic(desc.toString()),
+                          _safeArabic(desc.toString()),
                           style: pw.TextStyle(
                             font: arabicFont,
                             fontSize: 10,
@@ -173,7 +169,7 @@ class PdfService {
             if (materials.isNotEmpty) ...[
               pw.SizedBox(height: 5),
               pw.Text(
-                _fixArabic('قائمة المشتريات'),
+                _safeArabic('قائمة المشتريات'),
                 style: pw.TextStyle(
                   font: arabicFontBold,
                   fontSize: 16,
@@ -191,7 +187,7 @@ class PdfService {
                 return pw.Padding(
                   padding: const pw.EdgeInsets.only(bottom: 4),
                   child: pw.Text(
-                    _fixArabic(
+                    _safeArabic(
                         '• $name - ${qty.toStringAsFixed(2)} $unit - ${cost.toStringAsFixed(0)} ج.م'),
                     style: pw.TextStyle(font: arabicFont, fontSize: 11),
                   ),
@@ -199,7 +195,7 @@ class PdfService {
               }).toList(),
               pw.SizedBox(height: 6),
               pw.Text(
-                _fixArabic(
+                _safeArabic(
                     'الإجمالي: ${totalMaterialsCost.toStringAsFixed(0)} ج.م'),
                 style: pw.TextStyle(font: arabicFontBold, fontSize: 12),
               ),
@@ -210,7 +206,7 @@ class PdfService {
             if (expectedYield > 0 || expectedPrice > 0) ...[
               pw.SizedBox(height: 5),
               pw.Text(
-                _fixArabic('التحليل المالي'),
+                _safeArabic('التحليل المالي'),
                 style: pw.TextStyle(
                   font: arabicFontBold,
                   fontSize: 16,
@@ -219,22 +215,23 @@ class PdfService {
               ),
               pw.SizedBox(height: 5),
               pw.Text(
-                _fixArabic(
+                _safeArabic(
                     'الإنتاج المتوقع: ${expectedYield.toStringAsFixed(2)} ${financial['yield_unit'] ?? 'طن'}'),
                 style: pw.TextStyle(font: arabicFont, fontSize: 11),
               ),
               pw.Text(
-                _fixArabic(
+                _safeArabic(
                     'الإيراد المتوقع: ${totalRevenue.toStringAsFixed(0)} ج.م'),
                 style: pw.TextStyle(font: arabicFont, fontSize: 11),
               ),
               pw.Text(
-                _fixArabic(
+                _safeArabic(
                     'إجمالي التكاليف: ${totalMaterialsCost.toStringAsFixed(0)} ج.م'),
                 style: pw.TextStyle(font: arabicFont, fontSize: 11),
               ),
               pw.Text(
-                _fixArabic('صافي الربح: ${netProfit.toStringAsFixed(0)} ج.م'),
+                _safeArabic(
+                    'صافي الربح: ${netProfit.toStringAsFixed(0)} ج.م'),
                 style: pw.TextStyle(
                   font: arabicFontBold,
                   fontSize: 12,
@@ -242,16 +239,17 @@ class PdfService {
                 ),
               ),
               pw.Text(
-                _fixArabic('نسبة العائد (ROI): ${roi.toStringAsFixed(1)}%'),
+                _safeArabic(
+                    'نسبة العائد (ROI): ${roi.toStringAsFixed(1)}%'),
                 style: pw.TextStyle(font: arabicFont, fontSize: 11),
               ),
               pw.Divider(),
             ],
 
-            // --- الفوتر والتنبيه ---
+            // --- التنبيه ---
             pw.SizedBox(height: 5),
             pw.Text(
-              _fixArabic(
+              _safeArabic(
                   'البرنامج استرشادي - يجب مراجعة المهندس الزراعي المختص قبل التطبيق الفعلي'),
               style: pw.TextStyle(
                 font: arabicFont,
@@ -264,17 +262,18 @@ class PdfService {
               child: pw.Column(
                 children: [
                   pw.Text(
-                    _fixArabic('تطبيق نباتي - مستشارك الزراعي الذكي'),
+                    _safeArabic('تطبيق نباتي - مستشارك الزراعي الذكي'),
                     style: pw.TextStyle(font: arabicFontBold, fontSize: 11),
                   ),
                   pw.SizedBox(height: 2),
                   pw.Text(
-                    _fixArabic('إشراف: م. علي الدهشوري - للتواصل: 01284172047'),
+                    _safeArabic(
+                        'إشراف: م. علي الدهشوري - للتواصل: 01284172047'),
                     style: pw.TextStyle(font: arabicFont, fontSize: 10),
                   ),
                   pw.SizedBox(height: 2),
                   pw.Text(
-                    _fixArabic(
+                    _safeArabic(
                         '© ${DateTime.now().year} نباتي - جميع الحقوق محفوظة'),
                     style: pw.TextStyle(
                       font: arabicFont,
@@ -290,7 +289,7 @@ class PdfService {
       ),
     );
 
-    // استخراج الملف ومشاركته
+    // حفظ ومشاركة
     try {
       final output = await getTemporaryDirectory();
       final file = File(
