@@ -27,11 +27,12 @@ dependencies:
   timezone: any
   flutter_timezone: any
 
-  # ✅ PDF
+  # ✅ PDF - pdf + arabic_reshaper
   pdf: any
   printing: any
   share_plus: ^7.2.2
   path_provider: any
+  arabic_reshaper: ^1.0.0
 
   # ✅ أدوات
   shared_preferences: any
