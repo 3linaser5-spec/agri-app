@@ -193,13 +193,12 @@ class NotificationService {
             iOS: DarwinNotificationDetails(),
           ),
           androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-          uiLocalNotificationDateInterpretation:
-              UILocalNotificationDateInterpretation.absoluteTime,
+          // تم إزالة السطر الخاص بـ uiLocalNotificationDateInterpretation لأنه لم يعد مدعوماً
         );
         scheduledCount++;
         debugPrint("✅ تم جدولة: $title (يوم $dayFromStart)");
       } catch (e) {
-        debugPrint("❌ فشل جدولة $title: $e");
+        debugPrint("❌ فشل جدولة $title:$e");
       }
     }
 
