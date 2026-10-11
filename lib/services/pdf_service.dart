@@ -1,9 +1,9 @@
 import 'dart:io';
-import 'dart:typed_data';
-import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:flutter_pdf_export/flutter_pdf_export.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 
 class PdfService {
   static Future<void> generateAndSharePdf({
@@ -16,7 +16,7 @@ class PdfService {
     required List<Map<String, dynamic>> materials,
     required Map<String, dynamic> financial,
   }) async {
-    // ✅ حساب القيم
+    // 1. حساب القيم
     double areaMultiplier = 1.0;
     final area = inputValues['area'];
     if (area is num) areaMultiplier = area.toDouble();
@@ -29,13 +29,11 @@ class PdfService {
     }
 
     final double expectedYield =
-        ((financial['expected_yield'] as num? ?? 0) * areaMultiplier)
-            .toDouble();
+        ((financial['expected_yield'] as num? ?? 0) * areaMultiplier).toDouble();
     final double expectedPrice =
         (financial['expected_price'] as num? ?? 0).toDouble();
     final double totalRevenue = (expectedYield * expectedPrice).toDouble();
-    final double netProfit =
-        (totalRevenue - totalMaterialsCost).toDouble();
+    final double netProfit = (totalRevenue - totalMaterialsCost).toDouble();
     final double roi = totalMaterialsCost > 0
         ? ((netProfit / totalMaterialsCost) * 100).toDouble()
         : 0.0;
@@ -44,100 +42,135 @@ class PdfService {
     sortedTasks.sort((a, b) => (a['day_from_start'] as int? ?? 0)
         .compareTo(b['day_from_start'] as int? ?? 0));
 
-    // ✅ بناء الأقسام
-    final sections = <PdfSection>[
-      PdfSection.h1('برنامج $programTitle $programEmoji'),
-      PdfSection.paragraph('المحافظة: $governorate'),
-      PdfSection.paragraph('القسم: $sectionName'),
-      PdfSection.paragraph(
-          'المساحة: ${areaMultiplier.toStringAsFixed(2)} فدان'),
-      PdfSection.paragraph(
-          'تاريخ الإصدار: ${_formatDate(DateTime.now())}'),
-      PdfSection.divider(),
-    ];
+    // 2. إعداد مستند الـ PDF والخط العربي
+    final pdf = pw.Document();
+    
+    // سحب خط القاهرة لضمان ظهور اللغة العربية بشكل ممتاز
+    final arabicFont = await PdfGoogleFonts.cairoRegular();
+    final arabicFontBold = await PdfGoogleFonts.cairoBold();
 
-    // ✅ الجدول الزمني
-    if (sortedTasks.isNotEmpty) {
-      sections.add(PdfSection.h2('الجدول الزمني'));
-      for (var task in sortedTasks) {
-        final day = task['day_from_start'] ?? 0;
-        final title = task['title'] ?? '';
-        final desc = task['description'] ?? '';
-        sections.add(PdfSection.paragraph('اليوم $day - $title'));
-        if (desc.toString().isNotEmpty) {
-          sections.add(PdfSection.paragraph(desc.toString()));
-        }
-      }
-      sections.add(PdfSection.divider());
-    }
+    // 3. بناء صفحات الـ PDF
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        textDirection: pw.TextDirection.rtl, // تحديد اتجاه النص من اليمين لليسار
+        theme: pw.ThemeData.withFont(
+          base: arabicFont,
+          bold: arabicFontBold,
+        ),
+        build: (pw.Context context) {
+          return [
+            // --- القسم الأول: الهيدر والبيانات الأساسية ---
+            pw.Header(
+              level: 0,
+              child: pw.Text('برنامج $programTitle $programEmoji', 
+                  style: pw.TextStyle(font: arabicFontBold, fontSize: 22)),
+            ),
+            pw.Text('المحافظة: $governorate'),
+            pw.Text('القسم: $sectionName'),
+            pw.Text('المساحة: ${areaMultiplier.toStringAsFixed(2)} فدان'),
+            pw.Text('تاريخ الإصدار: ${_formatDate(DateTime.now())}'),
+            pw.SizedBox(height: 10),
+            pw.Divider(),
 
-    // ✅ المشتريات
-    if (materials.isNotEmpty) {
-      sections.add(PdfSection.h2('قائمة المشتريات'));
-      for (var m in materials) {
-        final qty = (m['quantity_per_unit'] as num? ?? 0) * areaMultiplier;
-        final price = m['price_per_unit'] as num? ?? 0;
-        final cost = qty * price;
-        final name = m['name'] ?? '';
-        final unit = m['unit'] ?? '';
-        sections.add(PdfSection.paragraph(
-            '$name - ${qty.toStringAsFixed(2)} $unit - ${cost.toStringAsFixed(0)} ج.م'));
-      }
-      sections.add(PdfSection.paragraph(
-          'الإجمالي: ${totalMaterialsCost.toStringAsFixed(0)} ج.م'));
-      sections.add(PdfSection.divider());
-    }
+            // --- القسم الثاني: الجدول الزمني ---
+            if (sortedTasks.isNotEmpty) ...[
+              pw.Header(
+                  level: 1,
+                  child: pw.Text('الجدول الزمني', 
+                      style: pw.TextStyle(font: arabicFontBold, fontSize: 18))),
+              ...sortedTasks.map((task) {
+                final day = task['day_from_start'] ?? 0;
+                final title = task['title'] ?? '';
+                final desc = task['description'] ?? '';
+                return pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text('اليوم $day - $title', 
+                        style: pw.TextStyle(font: arabicFontBold, color: PdfColors.green800)),
+                    if (desc.toString().isNotEmpty) 
+                      pw.Text(desc.toString()),
+                    pw.SizedBox(height: 8),
+                  ],
+                );
+              }).toList(),
+              pw.Divider(),
+            ],
 
-    // ✅ التحليل المالي
-    if (expectedYield > 0 || expectedPrice > 0) {
-      sections.add(PdfSection.h2('التحليل المالي'));
-      sections.add(PdfSection.paragraph(
-          'الإنتاج المتوقع: ${expectedYield.toStringAsFixed(2)} ${financial['yield_unit'] ?? 'طن'}'));
-      sections.add(PdfSection.paragraph(
-          'الإيراد المتوقع: ${totalRevenue.toStringAsFixed(0)} ج.م'));
-      sections.add(PdfSection.paragraph(
-          'إجمالي التكاليف: ${totalMaterialsCost.toStringAsFixed(0)} ج.م'));
-      sections.add(PdfSection.paragraph(
-          'صافي الربح: ${netProfit.toStringAsFixed(0)} ج.م'));
-      sections.add(PdfSection.paragraph(
-          'نسبة العائد ROI: ${roi.toStringAsFixed(1)}%'));
-      sections.add(PdfSection.divider());
-    }
+            // --- القسم الثالث: قائمة المشتريات ---
+            if (materials.isNotEmpty) ...[
+              pw.Header(
+                  level: 1,
+                  child: pw.Text('قائمة المشتريات', 
+                      style: pw.TextStyle(font: arabicFontBold, fontSize: 18))),
+              ...materials.map((m) {
+                final qty = (m['quantity_per_unit'] as num? ?? 0) * areaMultiplier;
+                final price = m['price_per_unit'] as num? ?? 0;
+                final cost = qty * price;
+                final name = m['name'] ?? '';
+                final unit = m['unit'] ?? '';
+                return pw.Text(
+                    '$name - ${qty.toStringAsFixed(2)} $unit - ${cost.toStringAsFixed(0)} ج.م');
+              }).toList(),
+              pw.SizedBox(height: 8),
+              pw.Text('الإجمالي: ${totalMaterialsCost.toStringAsFixed(0)} ج.م', 
+                  style: pw.TextStyle(font: arabicFontBold)),
+              pw.Divider(),
+            ],
 
-    // ✅ التنبيه
-    sections.add(PdfSection.paragraph(
-        'البرنامج استرشادي - يجب مراجعة المهندس الزراعي المختص قبل التطبيق الفعلي'));
+            // --- القسم الرابع: التحليل المالي ---
+            if (expectedYield > 0 || expectedPrice > 0) ...[
+              pw.Header(
+                  level: 1,
+                  child: pw.Text('التحليل المالي', 
+                      style: pw.TextStyle(font: arabicFontBold, fontSize: 18))),
+              pw.Text('الإنتاج المتوقع: ${expectedYield.toStringAsFixed(2)} ${financial['yield_unit'] ?? 'طن'}'),
+              pw.Text('الإيراد المتوقع: ${totalRevenue.toStringAsFixed(0)} ج.م'),
+              pw.Text('إجمالي التكاليف: ${totalMaterialsCost.toStringAsFixed(0)} ج.م'),
+              pw.Text('صافي الربح: ${netProfit.toStringAsFixed(0)} ج.م', 
+                  style: pw.TextStyle(font: arabicFontBold, color: PdfColors.blue800)),
+              pw.Text('نسبة العائد (ROI): ${roi.toStringAsFixed(1)}%'),
+              pw.Divider(),
+            ],
 
-    sections.add(PdfSection.divider());
-
-    // ✅ الفوتر
-    sections.add(PdfSection.paragraph(
-        'تطبيق نباتي - مستشارك الزراعي الذكي'));
-    sections.add(PdfSection.paragraph(
-        'إشراف: علي الدهشوري - للتواصل: 01284172047'));
-    sections.add(PdfSection.paragraph(
-        '© 2025 نباتي - جميع الحقوق محفوظة'));
-
-    // ✅ توليد الـ PDF
-    final pdfData = PdfDocumentData(
-      title: 'برنامج $programTitle',
-      sections: sections,
+            // --- القسم الخامس: الفوتر والتنبيه ---
+            pw.Text(
+                'البرنامج استرشادي - يجب مراجعة المهندس الزراعي المختص قبل التطبيق الفعلي',
+                style: pw.TextStyle(color: PdfColors.red600)),
+            pw.Divider(),
+            pw.Center(
+              child: pw.Column(
+                children: [
+                  pw.Text('تطبيق نباتي - مستشارك الزراعي الذكي', 
+                      style: pw.TextStyle(font: arabicFontBold)),
+                  pw.Text('إشراف: م. علي الدهشوري - للتواصل: 01284172047'),
+                  pw.Text('© ${DateTime.now().year} نباتي - جميع الحقوق محفوظة', 
+                      style: pw.TextStyle(fontSize: 10, color: PdfColors.grey700)),
+                ],
+              ),
+            ),
+          ];
+        },
+      ),
     );
 
-    final file = await PdfBuilder.generate(pdfData);
+    // 4. استخراج الملف ومشاركته
+    try {
+      final output = await getTemporaryDirectory();
+      final file = File('${output.path}/Nabaty_Program_${DateTime.now().millisecondsSinceEpoch}.pdf');
+      
+      await file.writeAsBytes(await pdf.save());
 
-    if (file == null) {
-      throw Exception('فشل إنشاء ملف PDF');
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        subject: 'برنامج $programTitle - تطبيق نباتي',
+      );
+    } catch (e) {
+      throw Exception('فشل إنشاء أو مشاركة ملف PDF: $e');
     }
-
-    // ✅ مشاركة الملف
-    await Share.shareXFiles(
-      [XFile(file.path)],
-      subject: 'برنامج $programTitle',
-    );
   }
 
   static String _formatDate(DateTime date) {
-    return '${date.day}/${date.month}/${date.year}';
+    return '${date.year}/${date.month}/${date.day}';
   }
 }
