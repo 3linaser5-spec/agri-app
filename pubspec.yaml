@@ -4,7 +4,7 @@ publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: '>=3.3.0 <4.0.0'
+  sdk: '>=3.5.0 <4.0.0'
 
 dependencies:
   flutter:
@@ -27,8 +27,9 @@ dependencies:
   timezone: any
   flutter_timezone: any
 
-  # ✅ PDF - flutter_pdf_export
-  flutter_pdf_export: ^1.0.0
+  # ✅ PDF (تم استبدال الحزمة القديمة بالحزم الرسمية الحديثة)
+  pdf: any
+  printing: any
   share_plus: ^7.2.2
   path_provider: any
 
@@ -63,3 +64,8 @@ flutter:
         - asset: assets/fonts/Cairo-Regular.ttf
         - asset: assets/fonts/Cairo-Bold.ttf
           weight: 700
+
+# ✅ التجاوز الإجباري لحل مشاكل بناء الأندرويد (compileSdkVersion) مع تحديث فلاتر 3.24
+dependency_overrides:
+  geolocator_android: 4.6.1
+  package_info_plus: ^8.0.0
