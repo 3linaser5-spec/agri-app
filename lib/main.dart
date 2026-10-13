@@ -954,13 +954,18 @@ class _HomeDashboardState extends State<HomeDashboard> {
     );
   }
 
+  // setState آمن: بعد أي await ممكن المستخدم يكون غيّر التبويب والـ State اتعمله dispose
+  void _safeSet(VoidCallback fn) {
+    if (mounted) setState(fn);
+  }
+
   // ✅ جلب الطقس لمحافظة
   Future<void> _fetchWeatherForGovernorate(
     String govName,
     double lat,
     double lon,
   ) async {
-    setState(() {
+    _safeSet(() {
       _refreshing = true;
       _selectedGovernorate = govName;
       locationName = govName;
@@ -974,7 +979,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        setState(() {
+        _safeSet(() {
           weatherTemp = data['current']['temperature_2m'].toString();
           weatherHumidity =
               data['current']['relative_humidity_2m'].toString();
@@ -987,14 +992,14 @@ class _HomeDashboardState extends State<HomeDashboard> {
         await prefs.setString('selected_gov', govName);
         await _saveWeatherCache();
       } else {
-        setState(() => weatherStatusText = "تعذر جلب بيانات الطقس حالياً");
+        _safeSet(() => weatherStatusText = "تعذر جلب بيانات الطقس حالياً");
       }
     } catch (e) {
       debugPrint("❌ خطأ: $e");
-      setState(() => weatherStatusText = "⚠️ تعذر الاتصال بالخدمة");
+      _safeSet(() => weatherStatusText = "⚠️ تعذر الاتصال بالخدمة");
     }
 
-    if (mounted) setState(() => _refreshing = false);
+    if (mounted) _safeSet(() => _refreshing = false);
   }
 
   Future<void> _loadCachedWeather() async {
@@ -1004,12 +1009,12 @@ class _HomeDashboardState extends State<HomeDashboard> {
     if (cached != null) {
       try {
         final data = json.decode(cached) as Map<String, dynamic>;
-        setState(() {
-          weatherTemp = data['temp'] ?? "--";
-          weatherHumidity = data['humidity'] ?? "--";
-          weatherStatusText = data['status'] ?? "";
-          locationName = data['location'] ?? "";
-          isWeatherLoaded = data['loaded'] ?? false;
+        _safeSet(() {
+          weatherTemp = (data['temp'] ?? "--").toString();
+          weatherHumidity = (data['humidity'] ?? "--").toString();
+          weatherStatusText = (data['status'] ?? "").toString();
+          locationName = (data['location'] ?? "").toString();
+          isWeatherLoaded = data['loaded'] == true;
         });
       } catch (_) {}
     }
@@ -1073,13 +1078,13 @@ class _HomeDashboardState extends State<HomeDashboard> {
 
   // ✅ تحديث الموقع (بـ geolocator الأصلي)
   Future<void> _fetchWeatherByLocation({bool manual = false}) async {
-    if (manual) setState(() => _refreshing = true);
+    if (manual) _safeSet(() => _refreshing = true);
 
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        setState(() => weatherStatusText = "⚠️ برجاء تشغيل GPS في هاتفك");
-        if (manual) setState(() => _refreshing = false);
+        _safeSet(() => weatherStatusText = "⚠️ برجاء تشغيل GPS في هاتفك");
+        if (manual) _safeSet(() => _refreshing = false);
         return;
       }
 
@@ -1087,17 +1092,17 @@ class _HomeDashboardState extends State<HomeDashboard> {
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
-          setState(() =>
+          _safeSet(() =>
               weatherStatusText = "برجاء إعطاء صلاحية الموقع لمعرفة الطقس");
-          if (manual) setState(() => _refreshing = false);
+          if (manual) _safeSet(() => _refreshing = false);
           return;
         }
       }
 
       if (permission == LocationPermission.deniedForever) {
-        setState(() => weatherStatusText =
+        _safeSet(() => weatherStatusText =
             "⚠️ تم رفض صلاحية الموقع نهائياً، برجاء تفعيلها من الإعدادات");
-        if (manual) setState(() => _refreshing = false);
+        if (manual) _safeSet(() => _refreshing = false);
         return;
       }
 
@@ -1119,7 +1124,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
           await http.get(url).timeout(const Duration(seconds: 10));
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        setState(() {
+        _safeSet(() {
           weatherTemp = data['current']['temperature_2m'].toString();
           weatherHumidity =
               data['current']['relative_humidity_2m'].toString();
@@ -1131,17 +1136,17 @@ class _HomeDashboardState extends State<HomeDashboard> {
         });
         await _saveWeatherCache();
       } else {
-        setState(() => weatherStatusText = "تعذر جلب بيانات الطقس حالياً");
+        _safeSet(() => weatherStatusText = "تعذر جلب بيانات الطقس حالياً");
       }
     } catch (e) {
       debugPrint("❌ خطأ في جلب الموقع: $e");
       if (!isWeatherLoaded) {
-        setState(
+        _safeSet(
             () => weatherStatusText = "⚠️ برجاء تشغيل GPS والانتظار قليلاً");
       }
     }
 
-    if (manual) setState(() => _refreshing = false);
+    if (manual) _safeSet(() => _refreshing = false);
   }
 
   void _showAllActions() {
@@ -1513,7 +1518,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
                 Expanded(
                   child: Text(
                     isWeatherLoaded
-                        ? (double.parse(weatherTemp) > 30
+                        ? ((double.tryParse(weatherTemp) ?? 0) > 30
                             ? 'توصية الري: الطقس حار، يفضل الري في الصباح الباكر أو ليلاً لتجنب تبخر المياه.'
                             : 'توصية الري: اعتدال الطقس مناسب للري، يرجى مراقبة رطوبة التربة.')
                         : 'جاري تحليل التوصية...',
@@ -1739,7 +1744,7 @@ class _AiScannerScreenState extends State<AiScannerScreen> {
         source: source,
         imageQuality: 70,
       );
-      if (pickedFile != null) {
+      if (pickedFile != null && mounted) {
         setState(() => _imageFile = File(pickedFile.path));
       }
     } catch (e) {
@@ -1754,6 +1759,7 @@ class _AiScannerScreenState extends State<AiScannerScreen> {
   Future<void> _toggleVoicePlayback(String text) async {
     if (_isPlayingVoice) {
       await _flutterTts.stop();
+      if (!mounted) return;
       setState(() => _isPlayingVoice = false);
     } else {
       if (text.isNotEmpty) {
@@ -1775,8 +1781,15 @@ $_diagnosis
     final uri = Uri.parse(
         "https://wa.me/$engineerPhone?text=${Uri.encodeComponent(message)}");
     try {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
+      // launchUrl بترجّع false (مش بترمي استثناء) لو الواتساب مش متثبت
+      final opened =
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!opened && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('تعذر فتح تطبيق الواتساب')));
+      }
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('تعذر فتح تطبيق الواتساب')));
     }
@@ -1823,10 +1836,12 @@ $_diagnosis
 
     final hasInternet = await OfflineService.hasInternet();
     if (!hasInternet) {
-      setState(() {
-        _diagnosis =
-            '⚠️ لا يوجد اتصال بالإنترنت حالياً.\nتم حفظ سؤالك وسيتم إرساله تلقائياً عند عودة الاتصال.';
-      });
+      if (mounted) {
+        setState(() {
+          _diagnosis =
+              '⚠️ لا يوجد اتصال بالإنترنت حالياً.\nتم حفظ سؤالك وسيتم إرساله تلقائياً عند عودة الاتصال.';
+        });
+      }
       await OfflineService.saveDiagnosis(
         userName: widget.userName,
         userPhone: widget.userPhone,
@@ -1907,22 +1922,31 @@ $_diagnosis
         }
 
         final response = await model.generateContent([Content.multi(parts)]);
+        final diagnosisText =
+            response.text ?? 'لم يتمكن الذكاء الاصطناعي من تقديم تشخيص.';
 
-        setState(() {
-          _diagnosis =
-              response.text ?? 'لم يتمكن الذكاء الاصطناعي من تقديم تشخيص.';
-        });
-
-        await OfflineService.saveDiagnosis(
-          userName: widget.userName,
-          userPhone: widget.userPhone,
-          question: question,
-          imagePath: _imageFile?.path,
-          diagnosis: _diagnosis,
-        );
-
+        // التشخيص نجح: نعتبر العملية ناجحة حتى لو الحفظ المحلي فشل،
+        // عشان ما نعيدش استدعاء Gemini (مدفوع) 3 مرات بسبب خطأ في قاعدة البيانات
         success = true;
+        if (mounted) {
+          setState(() {
+            _diagnosis = diagnosisText;
+          });
+        }
+
+        try {
+          await OfflineService.saveDiagnosis(
+            userName: widget.userName,
+            userPhone: widget.userPhone,
+            question: question,
+            imagePath: _imageFile?.path,
+            diagnosis: diagnosisText,
+          );
+        } catch (e) {
+          debugPrint("⚠️ تعذر حفظ التشخيص محلياً: $e");
+        }
       } catch (e) {
+        if (!mounted) break; // المستخدم خرج من الشاشة، مفيش داعي نكمل المحاولات
         if (attempt >= maxRetries) {
           setState(() {
             _diagnosis =
@@ -1936,6 +1960,7 @@ $_diagnosis
       }
     }
 
+    if (!mounted) return;
     setState(() {
       _loading = false;
     });

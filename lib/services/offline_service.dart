@@ -80,7 +80,13 @@ class OfflineService {
   }
 
   // ✅ دالة جديدة: مزامنة كل التشخيصات المعلقة مع Firestore
+  static bool _syncing = false;
+
   static Future<int> syncPendingDiagnoses() async {
+    // قفل: مستمع الاتصال ممكن يشغّل المزامنة أكتر من مرة في نفس الوقت
+    // وده كان بيرفع نفس التشخيص مرتين لـ Firestore
+    if (_syncing) return 0;
+    _syncing = true;
     try {
       // 1. نتأكد إن في نت
       final hasNet = await hasInternet();
@@ -127,12 +133,15 @@ class OfflineService {
     } catch (e) {
       debugPrint("❌ خطأ في المزامنة: $e");
       return 0;
+    } finally {
+      _syncing = false;
     }
   }
 
   static Future<bool> hasInternet() async {
+    // connectivity_plus 6.x يرجّع List<ConnectivityResult> وليس قيمة واحدة
     final result = await Connectivity().checkConnectivity();
-    return result != ConnectivityResult.none;
+    return result.isNotEmpty && !result.contains(ConnectivityResult.none);
   }
 
   static Future<void> clearAll() async {
