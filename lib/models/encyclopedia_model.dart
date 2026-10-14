@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../utils/safe_parse.dart';
 
 // ============= قسم في الموسوعة =============
 class EncyclopediaSection {
@@ -21,15 +22,17 @@ class EncyclopediaSection {
   });
 
   factory EncyclopediaSection.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
+    final data = SafeParse.map(doc.data());
     return EncyclopediaSection(
       id: doc.id,
-      name: data['name'] ?? '',
-      emoji: data['emoji'] ?? '📚',
-      color: data['color'] ?? '#047857',
-      description: data['description'] ?? '',
-      order: (data['order'] as num?)?.toInt() ?? 0,
-      createdAt: (data['created_at'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      name: SafeParse.string(data['name']),
+      emoji: SafeParse.string(data['emoji'], '📚'),
+      color: SafeParse.string(data['color'], '#047857'),
+      description: SafeParse.string(data['description']),
+      order: SafeParse.integer(data['order']),
+      createdAt: data['created_at'] is Timestamp
+          ? (data['created_at'] as Timestamp).toDate()
+          : DateTime.now(),
     );
   }
 
@@ -70,20 +73,20 @@ class EncyclopediaItem {
   });
 
   factory EncyclopediaItem.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
+    final data = SafeParse.map(doc.data());
     return EncyclopediaItem(
       id: doc.id,
-      sectionId: data['section_id'] ?? '',
-      title: data['title'] ?? '',
-      subtitle: data['subtitle'] ?? '',
-      icon: data['icon'] ?? 'eco',
-      content: data['content'] ?? '',
-      sections: (data['sections'] as List<dynamic>? ?? [])
-          .map((e) => Map<String, String>.from(e as Map))
-          .toList(),
-      imageUrl: data['image_url'],
-      order: (data['order'] as num?)?.toInt() ?? 0,
-      createdAt: (data['created_at'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      sectionId: SafeParse.string(data['section_id']),
+      title: SafeParse.string(data['title']),
+      subtitle: SafeParse.string(data['subtitle']),
+      icon: SafeParse.string(data['icon'], 'eco'),
+      content: SafeParse.string(data['content']),
+      sections: SafeParse.stringMapList(data['sections']),
+      imageUrl: SafeParse.stringOrNull(data['image_url']),
+      order: SafeParse.integer(data['order']),
+      createdAt: data['created_at'] is Timestamp
+          ? (data['created_at'] as Timestamp).toDate()
+          : DateTime.now(),
     );
   }
 

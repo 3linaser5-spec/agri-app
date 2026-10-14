@@ -1,11 +1,14 @@
+import 'number_utils.dart';
+
 class Validators {
   // التحقق من رقم موبايل مصري
   static String? phone(String? value) {
     if (value == null || value.trim().isEmpty) {
       return 'من فضلك أدخل رقم الموبايل';
     }
+    // نقبل الأرقام العربية (٠١٢...) من لوحة المفاتيح العربية
     final regex = RegExp(r'^01[0125][0-9]{8}$');
-    if (!regex.hasMatch(value.trim())) {
+    if (!regex.hasMatch(NumberUtils.normalize(value))) {
       return 'رقم الموبايل غير صحيح (مثال: 01012345678)';
     }
     return null;

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 import 'package:flutter_timezone/flutter_timezone.dart';
+import '../utils/safe_parse.dart';
 
 class NotificationService {
   static final FlutterLocalNotificationsPlugin _localNotifications =
@@ -138,6 +139,31 @@ class NotificationService {
   }
 
   // ═══════════════════════════════════════════
+  // معرّفات الإشعارات
+  // ═══════════════════════════════════════════
+  // كل برنامج له "حصة" من 500 رقم متتالي. الـ hash نفسه ثابت (FNV-1a) عشان
+  // String.hashCode مش مضمون يفضل ثابت بين إصدارات Dart، وبالتالي الإلغاء
+  // كان ممكن يفوّت إشعارات اتجدولت قبل كده.
+  static const int _idStride = 500;
+  static const int _idBuckets = 4000;
+
+  static int _stableHash(String input) {
+    int hash = 0x811C9DC5;
+    for (final unit in input.codeUnits) {
+      hash ^= unit;
+      hash = (hash * 0x01000193) & 0xFFFFFFFF;
+    }
+    return hash;
+  }
+
+  static int _baseIdFor(String programId) =>
+      (_stableHash(programId) % _idBuckets) * _idStride;
+
+  // الطريقة القديمة (قبل الإصلاح) - بنفضل نلغي بيها برضه للبرامج القديمة
+  static int _legacyBaseIdFor(String programId) =>
+      programId.hashCode.abs() % 100000;
+
+  // ═══════════════════════════════════════════
   // ✅ جدولة إشعارات مهام البرنامج
   // ═══════════════════════════════════════════
   /// [programId] معرّف البرنامج (بيتحول لـ int كـ base ID)
@@ -152,13 +178,28 @@ class NotificationService {
     required DateTime startDate,
     required List<Map<String, dynamic>> tasks,
   }) async {
-    // base ID فريد لكل برنامج (عشان نتجنب التعارض)
-    final int baseId = programId.hashCode.abs() % 100000;
+    // base ID ثابت لكل برنامج (عشان نتجنب التعارض)
+    final int baseId = _baseIdFor(programId);
     int scheduledCount = 0;
 
-    for (int i = 0; i < tasks.length; i++) {
+    // لو صلاحية المنبّه الدقيق مرفوضة (أندرويد 12+) الجدولة الدقيقة بترمي خطأ،
+    // فنستخدم الجدولة غير الدقيقة بدل ما نفقد كل التذكيرات.
+    final androidImpl = _localNotifications
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
+    bool canExact = true;
+    try {
+      canExact = await androidImpl?.canScheduleExactNotifications() ?? true;
+    } catch (_) {
+      canExact = true;
+    }
+    final scheduleMode = canExact
+        ? AndroidScheduleMode.exactAllowWhileIdle
+        : AndroidScheduleMode.inexactAllowWhileIdle;
+
+    for (int i = 0; i < tasks.length && i < _idStride; i++) {
       final task = tasks[i];
-      final int dayFromStart = task['day_from_start'] as int? ?? 0;
+      final int dayFromStart = SafeParse.integer(task['day_from_start']);
       final String title = task['title']?.toString() ?? 'مهمة';
       final String description =
           task['description']?.toString() ?? 'موعد مهمة في مزرعتك';
@@ -192,8 +233,7 @@ class NotificationService {
             ),
             iOS: DarwinNotificationDetails(),
           ),
-          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-          // تم إزالة السطر الخاص بـ uiLocalNotificationDateInterpretation لأنه لم يعد مدعوماً
+          androidScheduleMode: scheduleMode,
         );
         scheduledCount++;
         debugPrint("✅ تم جدولة: $title (يوم $dayFromStart)");
@@ -213,10 +253,13 @@ class NotificationService {
     String programId,
     int tasksCount,
   ) async {
-    final int baseId = programId.hashCode.abs() % 100000;
+    final int baseId = _baseIdFor(programId);
+    final int legacyBaseId = _legacyBaseIdFor(programId);
 
-    for (int i = 0; i < tasksCount; i++) {
+    for (int i = 0; i < tasksCount && i < _idStride; i++) {
       await _localNotifications.cancel(baseId + i);
+      // برامج اتجدولت بالنظام القديم
+      await _localNotifications.cancel(legacyBaseId + i);
     }
     debugPrint("✅ تم إلغاء $tasksCount إشعار للبرنامج: $programId");
   }

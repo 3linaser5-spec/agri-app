@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../models/calculator_models.dart';
+import '../../utils/template_validator.dart';
 
 class JsonImportScreen extends StatefulWidget {
   final CalculatorSection section;
@@ -26,6 +27,7 @@ class _JsonImportScreenState extends State<JsonImportScreen> {
 
   Future<void> _pasteFromClipboard() async {
     final data = await Clipboard.getData('text/plain');
+    if (!mounted) return;
     if (data != null && data.text != null) {
       setState(() {
         _jsonCtrl.text = data.text!;
@@ -50,90 +52,91 @@ class _JsonImportScreenState extends State<JsonImportScreen> {
 
     try {
       final dynamic parsed = json.decode(jsonText);
-
       final List<dynamic> templates = parsed is List ? parsed : [parsed];
 
-      int successCount = 0;
-      int failCount = 0;
-      final List<String> errors = [];
+      if (templates.isEmpty) {
+        _finish(false, '❌ الملف فاضي: مفيش قوالب للاستيراد');
+        return;
+      }
 
-      for (var templateData in templates) {
-        if (templateData is! Map<String, dynamic>) {
-          failCount++;
-          errors.add('عنصر ليس Object صحيح');
+      // 1) نتحقق من كل القوالب الأول. لو أي واحد غلط ما نحفظش حاجة
+      //    (قبل كده كان بيحفظ جزء ويسيب الباقي، وإعادة الاستيراد تكرّر المحفوظ).
+      final List<Map<String, dynamic>> valid = [];
+      final List<String> errors = [];
+      for (var i = 0; i < templates.length; i++) {
+        final item = templates[i];
+        if (item is! Map) {
+          errors.add('قالب ${i + 1}: العنصر ليس Object');
           continue;
         }
-
-        try {
-          // ✅ إضافة section_id تلقائياً
-          templateData['section_id'] = widget.section.id;
-
-          final name = templateData['name']?.toString();
-          if (name == null || name.trim().isEmpty) {
-            failCount++;
-            errors.add('قالب بدون اسم');
-            continue;
-          }
-
-          final id = await _saveTemplate(templateData);
-          if (id != null) {
-            successCount++;
-          } else {
-            failCount++;
-            errors.add('فشل حفظ "$name"');
-          }
-        } catch (e) {
-          failCount++;
-          errors.add('خطأ في قالب: $e');
+        final data = Map<String, dynamic>.from(item);
+        final label = data['name'] is String && (data['name'] as String).isNotEmpty
+            ? '"${data['name']}"'
+            : 'قالب ${i + 1}';
+        final problems = TemplateValidator.validate(data, label: label);
+        if (problems.isNotEmpty) {
+          errors.addAll(problems);
+        } else {
+          valid.add(data);
         }
       }
 
-      if (mounted) {
-        setState(() {
-          _loading = false;
-          _isSuccess = failCount == 0 && successCount > 0;
-          _resultMessage =
-              '✅ نجح: $successCount قالب\n❌ فشل: $failCount قالب'
-              '${errors.isNotEmpty ? "\n\nالتفاصيل:\n${errors.take(5).join("\n")}" : ""}';
-        });
-
-        if (successCount > 0) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('✅ تم استيراد $successCount قالب بنجاح'),
-              backgroundColor: const Color(0xFF047857),
-            ),
-          );
-        }
+      if (errors.isNotEmpty) {
+        final shown = errors.take(8).join('\n');
+        final more = errors.length > 8 ? '\n... و${errors.length - 8} خطأ آخر' : '';
+        _finish(
+          false,
+          '❌ لم يتم حفظ أي قالب (${errors.length} خطأ)\n'
+          'صحّح الأخطاء وأعد المحاولة:\n\n$shown$more',
+        );
+        return;
       }
+
+      // 2) كتابة بـ WriteBatch: كل دفعة (حتى 400 قالب) تنجح أو تفشل كلها
+      //    (حد Firestore 500 عملية للدفعة الواحدة).
+      final col =
+          FirebaseFirestore.instance.collection('calculator_templates');
+      const chunkSize = 400;
+      int saved = 0;
+      for (var i = 0; i < valid.length; i += chunkSize) {
+        final batch = FirebaseFirestore.instance.batch();
+        final chunk = valid.skip(i).take(chunkSize);
+        for (final data in chunk) {
+          data['section_id'] = widget.section.id;
+          data['fields'] ??= [];
+          data['tasks'] ??= [];
+          data['materials'] ??= [];
+          data['financial'] ??= {};
+          data['created_at'] = FieldValue.serverTimestamp();
+          batch.set(col.doc(), data);
+        }
+        await batch.commit();
+        saved += chunk.length;
+      }
+
+      _finish(true, '✅ تم استيراد $saved قالب بنجاح');
+    } on FormatException catch (e) {
+      _finish(false, '❌ خطأ في صيغة JSON:\n${e.message}');
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _loading = false;
-          _isSuccess = false;
-          _resultMessage = '❌ خطأ في صيغة JSON:\n$e';
-        });
-      }
+      debugPrint('❌ خطأ في الاستيراد: $e');
+      _finish(false, '❌ تعذر الحفظ، تأكد من الاتصال وحاول مرة أخرى:\n$e');
     }
   }
 
-  Future<String?> _saveTemplate(Map<String, dynamic> data) async {
-    try {
-      // ✅ الحفظ في الـ root مباشرة (جنب users و ai_queries)
-      final ref = FirebaseFirestore.instance
-          .collection('calculator_templates');
-
-      data['fields'] ??= [];
-      data['tasks'] ??= [];
-      data['materials'] ??= [];
-      data['financial'] ??= {};
-      data['created_at'] = FieldValue.serverTimestamp();
-
-      final docRef = await ref.add(data);
-      return docRef.id;
-    } catch (e) {
-      print('❌ خطأ في الحفظ: $e');
-      return null;
+  void _finish(bool success, String message) {
+    if (!mounted) return;
+    setState(() {
+      _loading = false;
+      _isSuccess = success;
+      _resultMessage = message;
+    });
+    if (success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: const Color(0xFF047857),
+        ),
+      );
     }
   }
 

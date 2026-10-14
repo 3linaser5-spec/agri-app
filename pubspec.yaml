@@ -40,6 +40,7 @@ dependencies:
   path_provider: ^2.1.5
   connectivity_plus: ^6.1.2
   sqflite: ^2.4.1
+  path: ^1.9.0
 
   # ✅ الإشعارات
   flutter_local_notifications: ^19.0.0

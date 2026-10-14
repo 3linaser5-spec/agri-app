@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../data/egypt_data.dart';
 import '../../models/calculator_models.dart';
+import '../../utils/number_utils.dart';
 import 'calculator_result_screen.dart';
 
 class DynamicFormScreen extends StatefulWidget {
@@ -32,10 +33,18 @@ class _DynamicFormScreenState extends State<DynamicFormScreen> {
     _loadSavedGovernorate();
 
     for (var field in widget.template.fields) {
-      if (field.defaultValue != null) {
+      if (field.type == 'dropdown') {
+        // القيمة الافتراضية للقائمة لازم تكون String وموجودة ضمن الخيارات،
+        // وإلا DropdownButtonFormField<String> بيرمي خطأ في النوع
+        if (field.options.isNotEmpty) {
+          final d = field.defaultValue?.toString();
+          final available = field.options.map((o) => o['value']).toList();
+          _values[field.id] = (d != null && available.contains(d))
+              ? d
+              : field.options.first['value'];
+        }
+      } else if (field.defaultValue != null) {
         _values[field.id] = field.defaultValue;
-      } else if (field.type == 'dropdown' && field.options.isNotEmpty) {
-        _values[field.id] = field.options.first['value'];
       }
     }
     if (widget.template.fields.isEmpty) {
@@ -46,6 +55,7 @@ class _DynamicFormScreenState extends State<DynamicFormScreen> {
   Future<void> _loadSavedGovernorate() async {
     final prefs = await SharedPreferences.getInstance();
     final saved = prefs.getString('user_governorate');
+    if (!mounted) return;
     if (saved != null && saved.isNotEmpty) {
       setState(() {
         _selectedGovernorate = saved;
@@ -462,7 +472,7 @@ class _DynamicFormScreenState extends State<DynamicFormScreen> {
       padding: const EdgeInsets.only(bottom: 16),
       child: TextFormField(
         initialValue: '1',
-        keyboardType: TextInputType.number,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
         decoration: InputDecoration(
           labelText: 'المساحة (${widget.template.areaUnit})',
           prefixIcon: const Icon(Icons.crop_free),
@@ -472,11 +482,11 @@ class _DynamicFormScreenState extends State<DynamicFormScreen> {
         ),
         validator: (v) {
           if (v == null || v.trim().isEmpty) return 'ادخل المساحة';
-          final n = double.tryParse(v);
+          final n = NumberUtils.tryParseDouble(v);
           if (n == null || n <= 0) return 'ادخل رقم صحيح أكبر من صفر';
           return null;
         },
-        onChanged: (v) => _values['area'] = double.tryParse(v) ?? 1,
+        onChanged: (v) => _values['area'] = NumberUtils.tryParseDouble(v) ?? 1,
       ),
     );
   }
@@ -498,7 +508,7 @@ class _DynamicFormScreenState extends State<DynamicFormScreen> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: TextFormField(
-        keyboardType: TextInputType.number,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
         initialValue: field.defaultValue?.toString(),
         decoration: InputDecoration(
           labelText:
@@ -514,7 +524,7 @@ class _DynamicFormScreenState extends State<DynamicFormScreen> {
             return 'ادخل ${field.label}';
           }
           if (v != null && v.trim().isNotEmpty) {
-            final n = double.tryParse(v);
+            final n = NumberUtils.tryParseDouble(v);
             if (n == null) return 'ادخل رقم صحيح';
             if (field.min != null && n < field.min!) {
               return 'أقل قيمة ${field.min}';
@@ -525,13 +535,38 @@ class _DynamicFormScreenState extends State<DynamicFormScreen> {
           }
           return null;
         },
-        onChanged: (v) => _values[field.id] = double.tryParse(v) ?? 0,
+        onChanged: (v) {
+          // حقل فاضي أو غير صالح = نشيل القيمة بدل ما نخزّن 0
+          // (0 في حقل المساحة كان بيصفّر كل الكميات والتكاليف)
+          final n = NumberUtils.tryParseDouble(v);
+          if (n == null) {
+            _values.remove(field.id);
+          } else {
+            _values[field.id] = n;
+          }
+        },
       ),
     );
   }
 
   Widget _buildDropdownField(FormFieldConfig field) {
-    final current = _values[field.id] ?? field.options.first['value'];
+    if (field.options.isEmpty) {
+      // قالب بدون خيارات: كان بيرمي StateError عند field.options.first
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: InputDecorator(
+          decoration: InputDecoration(
+            labelText: field.label,
+            border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12)),
+            filled: true,
+          ),
+          child: const Text('لا توجد خيارات متاحة لهذا الحقل'),
+        ),
+      );
+    }
+    final current =
+        _values[field.id]?.toString() ?? field.options.first['value'];
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: DropdownButtonFormField<String>(

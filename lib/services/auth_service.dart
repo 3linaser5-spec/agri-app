@@ -1,12 +1,16 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../utils/number_utils.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   // تحويل رقم الموبايل إلى بريد إلكتروني وهمي (لأن Firebase Auth يحتاج بريدًا)
-  String _phoneToEmail(String phone) => '${phone.trim()}@agri-app.local';
+  // الرقم بيتحوّل لأرقام إنجليزية الأول عشان نفس الرقم يطلع نفس الحساب
+  // سواء اتكتب ٠١٠١٢٣٤٥٦٧٨ أو 01012345678
+  String _phoneToEmail(String phone) =>
+      '${NumberUtils.normalize(phone)}@agri-app.local';
 
   // دالة إنشاء حساب جديد
   Future<String?> register({
@@ -31,7 +35,7 @@ class AuthService {
       await _db.collection('users').doc(credential.user!.uid).set({
         'uid': credential.user!.uid,
         'name': name,
-        'phone': phone,
+        'phone': NumberUtils.normalize(phone),
         'createdAt': FieldValue.serverTimestamp(),
       });
       
@@ -56,6 +60,8 @@ class AuthService {
       return null; // نجاح
     } on FirebaseAuthException catch (e) {
       return _mapError(e.code);
+    } catch (e) {
+      return 'حدث خطأ غير متوقع، حاول مرة أخرى.';
     }
   }
 
