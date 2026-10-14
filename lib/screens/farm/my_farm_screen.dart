@@ -206,9 +206,16 @@ class MyFarmScreen extends StatelessWidget {
                       Colors.blue),
                   const SizedBox(width: 6),
                   _buildInfoChip(
-                      Icons.timeline,
-                      '${program.tasks.length} مهمة',
+                      Icons.check_circle_outline,
+                      '${program.doneCount}/${program.tasks.length} منجزة',
                       Colors.orange),
+                  if (program.overdueTasks.isNotEmpty) ...[
+                    const SizedBox(width: 6),
+                    _buildInfoChip(
+                        Icons.warning_amber_rounded,
+                        '${program.overdueTasks.length} متأخرة',
+                        Colors.red),
+                  ],
                 ],
               ),
 
@@ -225,7 +232,7 @@ class MyFarmScreen extends StatelessWidget {
               ),
               const SizedBox(height: 6),
 
-              // المهمة القادمة
+              // المهمة القادمة (غير المنجزة)
               if (program.nextTask != null)
                 Row(
                   children: [
@@ -253,7 +260,8 @@ class MyFarmScreen extends StatelessWidget {
   }
 
   Widget _buildStatusBadge(MyFarmProgram program) {
-    final isActive = program.status == 'active';
+    // مكتمل = كل المهام اتعلّمت (محسوبة من البيانات)
+    final isActive = !program.isCompleted;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(

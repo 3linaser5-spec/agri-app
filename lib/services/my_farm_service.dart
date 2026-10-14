@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import '../models/my_farm_model.dart';
 
 class MyFarmService {
@@ -48,6 +49,30 @@ class MyFarmService {
       return true;
     } catch (e) {
       print('❌ خطأ في حذف البرنامج: $e');
+      return false;
+    }
+  }
+
+  // ✅ تعليم مهمة كمنجزة / غير منجزة
+  // arrayUnion/arrayRemove ذريين: لو الشاشة مفتوحة من جهازين مفيش تعليم بيضيع
+  // (قراءة القائمة كلها وإعادة كتابتها كانت هتخلي آخر كاتب يمسح الباقي).
+  // [allDone] = هل كل المهام بقت منجزة بعد التعديل؟ عشان نحدّث status معاها.
+  static Future<bool> setTaskDone(
+    String programId,
+    int taskIndex,
+    bool done, {
+    required bool allDone,
+  }) async {
+    try {
+      await _firestore.collection('my_farm').doc(programId).update({
+        'done_tasks': done
+            ? FieldValue.arrayUnion([taskIndex])
+            : FieldValue.arrayRemove([taskIndex]),
+        'status': allDone ? 'completed' : 'active',
+      });
+      return true;
+    } catch (e) {
+      debugPrint('❌ خطأ في تحديث المهمة: $e');
       return false;
     }
   }
