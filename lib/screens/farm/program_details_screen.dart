@@ -15,11 +15,73 @@ class ProgramDetailsScreen extends StatefulWidget {
 
 class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
   late MyFarmProgram _program;
+  // مهام لسه بيتحفظ تعليمها (نمنع الضغط المتكرر على نفس المهمة)
+  final Set<int> _busyTasks = {};
 
   @override
   void initState() {
     super.initState();
     _program = widget.program;
+  }
+
+  // ✅ تعليم مهمة كمنجزة / إلغاء التعليم
+  // تحديث متفائل: الواجهة تتغير فورًا، ولو الحفظ فشل بنرجّع التغيير ده بس.
+  Future<void> _toggleTask(int index, bool done) async {
+    if (_busyTasks.contains(index)) return;
+
+    final updated = {..._program.doneTasks};
+    if (done) {
+      updated.add(index);
+    } else {
+      updated.remove(index);
+    }
+    final after = _program.copyWithDoneTasks(updated);
+
+    setState(() {
+      _busyTasks.add(index);
+      _program = after;
+    });
+
+    final ok = await MyFarmService.setTaskDone(
+      _program.id,
+      index,
+      done,
+      allDone: after.isCompleted,
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      _busyTasks.remove(index);
+      if (!ok) {
+        // نرجّع تعليم المهمة دي بس (ممكن المستخدم علّم مهام تانية في الأثناء)
+        final current = {..._program.doneTasks};
+        if (done) {
+          current.remove(index);
+        } else {
+          current.add(index);
+        }
+        _program = _program.copyWithDoneTasks(current);
+      }
+    });
+
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    if (!ok) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('⚠️ تعذر حفظ التعليم، تأكد من الاتصال وحاول مرة أخرى'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } else if (done && after.isCompleted) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('🎉 مبروك! خلّصت كل مهام البرنامج'),
+          backgroundColor: Color(0xFF047857),
+        ),
+      );
+    }
   }
 
   // ✅ تحميل PDF — مع Loading Dialog
@@ -214,9 +276,14 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'التقدم: ${(_program.progress * 100).toStringAsFixed(0)}%',
-                      style: const TextStyle(
-                          fontSize: 11, color: Colors.grey),
+                      'التقدم: ${(_program.progress * 100).toStringAsFixed(0)}%'
+                      ' • ${_program.doneCount} من ${_program.tasks.length} مهمة منجزة'
+                      '${_program.overdueTasks.isNotEmpty ? ' • ${_program.overdueTasks.length} متأخرة' : ''}',
+                      style: TextStyle(
+                          fontSize: 11,
+                          color: _program.overdueTasks.isNotEmpty
+                              ? Colors.red.shade400
+                              : Colors.grey),
                     ),
                   ],
                 ),
@@ -242,19 +309,22 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
       return const Center(child: Text('لا يوجد مهام'));
     }
 
-    final tasks = List<Map<String, dynamic>>.from(_program.tasks);
-    tasks.sort((a, b) => SafeParse.integer(a['day_from_start'])
-        .compareTo(SafeParse.integer(b['day_from_start'])));
+    // نرتب بالأيام لكن بنحتفظ بفهرس المهمة الأصلي (هو اللي بيتخزّن كإنجاز)
+    final order = List<int>.generate(_program.tasks.length, (i) => i);
+    order.sort((a, b) => SafeParse.integer(_program.tasks[a]['day_from_start'])
+        .compareTo(SafeParse.integer(_program.tasks[b]['day_from_start'])));
 
     return ListView.builder(
       padding: const EdgeInsets.all(16),
-      itemCount: tasks.length,
-      itemBuilder: (context, index) {
-        final task = tasks[index];
+      itemCount: order.length,
+      itemBuilder: (context, position) {
+        final taskIndex = order[position];
+        final task = _program.tasks[taskIndex];
         final day = SafeParse.integer(task['day_from_start']);
-        final category = task['category'] as String? ?? '';
+        final category = SafeParse.string(task['category']);
         final color = _getCategoryColor(category);
-        final status = _getTaskStatus(day);
+        final isDone = _program.isTaskDone(taskIndex);
+        final status = _getTaskStatus(day, isDone);
 
         return Card(
           margin: const EdgeInsets.only(bottom: 10),
@@ -284,8 +354,12 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(task['title']?.toString() ?? '',
-                          style: const TextStyle(
-                              fontWeight: FontWeight.bold, fontSize: 14)),
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                              color: isDone ? Colors.grey : null,
+                              decoration:
+                                  isDone ? TextDecoration.lineThrough : null)),
                       const SizedBox(height: 4),
                       Text(task['description']?.toString() ?? '',
                           style: const TextStyle(
@@ -327,6 +401,14 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
                     ],
                   ),
                 ),
+                // علامة الإنجاز
+                Checkbox(
+                  value: isDone,
+                  activeColor: const Color(0xFF047857),
+                  onChanged: _busyTasks.contains(taskIndex)
+                      ? null
+                      : (v) => _toggleTask(taskIndex, v ?? false),
+                ),
               ],
             ),
           ),
@@ -335,11 +417,16 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
     );
   }
 
-  _TaskStatus _getTaskStatus(int day) {
-    if (day == _program.daysSinceStart) {
+  _TaskStatus _getTaskStatus(int day, bool done) {
+    if (done) {
+      return _TaskStatus('تمت ✓', Colors.green);
+    }
+    final today = _program.daysSinceStart;
+    if (day == today) {
       return _TaskStatus('اليوم', Colors.orange);
-    } else if (day < _program.daysSinceStart) {
-      return _TaskStatus('انتهت', Colors.green);
+    } else if (day < today) {
+      // قبل كده كانت "انتهت" بلون أخضر حتى لو المهمة ما اتعملتش
+      return _TaskStatus('متأخرة', Colors.red);
     } else {
       return _TaskStatus('قادمة', Colors.blue);
     }
