@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../utils/safe_parse.dart';
 
 // ============= قسم (الحقلية، البستانية، إلخ) =============
 class CalculatorSection {
@@ -21,15 +22,15 @@ class CalculatorSection {
   });
 
   factory CalculatorSection.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
+    final data = SafeParse.map(doc.data());
     return CalculatorSection(
       id: doc.id,
-      name: data['name'] ?? '',
-      emoji: data['emoji'] ?? '🌱',
-      subtitle: data['subtitle'] ?? '',
-      primaryColor: data['primary_color'] ?? '#047857',
-      secondaryColor: data['secondary_color'] ?? '#10B981',
-      order: (data['order'] as num?)?.toInt() ?? 0,
+      name: SafeParse.string(data['name']),
+      emoji: SafeParse.string(data['emoji'], '🌱'),
+      subtitle: SafeParse.string(data['subtitle']),
+      primaryColor: SafeParse.string(data['primary_color'], '#047857'),
+      secondaryColor: SafeParse.string(data['secondary_color'], '#10B981'),
+      order: SafeParse.integer(data['order']),
     );
   }
 }
@@ -62,18 +63,16 @@ class FormFieldConfig {
 
   factory FormFieldConfig.fromMap(Map<String, dynamic> m) {
     return FormFieldConfig(
-      id: m['id'] ?? '',
-      label: m['label'] ?? '',
-      type: m['type'] ?? 'text',
-      unit: m['unit'],
-      hint: m['hint'],
-      required: m['required'] ?? true,
-      options: (m['options'] as List<dynamic>? ?? [])
-          .map((e) => Map<String, String>.from(e as Map))
-          .toList(),
-      min: (m['min'] as num?)?.toDouble(),
-      max: (m['max'] as num?)?.toDouble(),
-      defaultValue: (m['default'] as num?)?.toDouble(),
+      id: SafeParse.string(m['id']),
+      label: SafeParse.string(m['label']),
+      type: SafeParse.string(m['type'], 'text'),
+      unit: SafeParse.stringOrNull(m['unit']),
+      hint: SafeParse.stringOrNull(m['hint']),
+      required: m['required'] is bool ? m['required'] as bool : true,
+      options: SafeParse.stringMapList(m['options']),
+      min: SafeParse.doubleOrNull(m['min']),
+      max: SafeParse.doubleOrNull(m['max']),
+      defaultValue: SafeParse.doubleOrNull(m['default']),
     );
   }
 }
@@ -93,10 +92,10 @@ class CalculatorTask {
   });
 
   factory CalculatorTask.fromMap(Map<String, dynamic> m) => CalculatorTask(
-        title: m['title'] ?? '',
-        description: m['description'] ?? '',
-        dayFromStart: (m['day_from_start'] as num?)?.toInt() ?? 0,
-        category: m['category'] ?? 'عام',
+        title: SafeParse.string(m['title']),
+        description: SafeParse.string(m['description']),
+        dayFromStart: SafeParse.integer(m['day_from_start']),
+        category: SafeParse.string(m['category'], 'عام'),
       );
 }
 
@@ -118,12 +117,11 @@ class CalculatorMaterial {
 
   factory CalculatorMaterial.fromMap(Map<String, dynamic> m) =>
       CalculatorMaterial(
-        name: m['name'] ?? '',
-        category: m['category'] ?? 'عام',
-        quantityPerUnit: (m['quantity_per_unit'] as num?)?.toDouble() ?? 0,
-        unit: m['unit'] ?? 'كجم',
-        estimatedPricePerUnit:
-            (m['price_per_unit'] as num?)?.toDouble() ?? 0,
+        name: SafeParse.string(m['name']),
+        category: SafeParse.string(m['category'], 'عام'),
+        quantityPerUnit: SafeParse.decimal(m['quantity_per_unit']),
+        unit: SafeParse.string(m['unit'], 'كجم'),
+        estimatedPricePerUnit: SafeParse.decimal(m['price_per_unit']),
       );
 }
 
@@ -143,16 +141,14 @@ class CalculatorFinancial {
 
   factory CalculatorFinancial.fromMap(Map<String, dynamic> m) {
     final dist = <String, double>{};
-    if (m['cost_distribution'] != null) {
-      (m['cost_distribution'] as Map<String, dynamic>).forEach((k, v) {
-        dist[k] = (v as num).toDouble();
-      });
-    }
+    SafeParse.map(m['cost_distribution']).forEach((k, v) {
+      final n = SafeParse.doubleOrNull(v);
+      if (n != null) dist[k] = n;
+    });
     return CalculatorFinancial(
-      expectedYieldPerUnit: (m['expected_yield'] as num?)?.toDouble() ?? 0,
-      yieldUnit: m['yield_unit'] ?? 'طن',
-      expectedPricePerYieldUnit:
-          (m['expected_price'] as num?)?.toDouble() ?? 0,
+      expectedYieldPerUnit: SafeParse.decimal(m['expected_yield']),
+      yieldUnit: SafeParse.string(m['yield_unit'], 'طن'),
+      expectedPricePerYieldUnit: SafeParse.decimal(m['expected_price']),
       costDistribution: dist,
     );
   }
@@ -187,26 +183,23 @@ class CalculatorTemplate {
   });
 
   factory CalculatorTemplate.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
+    final data = SafeParse.map(doc.data());
     return CalculatorTemplate(
       id: doc.id,
-      sectionId: data['section_id'] ?? '',
-      name: data['name'] ?? '',
-      emoji: data['emoji'] ?? '🌱',
-      description: data['description'] ?? '',
-      areaUnit: data['area_unit'] ?? 'فدان',
-      areaUnitLabel: data['area_unit_label'] ?? 'المساحة',
-      fields: (data['fields'] as List<dynamic>? ?? [])
-          .map((e) => FormFieldConfig.fromMap(e as Map<String, dynamic>))
+      sectionId: SafeParse.string(data['section_id']),
+      name: SafeParse.string(data['name']),
+      emoji: SafeParse.string(data['emoji'], '🌱'),
+      description: SafeParse.string(data['description']),
+      areaUnit: SafeParse.string(data['area_unit'], 'فدان'),
+      areaUnitLabel: SafeParse.string(data['area_unit_label'], 'المساحة'),
+      fields:
+          SafeParse.mapList(data['fields']).map(FormFieldConfig.fromMap).toList(),
+      tasks:
+          SafeParse.mapList(data['tasks']).map(CalculatorTask.fromMap).toList(),
+      materials: SafeParse.mapList(data['materials'])
+          .map(CalculatorMaterial.fromMap)
           .toList(),
-      tasks: (data['tasks'] as List<dynamic>? ?? [])
-          .map((e) => CalculatorTask.fromMap(e as Map<String, dynamic>))
-          .toList(),
-      materials: (data['materials'] as List<dynamic>? ?? [])
-          .map((e) => CalculatorMaterial.fromMap(e as Map<String, dynamic>))
-          .toList(),
-      financial: CalculatorFinancial.fromMap(
-          data['financial'] as Map<String, dynamic>? ?? {}),
+      financial: CalculatorFinancial.fromMap(SafeParse.map(data['financial'])),
     );
   }
 }

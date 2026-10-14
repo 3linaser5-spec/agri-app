@@ -3,6 +3,7 @@ import '../../models/my_farm_model.dart';
 import '../../services/my_farm_service.dart';
 import '../../services/pdf_service.dart';
 import '../../services/notification_service.dart';
+import '../../utils/safe_parse.dart';
 
 class ProgramDetailsScreen extends StatefulWidget {
   final MyFarmProgram program;
@@ -97,6 +98,21 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
     );
 
     if (confirm == true) {
+      // نحذف من Firestore الأول؛ لو الحذف فشل ما نلغيش التذكيرات
+      // (كان بيلغيها وبعدين البرنامج يفضل موجود بدون تذكيرات).
+      final ok = await MyFarmService.deleteProgram(_program.id);
+      if (!mounted) return;
+
+      if (!ok) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('⚠️ تعذر حذف البرنامج، تأكد من الاتصال وحاول مرة أخرى'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
       try {
         await NotificationService.cancelProgramNotifications(
           _program.id,
@@ -106,18 +122,15 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
       } catch (e) {
         debugPrint("⚠️ فشل إلغاء الإشعارات: $e");
       }
+      if (!mounted) return;
 
-      final ok = await MyFarmService.deleteProgram(_program.id);
-
-      if (ok && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ تم حذف البرنامج وإلغاء تذكيراتـه'),
-            backgroundColor: Color(0xFF047857),
-          ),
-        );
-        Navigator.pop(context);
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('✅ تم حذف البرنامج وإلغاء تذكيراتـه'),
+          backgroundColor: Color(0xFF047857),
+        ),
+      );
+      Navigator.pop(context);
     }
   }
 
@@ -230,15 +243,15 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
     }
 
     final tasks = List<Map<String, dynamic>>.from(_program.tasks);
-    tasks.sort((a, b) => (a['day_from_start'] as int? ?? 0)
-        .compareTo(b['day_from_start'] as int? ?? 0));
+    tasks.sort((a, b) => SafeParse.integer(a['day_from_start'])
+        .compareTo(SafeParse.integer(b['day_from_start'])));
 
     return ListView.builder(
       padding: const EdgeInsets.all(16),
       itemCount: tasks.length,
       itemBuilder: (context, index) {
         final task = tasks[index];
-        final day = task['day_from_start'] as int? ?? 0;
+        final day = SafeParse.integer(task['day_from_start']);
         final category = task['category'] as String? ?? '';
         final color = _getCategoryColor(category);
         final status = _getTaskStatus(day);

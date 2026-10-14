@@ -202,8 +202,9 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
     if (!mounted) return;
 
     if (id != null) {
+      int scheduledCount = 0;
       try {
-        final scheduledCount =
+        scheduledCount =
             await NotificationService.scheduleProgramNotifications(
           programId: id,
           programName: widget.template.name,
@@ -222,16 +223,22 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
         debugPrint("⚠️ فشل جدولة الإشعارات: $e");
       }
 
+      if (!mounted) return;
       setState(() {
         _saving = false;
         _saved = true;
       });
 
+      // نقول الحقيقة: لو ما اتجدولش ولا تذكير (صلاحية الإشعارات مرفوضة أو كل
+      // المواعيد فاتت) ما نقولش إن التذكيرات اتفعلت.
+      final remindersOk = scheduledCount > 0;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('✅ تم حفظ البرنامج مع تفعيل التذكيرات'),
-          backgroundColor: Color(0xFF047857),
-          duration: Duration(seconds: 3),
+        SnackBar(
+          content: Text(remindersOk
+              ? '✅ تم حفظ البرنامج وجدولة $scheduledCount تذكير'
+              : '✅ تم حفظ البرنامج، لكن لم يتم تفعيل أي تذكير (راجع صلاحية الإشعارات)'),
+          backgroundColor: const Color(0xFF047857),
+          duration: const Duration(seconds: 4),
         ),
       );
     } else {

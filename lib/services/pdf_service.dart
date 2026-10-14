@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:flutter_pdf_export/flutter_pdf_export.dart';
+import '../utils/safe_parse.dart';
 
 class PdfService {
   static Future<void> generateAndSharePdf({
@@ -15,22 +16,19 @@ class PdfService {
     required Map<String, dynamic> financial,
   }) async {
     // ✅ حساب القيم
-    double areaMultiplier = 1.0;
-    final area = inputValues['area'];
-    if (area is num) areaMultiplier = area.toDouble();
+    final double areaMultiplier =
+        SafeParse.doubleOrNull(inputValues['area']) ?? 1.0;
 
     double totalMaterialsCost = 0;
     for (var m in materials) {
-      final qty = (m['quantity_per_unit'] as num? ?? 0) * areaMultiplier;
-      final price = m['price_per_unit'] as num? ?? 0;
+      final qty = SafeParse.decimal(m['quantity_per_unit']) * areaMultiplier;
+      final price = SafeParse.decimal(m['price_per_unit']);
       totalMaterialsCost += qty * price;
     }
 
     final double expectedYield =
-        ((financial['expected_yield'] as num? ?? 0) * areaMultiplier)
-            .toDouble();
-    final double expectedPrice =
-        (financial['expected_price'] as num? ?? 0).toDouble();
+        SafeParse.decimal(financial['expected_yield']) * areaMultiplier;
+    final double expectedPrice = SafeParse.decimal(financial['expected_price']);
     final double totalRevenue = (expectedYield * expectedPrice).toDouble();
     final double netProfit = (totalRevenue - totalMaterialsCost).toDouble();
     final double roi = totalMaterialsCost > 0
@@ -38,8 +36,8 @@ class PdfService {
         : 0.0;
 
     final sortedTasks = List<Map<String, dynamic>>.from(tasks);
-    sortedTasks.sort((a, b) => (a['day_from_start'] as int? ?? 0)
-        .compareTo(b['day_from_start'] as int? ?? 0));
+    sortedTasks.sort((a, b) => SafeParse.integer(a['day_from_start'])
+        .compareTo(SafeParse.integer(b['day_from_start'])));
 
     // ═══════════════════════════════════════
     // ✅ بناء الأقسام
@@ -60,7 +58,7 @@ class PdfService {
       sections.add(PdfSection.h2('الجدول الزمني (${sortedTasks.length} مهمة)'));
 
       for (var task in sortedTasks) {
-        final day = task['day_from_start'] ?? 0;
+        final day = SafeParse.integer(task['day_from_start']);
         final title = task['title'] ?? '';
         final desc = task['description'] ?? '';
         final category = task['category'] ?? '';
@@ -95,8 +93,8 @@ class PdfService {
 
       for (int i = 0; i < materials.length; i++) {
         final m = materials[i];
-        final qty = (m['quantity_per_unit'] as num? ?? 0) * areaMultiplier;
-        final price = m['price_per_unit'] as num? ?? 0;
+        final qty = SafeParse.decimal(m['quantity_per_unit']) * areaMultiplier;
+        final price = SafeParse.decimal(m['price_per_unit']);
         final cost = qty * price;
         final name = m['name'] ?? '';
         final unit = m['unit'] ?? '';
@@ -160,9 +158,11 @@ class PdfService {
   }
 
   // ✅ تنسيق الأرقام بفواصل
+  // الرقم السالب (خسارة) كان بيطلع "-,500" لأن الشرطة كانت بتتحسب كرقم.
   static String _formatNumber(double number) {
-    final str = number.toStringAsFixed(0);
-    final buffer = StringBuffer();
+    final negative = number < 0;
+    final str = number.abs().toStringAsFixed(0);
+    final buffer = StringBuffer(negative ? '-' : '');
     for (int i = 0; i < str.length; i++) {
       if (i > 0 && (str.length - i) % 3 == 0) {
         buffer.write(',');

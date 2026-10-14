@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../utils/safe_parse.dart';
 
 class MyFarmProgram {
   final String id;
@@ -38,30 +39,28 @@ class MyFarmProgram {
   });
 
   factory MyFarmProgram.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
+    final data = SafeParse.map(doc.data());
     return MyFarmProgram(
       id: doc.id,
-      userId: data['user_id'] ?? '',
-      templateId: data['template_id'] ?? '',
-      templateName: data['template_name'] ?? '',
-      templateEmoji: data['template_emoji'] ?? '🌱',
-      sectionId: data['section_id'] ?? '',
-      sectionName: data['section_name'] ?? '',
-      governorate: data['governorate'] ?? '',
-      climateZone: data['climate_zone'] ?? '',
-      inputValues: Map<String, dynamic>.from(data['input_values'] ?? {}),
-      tasks: (data['tasks'] as List<dynamic>? ?? [])
-          .map((e) => Map<String, dynamic>.from(e as Map))
-          .toList(),
-      materials: (data['materials'] as List<dynamic>? ?? [])
-          .map((e) => Map<String, dynamic>.from(e as Map))
-          .toList(),
-      financial: Map<String, dynamic>.from(data['financial'] ?? {}),
-      startDate: (data['start_date'] as Timestamp?)?.toDate() ??
-          DateTime.now(),
-      createdAt: (data['created_at'] as Timestamp?)?.toDate() ??
-          DateTime.now(),
-      status: data['status'] ?? 'active',
+      userId: SafeParse.string(data['user_id']),
+      templateId: SafeParse.string(data['template_id']),
+      templateName: SafeParse.string(data['template_name']),
+      templateEmoji: SafeParse.string(data['template_emoji'], '🌱'),
+      sectionId: SafeParse.string(data['section_id']),
+      sectionName: SafeParse.string(data['section_name']),
+      governorate: SafeParse.string(data['governorate']),
+      climateZone: SafeParse.string(data['climate_zone']),
+      inputValues: SafeParse.map(data['input_values']),
+      tasks: SafeParse.mapList(data['tasks']),
+      materials: SafeParse.mapList(data['materials']),
+      financial: SafeParse.map(data['financial']),
+      startDate: (data['start_date'] is Timestamp)
+          ? (data['start_date'] as Timestamp).toDate()
+          : DateTime.now(),
+      createdAt: (data['created_at'] is Timestamp)
+          ? (data['created_at'] as Timestamp).toDate()
+          : DateTime.now(),
+      status: SafeParse.string(data['status'], 'active'),
     );
   }
 
@@ -83,44 +82,49 @@ class MyFarmProgram {
         'status': status,
       };
 
-  // ✅ حساب عدد الأيام من البداية
-  int get daysSinceStart =>
-      DateTime.now().difference(startDate).inDays;
+  // رقم اليوم للمهمة (يقبل int أو double أو نص)
+  static int _day(Map<String, dynamic> t) =>
+      SafeParse.integer(t['day_from_start']);
+
+  // ✅ حساب عدد الأيام من البداية بالتقويم (مش بكل 24 ساعة)
+  // بنقارن التواريخ فقط وبـ UTC عشان تغيير التوقيت الصيفي ما يبوّظش العدّ.
+  int get daysSinceStart {
+    final now = DateTime.now();
+    final today = DateTime.utc(now.year, now.month, now.day);
+    final start = DateTime.utc(startDate.year, startDate.month, startDate.day);
+    return today.difference(start).inDays;
+  }
 
   // ✅ المهمة القادمة
   Map<String, dynamic>? get nextTask {
     final sorted = List<Map<String, dynamic>>.from(tasks);
-    sorted.sort((a, b) =>
-        (a['day_from_start'] ?? 0).compareTo(b['day_from_start'] ?? 0));
+    sorted.sort((a, b) => _day(a).compareTo(_day(b)));
+    final today = daysSinceStart;
     for (var task in sorted) {
-      final day = task['day_from_start'] as int? ?? 0;
-      if (day >= daysSinceStart) return task;
+      if (_day(task) >= today) return task;
     }
     return null;
   }
 
   // ✅ المهام المستحقة اليوم
   List<Map<String, dynamic>> get todayTasks {
-    return tasks.where((t) {
-      final day = t['day_from_start'] as int? ?? 0;
-      return day == daysSinceStart;
-    }).toList();
+    final today = daysSinceStart;
+    return tasks.where((t) => _day(t) == today).toList();
   }
 
-  // ✅ المهام المتأخرة
+  // ✅ المهام المتأخرة (يوم 0 كمان لو عدّى)
   List<Map<String, dynamic>> get overdueTasks {
+    final today = daysSinceStart;
     return tasks.where((t) {
-      final day = t['day_from_start'] as int? ?? 0;
-      return day < daysSinceStart && day > 0;
+      final day = _day(t);
+      return day < today && day >= 0;
     }).toList();
   }
 
   // ✅ تقدم البرنامج (0-1)
   double get progress {
     if (tasks.isEmpty) return 0;
-    final totalDays = tasks
-        .map((t) => t['day_from_start'] as int? ?? 0)
-        .reduce((a, b) => a > b ? a : b);
+    final totalDays = tasks.map(_day).reduce((a, b) => a > b ? a : b);
     if (totalDays <= 0) return 1.0;
     return (daysSinceStart / totalDays).clamp(0.0, 1.0);
   }
