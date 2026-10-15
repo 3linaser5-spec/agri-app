@@ -220,6 +220,7 @@ class _SectionTemplatesScreenState extends State<SectionTemplatesScreen> {
   }
 
   Future<void> _loadTemplates() async {
+    if (!mounted) return;
     setState(() => _loading = true);
     final list =
         await CalculatorService.getTemplatesBySection(widget.section.id);
@@ -249,7 +250,15 @@ class _SectionTemplatesScreenState extends State<SectionTemplatesScreen> {
       ),
     );
     if (confirm == true) {
-      await CalculatorService.deleteTemplate(id);
+      final ok = await CalculatorService.deleteTemplate(id);
+      if (!mounted) return;
+      if (!ok) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('فشل حذف القالب، حاول مرة تانية'),
+              backgroundColor: Colors.red),
+        );
+      }
       _loadTemplates();
     }
   }
@@ -275,6 +284,7 @@ class _SectionTemplatesScreenState extends State<SectionTemplatesScreen> {
                   builder: (_) => JsonImportScreen(section: widget.section),
                 ),
               );
+              if (!mounted) return;
               _loadTemplates();
             },
             backgroundColor: Colors.blue.shade700,
@@ -295,6 +305,7 @@ class _SectionTemplatesScreenState extends State<SectionTemplatesScreen> {
                   ),
                 ),
               );
+              if (!mounted) return;
               _loadTemplates();
             },
             backgroundColor: const Color(0xFF047857),

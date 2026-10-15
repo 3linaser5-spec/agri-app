@@ -4,14 +4,29 @@ import '../../services/encyclopedia_service.dart';
 import 'encyclopedia_item_editor_screen.dart';
 import '../../utils/color_utils.dart';
 
-class EncyclopediaItemsScreen extends StatelessWidget {
+class EncyclopediaItemsScreen extends StatefulWidget {
   final EncyclopediaSection section;
   const EncyclopediaItemsScreen({super.key, required this.section});
+
+  @override
+  State<EncyclopediaItemsScreen> createState() =>
+      _EncyclopediaItemsScreenState();
+}
+
+class _EncyclopediaItemsScreenState extends State<EncyclopediaItemsScreen> {
+  late final Stream<List<EncyclopediaItem>> _itemsStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _itemsStream = EncyclopediaService.getItemsStream(widget.section.id);
+  }
 
   Color _hexToColor(String hex) => ColorUtils.fromHex(hex);
 
   @override
   Widget build(BuildContext context) {
+    final section = widget.section;
     final color = _hexToColor(section.color);
 
     return Scaffold(
@@ -42,7 +57,7 @@ class EncyclopediaItemsScreen extends StatelessWidget {
       body: Directionality(
         textDirection: TextDirection.rtl,
         child: StreamBuilder<List<EncyclopediaItem>>(
-          stream: EncyclopediaService.getItemsStream(section.id),
+          stream: _itemsStream,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());

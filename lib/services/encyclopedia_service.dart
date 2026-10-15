@@ -5,6 +5,32 @@ import 'package:flutter/foundation.dart' show debugPrint;
 class EncyclopediaService {
   static final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
+  // تحويل الدوكيومنتس مع تجاهل التالف منها
+  static List<EncyclopediaSection> _parseSections(
+      List<QueryDocumentSnapshot> docs) {
+    final result = <EncyclopediaSection>[];
+    for (final doc in docs) {
+      try {
+        result.add(EncyclopediaSection.fromFirestore(doc));
+      } catch (e) {
+        debugPrint('❌ قسم تالف (${doc.id}): $e');
+      }
+    }
+    return result;
+  }
+
+  static List<EncyclopediaItem> _parseItems(List<QueryDocumentSnapshot> docs) {
+    final result = <EncyclopediaItem>[];
+    for (final doc in docs) {
+      try {
+        result.add(EncyclopediaItem.fromFirestore(doc));
+      } catch (e) {
+        debugPrint('❌ عنصر تالف (${doc.id}): $e');
+      }
+    }
+    return result;
+  }
+
   // ============================================================
   //                     الأقسام (Sections)
   // ============================================================
@@ -15,9 +41,7 @@ class EncyclopediaService {
         .collection('encyclopedia_sections')
         .orderBy('order')
         .snapshots()
-        .map((snap) => snap.docs
-            .map((doc) => EncyclopediaSection.fromFirestore(doc))
-            .toList());
+        .map((snap) => _parseSections(snap.docs));
   }
 
   // جلب كل الأقسام (One-time)
@@ -27,9 +51,7 @@ class EncyclopediaService {
           .collection('encyclopedia_sections')
           .orderBy('order')
           .get();
-      return snapshot.docs
-          .map((doc) => EncyclopediaSection.fromFirestore(doc))
-          .toList();
+      return _parseSections(snapshot.docs);
     } catch (e) {
       debugPrint('❌ خطأ في جلب الأقسام: $e');
       return [];
@@ -103,8 +125,14 @@ class EncyclopediaService {
           .where('section_id', isEqualTo: id)
           .get();
 
-      for (var doc in itemsSnapshot.docs) {
-        await doc.reference.delete();
+      final docs = itemsSnapshot.docs;
+      for (int i = 0; i < docs.length; i += 400) {
+        final end = (i + 400 < docs.length) ? i + 400 : docs.length;
+        final batch = _firestore.batch();
+        for (int j = i; j < end; j++) {
+          batch.delete(docs[j].reference);
+        }
+        await batch.commit();
       }
 
       // 2. نمسح القسم نفسه
@@ -144,9 +172,7 @@ class EncyclopediaService {
         .where('section_id', isEqualTo: sectionId)
         .orderBy('order')
         .snapshots()
-        .map((snap) => snap.docs
-            .map((doc) => EncyclopediaItem.fromFirestore(doc))
-            .toList());
+        .map((snap) => _parseItems(snap.docs));
   }
 
   // جلب عناصر قسم معين (One-time)
@@ -157,9 +183,7 @@ class EncyclopediaService {
           .where('section_id', isEqualTo: sectionId)
           .orderBy('order')
           .get();
-      return snapshot.docs
-          .map((doc) => EncyclopediaItem.fromFirestore(doc))
-          .toList();
+      return _parseItems(snapshot.docs);
     } catch (e) {
       debugPrint('❌ خطأ في جلب العناصر: $e');
       return [];
