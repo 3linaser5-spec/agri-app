@@ -266,7 +266,7 @@ class _EncyclopediaItemEditorScreenState
                         margin: const EdgeInsets.only(left: 6),
                         decoration: BoxDecoration(
                           color: isSelected
-                              ? widget.sectionColor.withOpacity(0.2)
+                              ? widget.sectionColor.withValues(alpha: 0.2)
                               : Colors.grey.shade100,
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(
@@ -377,7 +377,7 @@ class _EncyclopediaItemEditorScreenState
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
       decoration: BoxDecoration(
-        color: widget.sectionColor.withOpacity(0.1),
+        color: widget.sectionColor.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(10),
         border: Border(
           right: BorderSide(color: widget.sectionColor, width: 4),
@@ -412,7 +412,7 @@ class _EncyclopediaItemEditorScreenState
                 width: 28,
                 height: 28,
                 decoration: BoxDecoration(
-                  color: widget.sectionColor.withOpacity(0.15),
+                  color: widget.sectionColor.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(6),
                 ),
                 alignment: Alignment.center,

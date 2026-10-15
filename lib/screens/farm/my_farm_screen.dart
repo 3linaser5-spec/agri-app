@@ -4,8 +4,21 @@ import '../../models/my_farm_model.dart';
 import '../../services/my_farm_service.dart';
 import 'program_details_screen.dart';
 
-class MyFarmScreen extends StatelessWidget {
+class MyFarmScreen extends StatefulWidget {
   const MyFarmScreen({super.key});
+
+  @override
+  State<MyFarmScreen> createState() => _MyFarmScreenState();
+}
+
+class _MyFarmScreenState extends State<MyFarmScreen> {
+  // الـ Stream بيتعمل مرة واحدة بدل ما يتعمل مع كل rebuild
+  late final Stream<List<MyFarmProgram>>? _programsStream = _createStream();
+
+  Stream<List<MyFarmProgram>>? _createStream() {
+    final user = FirebaseAuth.instance.currentUser;
+    return user == null ? null : MyFarmService.getUserPrograms(user.uid);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -23,7 +36,7 @@ class MyFarmScreen extends StatelessWidget {
         child: user == null
             ? const Center(child: Text('الرجاء تسجيل الدخول'))
             : StreamBuilder<List<MyFarmProgram>>(
-                stream: MyFarmService.getUserPrograms(user.uid),
+                stream: _programsStream,
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator());
@@ -162,7 +175,7 @@ class MyFarmScreen extends StatelessWidget {
                     width: 55,
                     height: 55,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF047857).withOpacity(0.1),
+                      color: const Color(0xFF047857).withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     alignment: Alignment.center,
@@ -265,7 +278,7 @@ class MyFarmScreen extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: (isActive ? Colors.green : Colors.grey).withOpacity(0.15),
+        color: (isActive ? Colors.green : Colors.grey).withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
@@ -282,7 +295,7 @@ class MyFarmScreen extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Row(

@@ -2,6 +2,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
 class OfflineService {
@@ -106,14 +107,32 @@ class OfflineService {
 
       int successCount = 0;
 
+      // لازم مستخدم مسجّل: قواعد Firestore بتربط كل تشخيص بصاحبه
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) {
+        debugPrint("⚠️ لا يوجد مستخدم مسجّل، لن تتم المزامنة");
+        return 0;
+      }
+
       // 3. نرفع كل واحد لـ Firestore
       for (var item in pending) {
         try {
-          await FirebaseFirestore.instance.collection('diagnoses').add({
+          // معرّف ثابت للمستند: لو الرفع نجح لكن markAsSynced فشل، إعادة
+          // المحاولة بتكتب نفس المستند بدل ما تعمل نسخة مكررة.
+          final stamp = (item['createdAt'] ?? '')
+              .toString()
+              .replaceAll(RegExp(r'[^0-9]'), '');
+          final docId = '${uid}_${item['id']}_$stamp';
+
+          await FirebaseFirestore.instance
+              .collection('diagnoses')
+              .doc(docId)
+              .set({
+            'uid': uid,
             'userName': item['userName'],
             'userPhone': item['userPhone'],
             'question': item['question'],
-            'imagePath': item['imagePath'],
+            // imagePath اتشال: مسار محلي على الجهاز ملوش قيمة على السيرفر
             'diagnosis': item['diagnosis'],
             'createdAt': item['createdAt'],
             'syncedAt': FieldValue.serverTimestamp(),

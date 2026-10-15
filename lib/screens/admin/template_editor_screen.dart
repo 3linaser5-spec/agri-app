@@ -409,7 +409,7 @@ class _TemplateEditorScreenState extends State<TemplateEditorScreen>
                 ),
                 const SizedBox(height: 10),
                 DropdownButtonFormField<String>(
-                  value: type,
+                  initialValue: type,
                   decoration:
                       const InputDecoration(labelText: 'نوع الحقل'),
                   items: const [
@@ -509,7 +509,7 @@ class _TemplateEditorScreenState extends State<TemplateEditorScreen>
               margin: const EdgeInsets.only(bottom: 10),
               child: ListTile(
                 leading: CircleAvatar(
-                  backgroundColor: const Color(0xFF047857).withOpacity(0.15),
+                  backgroundColor: const Color(0xFF047857).withValues(alpha: 0.15),
                   child: Text('${t['day_from_start']}',
                       style: const TextStyle(
                           color: Color(0xFF047857),
@@ -584,7 +584,7 @@ class _TemplateEditorScreenState extends State<TemplateEditorScreen>
                 ),
                 const SizedBox(height: 10),
                 DropdownButtonFormField<String>(
-                  value: category,
+                  initialValue: category,
                   decoration:
                       const InputDecoration(labelText: 'التصنيف'),
                   items: const [
@@ -730,7 +730,7 @@ class _TemplateEditorScreenState extends State<TemplateEditorScreen>
                 ),
                 const SizedBox(height: 10),
                 DropdownButtonFormField<String>(
-                  value: category,
+                  initialValue: category,
                   decoration:
                       const InputDecoration(labelText: 'التصنيف'),
                   items: const [

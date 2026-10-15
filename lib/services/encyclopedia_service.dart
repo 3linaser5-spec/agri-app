@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/encyclopedia_model.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 
 class EncyclopediaService {
   static final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -30,7 +31,7 @@ class EncyclopediaService {
           .map((doc) => EncyclopediaSection.fromFirestore(doc))
           .toList();
     } catch (e) {
-      print('❌ خطأ في جلب الأقسام: $e');
+      debugPrint('❌ خطأ في جلب الأقسام: $e');
       return [];
     }
   }
@@ -45,7 +46,7 @@ class EncyclopediaService {
       if (!doc.exists) return null;
       return EncyclopediaSection.fromFirestore(doc);
     } catch (e) {
-      print('❌ خطأ في جلب القسم: $e');
+      debugPrint('❌ خطأ في جلب القسم: $e');
       return null;
     }
   }
@@ -73,7 +74,7 @@ class EncyclopediaService {
       });
       return docRef.id;
     } catch (e) {
-      print('❌ خطأ في إضافة القسم: $e');
+      debugPrint('❌ خطأ في إضافة القسم: $e');
       return null;
     }
   }
@@ -88,7 +89,7 @@ class EncyclopediaService {
           .update(data);
       return true;
     } catch (e) {
-      print('❌ خطأ في تعديل القسم: $e');
+      debugPrint('❌ خطأ في تعديل القسم: $e');
       return false;
     }
   }
@@ -110,7 +111,7 @@ class EncyclopediaService {
       await _firestore.collection('encyclopedia_sections').doc(id).delete();
       return true;
     } catch (e) {
-      print('❌ خطأ في حذف القسم: $e');
+      debugPrint('❌ خطأ في حذف القسم: $e');
       return false;
     }
   }
@@ -160,7 +161,7 @@ class EncyclopediaService {
           .map((doc) => EncyclopediaItem.fromFirestore(doc))
           .toList();
     } catch (e) {
-      print('❌ خطأ في جلب العناصر: $e');
+      debugPrint('❌ خطأ في جلب العناصر: $e');
       return [];
     }
   }
@@ -175,7 +176,7 @@ class EncyclopediaService {
       if (!doc.exists) return null;
       return EncyclopediaItem.fromFirestore(doc);
     } catch (e) {
-      print('❌ خطأ في جلب العنصر: $e');
+      debugPrint('❌ خطأ في جلب العنصر: $e');
       return null;
     }
   }
@@ -207,7 +208,7 @@ class EncyclopediaService {
       });
       return docRef.id;
     } catch (e) {
-      print('❌ خطأ في إضافة العنصر: $e');
+      debugPrint('❌ خطأ في إضافة العنصر: $e');
       return null;
     }
   }
@@ -222,7 +223,7 @@ class EncyclopediaService {
           .update(data);
       return true;
     } catch (e) {
-      print('❌ خطأ في تعديل العنصر: $e');
+      debugPrint('❌ خطأ في تعديل العنصر: $e');
       return false;
     }
   }
@@ -233,7 +234,7 @@ class EncyclopediaService {
       await _firestore.collection('encyclopedia_items').doc(id).delete();
       return true;
     } catch (e) {
-      print('❌ خطأ في حذف العنصر: $e');
+      debugPrint('❌ خطأ في حذف العنصر: $e');
       return false;
     }
   }

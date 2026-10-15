@@ -3,6 +3,7 @@ import '../../models/encyclopedia_model.dart';
 import '../../services/encyclopedia_service.dart';
 import 'encyclopedia_items_screen.dart';
 import 'encyclopedia_import_screen.dart';
+import '../../utils/color_utils.dart';
 
 class EncyclopediaAdminScreen extends StatelessWidget {
   const EncyclopediaAdminScreen({super.key});
@@ -21,14 +22,7 @@ class EncyclopediaAdminScreen extends StatelessWidget {
     '#14B8A6', // تركواز
   ];
 
-  Color _hexToColor(String hex) {
-    try {
-      final cleaned = hex.replaceAll('#', '');
-      return Color(int.parse('FF$cleaned', radix: 16));
-    } catch (e) {
-      return const Color(0xFF047857);
-    }
-  }
+  Color _hexToColor(String hex) => ColorUtils.fromHex(hex);
 
   @override
   Widget build(BuildContext context) {
@@ -130,7 +124,7 @@ class EncyclopediaAdminScreen extends StatelessWidget {
                             width: 55,
                             height: 55,
                             decoration: BoxDecoration(
-                              color: color.withOpacity(0.15),
+                              color: color.withValues(alpha: 0.15),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             alignment: Alignment.center,
@@ -153,7 +147,7 @@ class EncyclopediaAdminScreen extends StatelessWidget {
                                       padding: const EdgeInsets.symmetric(
                                           horizontal: 6, vertical: 2),
                                       decoration: BoxDecoration(
-                                        color: color.withOpacity(0.15),
+                                        color: color.withValues(alpha: 0.15),
                                         borderRadius: BorderRadius.circular(6),
                                       ),
                                       child: Text('#${section.order}',
@@ -286,7 +280,7 @@ class EncyclopediaAdminScreen extends StatelessWidget {
                             margin: const EdgeInsets.only(left: 6),
                             decoration: BoxDecoration(
                               color: isSelected
-                                  ? _hexToColor(color).withOpacity(0.2)
+                                  ? _hexToColor(color).withValues(alpha: 0.2)
                                   : Colors.grey.shade100,
                               borderRadius: BorderRadius.circular(10),
                               border: Border.all(
@@ -347,7 +341,7 @@ class EncyclopediaAdminScreen extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: _hexToColor(color).withOpacity(0.1),
+                      color: _hexToColor(color).withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Row(
@@ -356,7 +350,7 @@ class EncyclopediaAdminScreen extends StatelessWidget {
                           width: 45,
                           height: 45,
                           decoration: BoxDecoration(
-                            color: _hexToColor(color).withOpacity(0.2),
+                            color: _hexToColor(color).withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(10),
                           ),
                           alignment: Alignment.center,

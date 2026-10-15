@@ -296,7 +296,7 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(12),
-                  color: widget.primaryColor.withOpacity(0.1),
+                  color: widget.primaryColor.withValues(alpha: 0.1),
                   child: Row(
                     children: [
                       Icon(Icons.location_on,
@@ -328,7 +328,7 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
                     color: Colors.white,
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
+                        color: Colors.black.withValues(alpha: 0.05),
                         blurRadius: 10,
                         offset: const Offset(0, -2),
                       ),
@@ -429,7 +429,7 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 8, vertical: 3),
                             decoration: BoxDecoration(
-                              color: categoryColor.withOpacity(0.15),
+                              color: categoryColor.withValues(alpha: 0.15),
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(task.category,
@@ -500,7 +500,7 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: widget.primaryColor.withOpacity(0.1),
+            color: widget.primaryColor.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Row(
@@ -581,7 +581,7 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
             gradient: LinearGradient(
               colors: [
                 widget.primaryColor,
-                widget.primaryColor.withOpacity(0.7)
+                widget.primaryColor.withValues(alpha: 0.7)
               ],
             ),
             borderRadius: BorderRadius.circular(12),

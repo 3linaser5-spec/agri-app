@@ -120,7 +120,7 @@ class _DynamicFormScreenState extends State<DynamicFormScreen> {
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: widget.primaryColor.withOpacity(0.1),
+                        color: widget.primaryColor.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(14),
                       ),
                       child: Row(
@@ -193,12 +193,12 @@ class _DynamicFormScreenState extends State<DynamicFormScreen> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: widget.primaryColor.withOpacity(0.05),
+        color: widget.primaryColor.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: _selectedGovernorate == null
               ? Colors.red.shade300
-              : widget.primaryColor.withOpacity(0.3),
+              : widget.primaryColor.withValues(alpha: 0.3),
           width: _selectedGovernorate == null ? 2 : 1,
         ),
       ),
@@ -253,7 +253,7 @@ class _DynamicFormScreenState extends State<DynamicFormScreen> {
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(10),
                 border:
-                    Border.all(color: widget.primaryColor.withOpacity(0.4)),
+                    Border.all(color: widget.primaryColor.withValues(alpha: 0.4)),
               ),
               child: Row(
                 children: [
@@ -570,7 +570,7 @@ class _DynamicFormScreenState extends State<DynamicFormScreen> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: DropdownButtonFormField<String>(
-        value: current,
+        initialValue: current,
         decoration: InputDecoration(
           labelText: field.label,
           prefixIcon: const Icon(Icons.arrow_drop_down_circle),

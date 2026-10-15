@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../models/calculator_models.dart';
 import '../../services/calculator_service.dart';
 import 'section_screen.dart';
+import '../../utils/color_utils.dart';
 
 class CalculatorHubScreen extends StatefulWidget {
   const CalculatorHubScreen({super.key});
@@ -30,14 +31,8 @@ class _CalculatorHubScreenState extends State<CalculatorHubScreen> {
     }
   }
 
-  Color _hexColor(String hex, {Color fallback = const Color(0xFF047857)}) {
-    try {
-      final cleaned = hex.replaceAll('#', '');
-      return Color(int.parse('FF$cleaned', radix: 16));
-    } catch (e) {
-      return fallback;
-    }
-  }
+  Color _hexColor(String hex, {Color fallback = const Color(0xFF047857)}) =>
+      ColorUtils.fromHex(hex, fallback: fallback);
 
   @override
   Widget build(BuildContext context) {
@@ -73,7 +68,7 @@ class _CalculatorHubScreenState extends State<CalculatorHubScreen> {
                             width: 60,
                             height: 60,
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.2),
+                              color: Colors.white.withValues(alpha: 0.2),
                               borderRadius: BorderRadius.circular(14),
                             ),
                             alignment: Alignment.center,
@@ -156,7 +151,7 @@ class _CalculatorHubScreenState extends State<CalculatorHubScreen> {
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
-                color: primary.withOpacity(0.3),
+                color: primary.withValues(alpha: 0.3),
                 blurRadius: 10,
                 offset: const Offset(0, 4),
               ),
@@ -169,7 +164,7 @@ class _CalculatorHubScreenState extends State<CalculatorHubScreen> {
                 width: 60,
                 height: 60,
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.25),
+                  color: Colors.white.withValues(alpha: 0.25),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 alignment: Alignment.center,

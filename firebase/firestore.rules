@@ -1,0 +1,73 @@
+rules_version = '2';
+
+// ⚠️ قالب مقترح — راجعه في Firebase Console ← Firestore ← Rules ← "Rules Playground"
+// قبل ما تنشره. ما اتجرّبش على مشروعك (agri-dahshory).
+//
+// الأدمن: مستند في collection اسمه admins، ID المستند = uid الأدمن
+// (تنشئه بإيدك من الـ Console بعد ما الأدمن يسجّل دخول مرة). مفيش أي طريقة
+// يعمل بيها مستخدم عادي نفسه أدمن لأن الكتابة على admins ممنوعة بالكامل.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return signedIn() &&
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    // لا أحد يكتب هنا من التطبيق
+    match /admins/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow write: if false;
+    }
+
+    // ملف المستخدم: صاحبه فقط
+    match /users/{uid} {
+      allow read, write: if signedIn() && request.auth.uid == uid;
+    }
+
+    // التشخيصات: صاحبها يكتب (create) ويقرأ، الأدمن يقرأ
+    match /diagnoses/{id} {
+      allow create: if signedIn() && request.resource.data.uid == request.auth.uid;
+      allow read: if signedIn() && (resource.data.uid == request.auth.uid || isAdmin());
+      allow update, delete: if false;
+    }
+
+    // برامج المزرعة: صاحب البرنامج فقط
+    match /my_farm/{id} {
+      allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
+      allow read, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      // تعديل: نفس الصاحب، ولا يغيّر الـ user_id
+      allow update: if signedIn()
+        && resource.data.user_id == request.auth.uid
+        && request.resource.data.user_id == request.auth.uid;
+    }
+
+    // الحاسبات والموسوعة: القراءة لأي مستخدم مسجّل، الكتابة للأدمن فقط
+    match /calculator_sections/{id} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+    match /calculator_templates/{id} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+    match /encyclopedia_sections/{id} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+    match /encyclopedia_items/{id} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    // أي حاجة تانية ممنوعة
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

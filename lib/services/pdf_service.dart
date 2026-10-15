@@ -3,6 +3,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:flutter_pdf_export/flutter_pdf_export.dart';
 import '../utils/safe_parse.dart';
+import '../config/app_config.dart';
 
 class PdfService {
   static Future<void> generateAndSharePdf({
@@ -128,7 +129,7 @@ class PdfService {
     sections.add(PdfSection.paragraph(
         'تنبيه: هذا البرنامج استرشادي، ويجب مراجعة المهندس الزراعي المختص قبل التطبيق الفعلي.'));
     sections.add(PdfSection.paragraph(
-        'تطبيق نباتي - مستشارك الزراعي الذكي | إشراف: م. علي الدهشوري | للتواصل: 01284172047'));
+        'تطبيق نباتي - مستشارك الزراعي الذكي | إشراف: م. علي الدهشوري | للتواصل: ${AppConfig.engineerPhoneLocal}'));
     sections.add(PdfSection.paragraph(
         '© 2025 نباتي - جميع الحقوق محفوظة'));
 
@@ -147,9 +148,11 @@ class PdfService {
     }
 
     // ✅ مشاركة الملف
-    await Share.shareXFiles(
-      [XFile(file.path)],
-      subject: 'برنامج $programTitle - تطبيق نباتي',
+    await SharePlus.instance.share(
+      ShareParams(
+        files: [XFile(file.path)],
+        subject: 'برنامج $programTitle - تطبيق نباتي',
+      ),
     );
   }
 

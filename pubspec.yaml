@@ -11,6 +11,13 @@ dependencies:
     sdk: flutter
   cupertino_icons: ^1.0.8
 
+  # ✅ الواجهة العربية (التقويم/القوائم/الاتجاه)
+  flutter_localizations:
+    sdk: flutter
+
+  # ✅ فحص سلامة ملف التحديث (SHA-256)
+  crypto: ^3.0.6
+
   # ✅ Firebase
   firebase_core: ^4.0.0
   firebase_auth: ^6.0.0

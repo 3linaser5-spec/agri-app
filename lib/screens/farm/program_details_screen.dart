@@ -234,7 +234,7 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
             children: [
               Container(
                 padding: const EdgeInsets.all(16),
-                color: const Color(0xFF047857).withOpacity(0.1),
+                color: const Color(0xFF047857).withValues(alpha: 0.1),
                 child: Column(
                   children: [
                     Row(
@@ -251,7 +251,7 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
                           padding: const EdgeInsets.symmetric(
                               horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
-                            color: Colors.green.withOpacity(0.15),
+                            color: Colors.green.withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(
@@ -373,7 +373,7 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
-                              color: color.withOpacity(0.15),
+                              color: color.withValues(alpha: 0.15),
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Text(category,
@@ -387,7 +387,7 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
-                              color: status.color.withOpacity(0.15),
+                              color: status.color.withValues(alpha: 0.15),
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Text(status.label,
