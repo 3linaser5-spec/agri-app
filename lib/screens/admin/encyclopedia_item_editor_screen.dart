@@ -27,6 +27,7 @@ class _EncyclopediaItemEditorScreenState
   late TextEditingController _titleCtrl;
   late TextEditingController _subtitleCtrl;
   late TextEditingController _contentCtrl;
+  late TextEditingController _imageCtrl;
 
   String _selectedIcon = 'eco';
   bool _saving = false;
@@ -45,6 +46,7 @@ class _EncyclopediaItemEditorScreenState
     _titleCtrl = TextEditingController(text: existing?.title ?? '');
     _subtitleCtrl = TextEditingController(text: existing?.subtitle ?? '');
     _contentCtrl = TextEditingController(text: existing?.content ?? '');
+    _imageCtrl = TextEditingController(text: existing?.imageUrl ?? '');
     _selectedIcon = existing?.icon ?? 'eco';
 
     // تحميل الفقرات الموجودة
@@ -66,6 +68,7 @@ class _EncyclopediaItemEditorScreenState
     _titleCtrl.dispose();
     _subtitleCtrl.dispose();
     _contentCtrl.dispose();
+    _imageCtrl.dispose();
     for (var s in _sections) {
       s['title']?.dispose();
       s['content']?.dispose();
@@ -83,18 +86,15 @@ class _EncyclopediaItemEditorScreenState
   }
 
   void _removeSection(int index) {
-    if (_sections.length <= 1) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('⚠️ لازم يكون فيه فقرة واحدة على الأقل'),
-        ),
-      );
-      return;
-    }
+    final removed = _sections[index];
     setState(() {
-      _sections[index]['title']?.dispose();
-      _sections[index]['content']?.dispose();
       _sections.removeAt(index);
+    });
+    // الـ controllers بتتخلص منها بعد ما الإطار يترسم من غير الفقرة دي،
+    // وإلا الـ TextField لسه ممكن يستخدمها وهي متخلص منها
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      removed['title']?.dispose();
+      removed['content']?.dispose();
     });
   }
 
@@ -112,14 +112,17 @@ class _EncyclopediaItemEditorScreenState
             })
         .toList();
 
-    if (validSections.isEmpty) {
+    // العنصر لازم يكون له محتوى: وصف رئيسي أو فقرة واحدة على الأقل
+    if (validSections.isEmpty && _contentCtrl.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('⚠️ الرجاء إضافة فقرة واحدة على الأقل'),
+          content: Text('⚠️ اكتب وصف رئيسي أو أضف فقرة واحدة على الأقل'),
         ),
       );
       return;
     }
+
+    final imageUrl = _imageCtrl.text.trim();
 
     setState(() => _saving = true);
 
@@ -134,6 +137,7 @@ class _EncyclopediaItemEditorScreenState
           'icon': _selectedIcon,
           'content': _contentCtrl.text.trim(),
           'sections': validSections,
+          'image_url': imageUrl.isEmpty ? null : imageUrl,
         },
       );
     } else {
@@ -144,6 +148,7 @@ class _EncyclopediaItemEditorScreenState
         icon: _selectedIcon,
         content: _contentCtrl.text.trim(),
         sections: validSections,
+        imageUrl: imageUrl.isEmpty ? null : imageUrl,
       );
       ok = id != null;
     }
@@ -152,8 +157,9 @@ class _EncyclopediaItemEditorScreenState
     setState(() => _saving = false);
 
     if (ok) {
+      final messenger = ScaffoldMessenger.of(context);
       Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
+      messenger.showSnackBar(
         SnackBar(
           content: Text(isEdit ? '✅ تم تعديل العنصر' : '✅ تم إضافة العنصر'),
           backgroundColor: const Color(0xFF047857),
@@ -238,6 +244,30 @@ class _EncyclopediaItemEditorScreenState
                 ),
               ),
 
+              const SizedBox(height: 12),
+
+              // رابط صورة (اختياري)
+              TextFormField(
+                controller: _imageCtrl,
+                keyboardType: TextInputType.url,
+                decoration: InputDecoration(
+                  labelText: 'رابط صورة (اختياري)',
+                  hintText: 'https://...',
+                  prefixIcon: const Icon(Icons.image),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
+                validator: (v) {
+                  final t = v?.trim() ?? '';
+                  if (t.isEmpty) return null;
+                  final u = Uri.tryParse(t);
+                  final ok = u != null &&
+                      (u.scheme == 'http' || u.scheme == 'https') &&
+                      u.host.isNotEmpty;
+                  return ok ? null : 'الرابط لازم يبدأ بـ http أو https';
+                },
+              ),
+
               const SizedBox(height: 16),
 
               // اختيار الأيقونة
@@ -245,7 +275,7 @@ class _EncyclopediaItemEditorScreenState
                   style: TextStyle(
                       fontWeight: FontWeight.bold, fontSize: 14)),
               const SizedBox(height: 8),
-              Container(
+              SizedBox(
                 height: 60,
                 child: ListView.builder(
                   scrollDirection: Axis.horizontal,
@@ -397,6 +427,7 @@ class _EncyclopediaItemEditorScreenState
   // ============ بطاقة فقرة ============
   Widget _buildSectionCard(int index) {
     return Container(
+      key: ObjectKey(_sections[index]),
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(

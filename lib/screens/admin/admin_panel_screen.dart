@@ -346,6 +346,20 @@ class _SectionTemplatesScreenState extends State<SectionTemplatesScreen> {
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12)),
                         child: ListTile(
+                          onTap: () async {
+                            await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => TemplateEditorScreen(
+                                  sectionId: widget.section.id,
+                                  sectionName: widget.section.name,
+                                  templateId: t.id,
+                                ),
+                              ),
+                            );
+                            if (!mounted) return;
+                            _loadTemplates();
+                          },
                           leading: Text(t.emoji,
                               style: const TextStyle(fontSize: 30)),
                           title: Text(t.name,
@@ -371,10 +385,17 @@ class _SectionTemplatesScreenState extends State<SectionTemplatesScreen> {
                               ),
                             ],
                           ),
-                          trailing: IconButton(
-                            icon:
-                                const Icon(Icons.delete, color: Colors.red),
-                            onPressed: () => _deleteTemplate(t.id),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.edit,
+                                  size: 18, color: Colors.grey),
+                              IconButton(
+                                icon: const Icon(Icons.delete,
+                                    color: Colors.red),
+                                onPressed: () => _deleteTemplate(t.id),
+                              ),
+                            ],
                           ),
                         ),
                       );

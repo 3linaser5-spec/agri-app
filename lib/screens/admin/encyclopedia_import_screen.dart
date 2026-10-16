@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../services/encyclopedia_service.dart';
+import '../../utils/color_utils.dart';
 
 class EncyclopediaImportScreen extends StatefulWidget {
   const EncyclopediaImportScreen({super.key});
@@ -26,6 +28,7 @@ class _EncyclopediaImportScreenState
 
   Future<void> _pasteFromClipboard() async {
     final data = await Clipboard.getData('text/plain');
+    if (!mounted) return;
     if (data != null && data.text != null) {
       setState(() {
         _jsonCtrl.text = data.text!;
@@ -37,6 +40,134 @@ class _EncyclopediaImportScreenState
         ),
       );
     }
+  }
+
+  void _finish(bool success, String message) {
+    if (!mounted) return;
+    setState(() {
+      _loading = false;
+      _isSuccess = success;
+      _resultMessage = message;
+    });
+    if (success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: const Color(0xFF047857),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
+  bool _isHttpUrl(String s) {
+    final u = Uri.tryParse(s);
+    return u != null && (u.scheme == 'http' || u.scheme == 'https') && u.host.isNotEmpty;
+  }
+
+  /// يتحقق من كل الأقسام والعناصر ويطبّعها. أي خطأ بيتضاف لـ [errors].
+  List<Map<String, dynamic>> _validate(List<dynamic> raw, List<String> errors) {
+    final result = <Map<String, dynamic>>[];
+
+    for (var i = 0; i < raw.length; i++) {
+      final sec = raw[i];
+      final secLabel = 'قسم ${i + 1}';
+      if (sec is! Map) {
+        errors.add('$secLabel: ليس Object');
+        continue;
+      }
+
+      final name = sec['name'];
+      if (name is! String || name.trim().isEmpty) {
+        errors.add('$secLabel: الاسم مطلوب (نص)');
+        continue;
+      }
+      final label = 'قسم "${name.trim()}"';
+
+      var color = '#047857';
+      final rawColor = sec['color'];
+      if (rawColor != null) {
+        final c = rawColor.toString().trim();
+        if (!ColorUtils.isValidHex(c)) {
+          errors.add('$label: اللون "$c" غير صالح (المطلوب #RRGGBB)');
+        } else {
+          color = c.startsWith('#') ? c : '#$c';
+        }
+      }
+
+      final items = <Map<String, dynamic>>[];
+      final rawItems = sec['items'];
+      if (rawItems != null && rawItems is! List) {
+        errors.add('$label: "items" لازم تكون قائمة');
+      } else if (rawItems is List) {
+        for (var j = 0; j < rawItems.length; j++) {
+          final it = rawItems[j];
+          final itLabel = '$label / عنصر ${j + 1}';
+          if (it is! Map) {
+            errors.add('$itLabel: ليس Object');
+            continue;
+          }
+          final title = it['title'];
+          if (title is! String || title.trim().isEmpty) {
+            errors.add('$itLabel: العنوان مطلوب (نص)');
+            continue;
+          }
+
+          final inner = <Map<String, String>>[];
+          final rawInner = it['sections'];
+          if (rawInner != null && rawInner is! List) {
+            errors.add('$itLabel: "sections" لازم تكون قائمة');
+          } else if (rawInner is List) {
+            for (var k = 0; k < rawInner.length; k++) {
+              final p = rawInner[k];
+              if (p is! Map) {
+                errors.add('$itLabel: فقرة ${k + 1} ليست Object');
+                continue;
+              }
+              inner.add({
+                'title': p['title']?.toString() ?? '',
+                'content': p['content']?.toString() ?? '',
+              });
+            }
+          }
+
+          // نفس قاعدة محرر العنصر: لازم محتوى أساسي أو فقرة واحدة على الأقل
+          final mainContent = it['content']?.toString() ?? '';
+          if (mainContent.trim().isEmpty && inner.isEmpty) {
+            errors.add('$itLabel: لازم محتوى أساسي أو فقرة واحدة على الأقل');
+          }
+
+          String? imageUrl;
+          final rawImg = it['image_url'];
+          if (rawImg != null && rawImg.toString().trim().isNotEmpty) {
+            final u = rawImg.toString().trim();
+            if (_isHttpUrl(u)) {
+              imageUrl = u;
+            } else {
+              errors.add('$itLabel: رابط الصورة لازم يبدأ بـ http أو https');
+            }
+          }
+
+          items.add({
+            'title': title.trim(),
+            'subtitle': it['subtitle']?.toString() ?? '',
+            'icon': it['icon']?.toString() ?? 'eco',
+            'content': it['content']?.toString() ?? '',
+            'sections': inner,
+            'image_url': imageUrl,
+          });
+        }
+      }
+
+      result.add({
+        'name': name.trim(),
+        'emoji': sec['emoji']?.toString() ?? '📚',
+        'color': color,
+        'description': sec['description']?.toString() ?? '',
+        'items': items,
+      });
+    }
+    return result;
   }
 
   Future<void> _importJson() async {
@@ -54,151 +185,57 @@ class _EncyclopediaImportScreenState
       _resultMessage = null;
     });
 
-    int successSections = 0;
-    int successItems = 0;
-    int failSections = 0;
-    int failItems = 0;
-    final List<String> errors = [];
-
     try {
       final dynamic parsed = json.decode(jsonText);
 
-      // ✅ دعم صيغتين:
-      // 1. object فيه sections
-      // 2. array من الأقسام مباشرة
-      List<dynamic> sectionsList;
-      if (parsed is Map<String, dynamic> && parsed['sections'] is List) {
-        sectionsList = parsed['sections'] as List;
+      // ثلاث صيغ مدعومة: {sections:[...]} أو [..] أو قسم واحد {name:..}
+      List<dynamic> raw;
+      if (parsed is Map && parsed['sections'] is List) {
+        raw = parsed['sections'] as List;
       } else if (parsed is List) {
-        sectionsList = parsed;
+        raw = parsed;
+      } else if (parsed is Map && parsed['name'] != null) {
+        raw = [parsed];
       } else {
-        throw Exception(
-            'الصيغة غير صحيحة. المتوقع: object فيه sections أو array');
+        throw const FormatException(
+            'الصيغة غير صحيحة. المتوقع: object فيه sections، أو array من الأقسام، أو قسم واحد');
       }
 
-      for (var sectionData in sectionsList) {
-        if (sectionData is! Map<String, dynamic>) {
-          failSections++;
-          errors.add('قسم ليس Object صحيح');
-          continue;
-        }
-
-        try {
-          final name = sectionData['name']?.toString();
-          if (name == null || name.trim().isEmpty) {
-            failSections++;
-            errors.add('قسم بدون اسم');
-            continue;
-          }
-
-          // ✅ إضافة القسم
-          final sectionId = await EncyclopediaService.addSection(
-            name: name.trim(),
-            emoji: sectionData['emoji']?.toString() ?? '📚',
-            color: sectionData['color']?.toString() ?? '#047857',
-            description: sectionData['description']?.toString() ?? '',
-          );
-
-          if (sectionId == null) {
-            failSections++;
-            errors.add('فشل حفظ قسم "$name"');
-            continue;
-          }
-
-          successSections++;
-
-          // ✅ إضافة العناصر لو موجودة
-          final items = sectionData['items'];
-          if (items is List) {
-            for (var itemData in items) {
-              if (itemData is! Map<String, dynamic>) {
-                failItems++;
-                continue;
-              }
-
-              try {
-                final title = itemData['title']?.toString();
-                if (title == null || title.trim().isEmpty) {
-                  failItems++;
-                  errors.add('عنصر بدون عنوان في "$name"');
-                  continue;
-                }
-
-                // ✅ معالجة الـ sections الداخلية
-                List<Map<String, String>> innerSections = [];
-                final rawSections = itemData['sections'];
-                if (rawSections is List) {
-                  for (var s in rawSections) {
-                    if (s is Map) {
-                      innerSections.add({
-                        'title': s['title']?.toString() ?? '',
-                        'content': s['content']?.toString() ?? '',
-                      });
-                    }
-                  }
-                }
-
-                final itemId = await EncyclopediaService.addItem(
-                  sectionId: sectionId,
-                  title: title.trim(),
-                  subtitle: itemData['subtitle']?.toString() ?? '',
-                  icon: itemData['icon']?.toString() ?? 'eco',
-                  content: itemData['content']?.toString() ?? '',
-                  sections: innerSections,
-                  imageUrl: itemData['image_url']?.toString(),
-                );
-
-                if (itemId != null) {
-                  successItems++;
-                } else {
-                  failItems++;
-                  errors.add('فشل حفظ عنصر "$title"');
-                }
-              } catch (e) {
-                failItems++;
-                errors.add('خطأ في عنصر: $e');
-              }
-            }
-          }
-        } catch (e) {
-          failSections++;
-          errors.add('خطأ في قسم: $e');
-        }
+      if (raw.isEmpty) {
+        _finish(false, '❌ الملف فاضي: مفيش أقسام للاستيراد');
+        return;
       }
 
-      if (mounted) {
-        setState(() {
-          _loading = false;
-          _isSuccess = failSections == 0 && failItems == 0 &&
-              (successSections > 0 || successItems > 0);
-          _resultMessage =
-              '📊 نتيجة الاستيراد:\n\n'
-              '✅ أقسام ناجحة: $successSections\n'
-              '❌ أقسام فاشلة: $failSections\n'
-              '✅ عناصر ناجحة: $successItems\n'
-              '❌ عناصر فاشلة: $failItems'
-              '${errors.isNotEmpty ? "\n\n⚠️ التفاصيل:\n${errors.take(5).join("\n")}" : ""}';
-        });
-
-        if (successSections > 0 || successItems > 0) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                  '✅ تم استيراد $successSections قسم و $successItems عنصر'),
-              backgroundColor: const Color(0xFF047857),
-              duration: const Duration(seconds: 3),
-            ),
-          );
-        }
+      // 1) نتحقق من كل حاجة الأول. لو فيه أي خطأ ما نحفظش أي حاجة
+      final errors = <String>[];
+      final sections = _validate(raw, errors);
+      if (errors.isNotEmpty) {
+        final shown = errors.take(8).join('\n');
+        final more =
+            errors.length > 8 ? '\n... و${errors.length - 8} خطأ آخر' : '';
+        _finish(
+          false,
+          '❌ لم يتم حفظ أي شيء (${errors.length} خطأ)\n'
+          'صحّح الأخطاء وأعد المحاولة:\n\n$shown$more',
+        );
+        return;
       }
+
+      // 2) كتابة ذرية بـ WriteBatch
+      final r = await EncyclopediaService.importSections(sections);
+      _finish(true, '✅ تم استيراد ${r.sections} قسم و ${r.items} عنصر');
+    } on FormatException catch (e) {
+      _finish(false, '❌ خطأ في صيغة JSON:\n${e.message}');
+    } on ArgumentError catch (e) {
+      _finish(false, '❌ ${e.message}');
+    } on TimeoutException {
+      _finish(
+          false,
+          '⏱️ انتهت مهلة الحفظ، تأكد من الاتصال.\n'
+          'لو الاتصال رجع ممكن الاستيراد يكتمل لوحده، فراجع قائمة الأقسام قبل إعادة المحاولة.');
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _loading = false;
-          _isSuccess = false;
-          _resultMessage = '❌ خطأ في صيغة JSON:\n$e';
-        });
-      }
+      debugPrint('❌ خطأ في الاستيراد: $e');
+      _finish(false, '❌ تعذر الاستيراد:\n$e');
     }
   }
 
