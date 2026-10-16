@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -92,31 +93,43 @@ class _JsonImportScreenState extends State<JsonImportScreen> {
         return;
       }
 
-      // 2) كتابة بـ WriteBatch: كل دفعة (حتى 400 قالب) تنجح أو تفشل كلها
-      //    (حد Firestore 500 عملية للدفعة الواحدة).
-      final col =
-          FirebaseFirestore.instance.collection('calculator_templates');
-      const chunkSize = 400;
-      int saved = 0;
-      for (var i = 0; i < valid.length; i += chunkSize) {
-        final batch = FirebaseFirestore.instance.batch();
-        final chunk = valid.skip(i).take(chunkSize);
-        for (final data in chunk) {
-          data['section_id'] = widget.section.id;
-          data['fields'] ??= [];
-          data['tasks'] ??= [];
-          data['materials'] ??= [];
-          data['financial'] ??= {};
-          data['created_at'] = FieldValue.serverTimestamp();
-          batch.set(col.doc(), data);
-        }
-        await batch.commit();
-        saved += chunk.length;
+      // 2) كتابة ذرية بـ WriteBatch واحدة: كل القوالب تتحفظ أو ولا واحد.
+      //    حد Firestore 500 عملية للدفعة، فنحدد 400 قالب في الاستيراد الواحد
+      //    بدل ما نقسّم على دفعات (التقسيم كان ممكن يسيب استيراد ناقص لو
+      //    الدفعة التانية فشلت، وده عكس رسالة "لم يتم حفظ أي قالب").
+      const maxTemplates = 400;
+      if (valid.length > maxTemplates) {
+        _finish(
+          false,
+          '❌ الحد الأقصى $maxTemplates قالب في الاستيراد الواحد '
+          '(الملف فيه ${valid.length}). قسّمه على أكثر من ملف.',
+        );
+        return;
       }
 
-      _finish(true, '✅ تم استيراد $saved قالب بنجاح');
+      final col =
+          FirebaseFirestore.instance.collection('calculator_templates');
+      final batch = FirebaseFirestore.instance.batch();
+      for (final data in valid) {
+        data['section_id'] = widget.section.id;
+        data['fields'] ??= [];
+        data['tasks'] ??= [];
+        data['materials'] ??= [];
+        data['financial'] ??= {};
+        data['created_at'] = FieldValue.serverTimestamp();
+        batch.set(col.doc(), data);
+      }
+      // بدون نت الـ commit بيفضل معلّق، فنحط مهلة
+      await batch.commit().timeout(const Duration(seconds: 25));
+
+      _finish(true, '✅ تم استيراد ${valid.length} قالب بنجاح');
     } on FormatException catch (e) {
       _finish(false, '❌ خطأ في صيغة JSON:\n${e.message}');
+    } on TimeoutException {
+      _finish(
+          false,
+          '⏱️ انتهت مهلة الحفظ، تأكد من الاتصال.\n'
+          'لو الاتصال رجع ممكن الاستيراد يكتمل لوحده، فراجع قائمة القوالب قبل إعادة المحاولة.');
     } catch (e) {
       debugPrint('❌ خطأ في الاستيراد: $e');
       _finish(false, '❌ تعذر الحفظ، تأكد من الاتصال وحاول مرة أخرى:\n$e');

@@ -101,6 +101,64 @@ class EncyclopediaService {
     }
   }
 
+  // أقصى عدد مستندات في استيراد واحد: حد Firestore للدفعة 500 عملية. أقل من
+  // كده الاستيراد ذري (يا كله يتحفظ يا ولا حاجة).
+  static const int maxImportDocs = 450;
+
+  /// يستورد أقسام وعناصرها في دفعة واحدة (WriteBatch).
+  /// [sections]: قائمة أقسام سبق التحقق منها وتطبيعها، كل قسم فيه
+  /// name/emoji/color/description وقائمة items (title/subtitle/icon/content/
+  /// sections/image_url). يرمي [ArgumentError] لو العدد أكبر من الحد.
+  static Future<({int sections, int items})> importSections(
+      List<Map<String, dynamic>> sections) async {
+    var itemsTotal = 0;
+    for (final s in sections) {
+      itemsTotal += (s['items'] as List?)?.length ?? 0;
+    }
+    if (sections.length + itemsTotal > maxImportDocs) {
+      throw ArgumentError(
+          'الملف كبير (${sections.length + itemsTotal} عنصر). '
+          'الحد الأقصى $maxImportDocs في المرة الواحدة، قسّمه لملفين.');
+    }
+
+    // ترتيب الأقسام بيتحسب مرة واحدة (كان بيتحسب بقراءة لكل قسم)
+    var sectionOrder = await _getNextSectionOrder();
+    final batch = _firestore.batch();
+
+    for (final s in sections) {
+      final sectionRef = _firestore.collection('encyclopedia_sections').doc();
+      batch.set(sectionRef, {
+        'name': s['name'],
+        'emoji': s['emoji'],
+        'color': s['color'],
+        'description': s['description'],
+        'order': sectionOrder++,
+        'created_at': FieldValue.serverTimestamp(),
+      });
+
+      var itemOrder = 1;
+      for (final it in (s['items'] as List? ?? const [])) {
+        final item = it as Map<String, dynamic>;
+        final itemRef = _firestore.collection('encyclopedia_items').doc();
+        batch.set(itemRef, {
+          'section_id': sectionRef.id,
+          'title': item['title'],
+          'subtitle': item['subtitle'],
+          'icon': item['icon'],
+          'content': item['content'],
+          'sections': item['sections'],
+          'image_url': item['image_url'],
+          'order': itemOrder++,
+          'created_at': FieldValue.serverTimestamp(),
+        });
+      }
+    }
+
+    // بدون نت الـ commit بيفضل معلّق، فنحط مهلة ونقول للمستخدم يراجع القائمة
+    await batch.commit().timeout(const Duration(seconds: 25));
+    return (sections: sections.length, items: itemsTotal);
+  }
+
   // تعديل قسم
   static Future<bool> updateSection(
       String id, Map<String, dynamic> data) async {
