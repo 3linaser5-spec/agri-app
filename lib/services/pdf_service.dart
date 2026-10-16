@@ -1,5 +1,3 @@
-import 'dart:io';
-import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:flutter_pdf_export/flutter_pdf_export.dart';
 import '../utils/safe_parse.dart';
@@ -141,11 +139,8 @@ class PdfService {
       sections: sections,
     );
 
+    // PdfBuilder.generate يرمي استثناء لو فشل، ومش بيرجّع null
     final file = await PdfBuilder.generate(pdfData);
-
-    if (file == null) {
-      throw Exception('فشل إنشاء ملف PDF');
-    }
 
     // ✅ مشاركة الملف
     await SharePlus.instance.share(
