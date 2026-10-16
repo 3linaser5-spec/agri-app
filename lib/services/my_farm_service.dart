@@ -13,7 +13,7 @@ class MyFarmService {
           .add(program.toFirestore());
       return ref.id;
     } catch (e) {
-      print('❌ خطأ في حفظ البرنامج: $e');
+      debugPrint('❌ خطأ في حفظ البرنامج: $e');
       return null;
     }
   }
@@ -37,7 +37,7 @@ class MyFarmService {
       if (!doc.exists) return null;
       return MyFarmProgram.fromFirestore(doc);
     } catch (e) {
-      print('❌ خطأ في جلب البرنامج: $e');
+      debugPrint('❌ خطأ في جلب البرنامج: $e');
       return null;
     }
   }
@@ -48,7 +48,7 @@ class MyFarmService {
       await _firestore.collection('my_farm').doc(id).delete();
       return true;
     } catch (e) {
-      print('❌ خطأ في حذف البرنامج: $e');
+      debugPrint('❌ خطأ في حذف البرنامج: $e');
       return false;
     }
   }
@@ -86,7 +86,7 @@ class MyFarmService {
           .update({'status': status});
       return true;
     } catch (e) {
-      print('❌ خطأ في تحديث الحالة: $e');
+      debugPrint('❌ خطأ في تحديث الحالة: $e');
       return false;
     }
   }

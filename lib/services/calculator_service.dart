@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/calculator_models.dart';
+import '../config/app_config.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 
 class CalculatorService {
   static final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -15,7 +17,7 @@ class CalculatorService {
           .map((doc) => CalculatorSection.fromFirestore(doc))
           .toList();
     } catch (e) {
-      print('❌ خطأ في جلب الأقسام: $e');
+      debugPrint('❌ خطأ في جلب الأقسام: $e');
       return [];
     }
   }
@@ -32,7 +34,7 @@ class CalculatorService {
           .map((doc) => CalculatorTemplate.fromFirestore(doc))
           .toList();
     } catch (e) {
-      print('❌ خطأ في جلب القوالب: $e');
+      debugPrint('❌ خطأ في جلب القوالب: $e');
       return [];
     }
   }
@@ -44,7 +46,7 @@ class CalculatorService {
       if (!doc.exists) return null;
       return CalculatorTemplate.fromFirestore(doc);
     } catch (e) {
-      print('❌ خطأ في جلب القالب: $e');
+      debugPrint('❌ خطأ في جلب القالب: $e');
       return null;
     }
   }
@@ -78,7 +80,7 @@ class CalculatorService {
       });
       return docRef.id;
     } catch (e) {
-      print('❌ خطأ في إضافة القالب: $e');
+      debugPrint('❌ خطأ في إضافة القالب: $e');
       return null;
     }
   }
@@ -93,7 +95,7 @@ class CalculatorService {
           .update(data);
       return true;
     } catch (e) {
-      print('❌ خطأ في تعديل القالب: $e');
+      debugPrint('❌ خطأ في تعديل القالب: $e');
       return false;
     }
   }
@@ -107,15 +109,13 @@ class CalculatorService {
           .delete();
       return true;
     } catch (e) {
-      print('❌ خطأ في حذف القالب: $e');
+      debugPrint('❌ خطأ في حذف القالب: $e');
       return false;
     }
   }
 
   // ======== التحقق من الأدمن ========
-  static const List<String> adminEmails = [
-    '01284172047@agri-app.local',
-  ];
+  static const List<String> adminEmails = AppConfig.adminEmails;
 
   static bool isAdmin(String? email) {
     if (email == null) return false;

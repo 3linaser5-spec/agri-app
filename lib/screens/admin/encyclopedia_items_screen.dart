@@ -2,22 +2,31 @@ import 'package:flutter/material.dart';
 import '../../models/encyclopedia_model.dart';
 import '../../services/encyclopedia_service.dart';
 import 'encyclopedia_item_editor_screen.dart';
+import '../../utils/color_utils.dart';
 
-class EncyclopediaItemsScreen extends StatelessWidget {
+class EncyclopediaItemsScreen extends StatefulWidget {
   final EncyclopediaSection section;
   const EncyclopediaItemsScreen({super.key, required this.section});
 
-  Color _hexToColor(String hex) {
-    try {
-      final cleaned = hex.replaceAll('#', '');
-      return Color(int.parse('FF$cleaned', radix: 16));
-    } catch (e) {
-      return const Color(0xFF047857);
-    }
+  @override
+  State<EncyclopediaItemsScreen> createState() =>
+      _EncyclopediaItemsScreenState();
+}
+
+class _EncyclopediaItemsScreenState extends State<EncyclopediaItemsScreen> {
+  late final Stream<List<EncyclopediaItem>> _itemsStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _itemsStream = EncyclopediaService.getItemsStream(widget.section.id);
   }
+
+  Color _hexToColor(String hex) => ColorUtils.fromHex(hex);
 
   @override
   Widget build(BuildContext context) {
+    final section = widget.section;
     final color = _hexToColor(section.color);
 
     return Scaffold(
@@ -48,7 +57,7 @@ class EncyclopediaItemsScreen extends StatelessWidget {
       body: Directionality(
         textDirection: TextDirection.rtl,
         child: StreamBuilder<List<EncyclopediaItem>>(
-          stream: EncyclopediaService.getItemsStream(section.id),
+          stream: _itemsStream,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
@@ -102,7 +111,7 @@ class EncyclopediaItemsScreen extends StatelessWidget {
                           width: 50,
                           height: 50,
                           decoration: BoxDecoration(
-                            color: color.withOpacity(0.15),
+                            color: color.withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(12),
                           ),
                           alignment: Alignment.center,
@@ -132,7 +141,7 @@ class EncyclopediaItemsScreen extends StatelessWidget {
                                     padding: const EdgeInsets.symmetric(
                                         horizontal: 6, vertical: 2),
                                     decoration: BoxDecoration(
-                                      color: color.withOpacity(0.15),
+                                      color: color.withValues(alpha: 0.15),
                                       borderRadius:
                                           BorderRadius.circular(6),
                                     ),

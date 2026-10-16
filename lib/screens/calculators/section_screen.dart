@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../models/calculator_models.dart';
 import '../../services/calculator_service.dart';
 import 'dynamic_form_screen.dart';
+import '../../utils/color_utils.dart';
 
 class SectionScreen extends StatefulWidget {
   final CalculatorSection section;
@@ -32,14 +33,8 @@ class _SectionScreenState extends State<SectionScreen> {
     }
   }
 
-  Color _hexColor(String hex, {Color fallback = const Color(0xFF047857)}) {
-    try {
-      final cleaned = hex.replaceAll('#', '');
-      return Color(int.parse('FF$cleaned', radix: 16));
-    } catch (e) {
-      return fallback;
-    }
-  }
+  Color _hexColor(String hex, {Color fallback = const Color(0xFF047857)}) =>
+      ColorUtils.fromHex(hex, fallback: fallback);
 
   @override
   Widget build(BuildContext context) {
@@ -80,7 +75,7 @@ class _SectionScreenState extends State<SectionScreen> {
                             width: 60,
                             height: 60,
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.25),
+                              color: Colors.white.withValues(alpha: 0.25),
                               borderRadius: BorderRadius.circular(14),
                             ),
                             alignment: Alignment.center,
@@ -184,7 +179,7 @@ class _SectionScreenState extends State<SectionScreen> {
                 width: 55,
                 height: 55,
                 decoration: BoxDecoration(
-                  color: primary.withOpacity(0.15),
+                  color: primary.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 alignment: Alignment.center,
@@ -230,7 +225,7 @@ class _SectionScreenState extends State<SectionScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Text(text,

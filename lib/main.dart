@@ -1,9 +1,8 @@
 import 'dart:io';
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -16,12 +15,14 @@ import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:dio/dio.dart';
+import 'package:crypto/crypto.dart' as crypto;
 import 'package:open_filex/open_filex.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:convert';
 import 'package:google_generative_ai/google_generative_ai.dart';
 import 'firebase_options.dart';
+import 'config/app_config.dart';
 import 'data/egypt_data.dart';
 import 'services/auth_service.dart';
 import 'services/offline_service.dart';
@@ -33,16 +34,22 @@ import 'screens/admin/admin_panel_screen.dart';
 import 'screens/calculators/calculator_hub_screen.dart';
 import 'screens/farm/my_farm_screen.dart';
 import 'utils/validators.dart';
+import 'utils/color_utils.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // الثيم الأول: لو Firebase فشل التطبيق يفضل بالثيم المحفوظ
+  try {
+    await ThemeController.load();
+  } catch (e) {
+    debugPrint("تعذر تحميل الثيم: $e");
+  }
 
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
-
-    await ThemeController.load();
 
     try {
       await NotificationService.initialize();
@@ -99,6 +106,8 @@ class VersionService {
           'version': latestVersion,
           'downloadUrl': info['download_url'] ?? '',
           'changelog': info['changelog'] ?? '',
+          // SHA-256 اختياري لملف الـ APK (لو موجود في version.json بنتحقق منه)
+          'sha256': info['sha256'],
         };
       }
       return null;
@@ -120,13 +129,38 @@ class VersionService {
     return 0;
   }
 
+  // مواقع التحميل المسموحة فقط (https على GitHub). أي رابط تاني بيترفض
+  // عشان لو ملف version.json اتغيّر ما يبقاش ممكن نثبّت APK من مصدر مجهول.
+  static bool isTrustedDownloadUrl(String url) {
+    final uri = Uri.tryParse(url);
+    if (uri == null || uri.scheme != 'https') return false;
+    const allowed = {
+      'github.com',
+      'objects.githubusercontent.com',
+      'release-assets.githubusercontent.com',
+      'raw.githubusercontent.com',
+    };
+    return allowed.contains(uri.host);
+  }
+
+  static Future<String> _sha256Of(File file) async {
+    final digest = await crypto.sha256.bind(file.openRead()).first;
+    return digest.toString();
+  }
+
   static Future<void> downloadAndInstall({
     required String url,
+    String? sha256,
     required Function(double progress) onProgress,
     required Function(String filePath) onComplete,
     required Function(String error) onError,
   }) async {
     try {
+      if (!isTrustedDownloadUrl(url)) {
+        onError('رابط التحميل غير موثوق');
+        return;
+      }
+
       if (Platform.isAndroid) {
         final installStatus = await Permission.requestInstallPackages.status;
         if (!installStatus.isGranted) {
@@ -134,8 +168,10 @@ class VersionService {
         }
       }
 
-      final dir = await getExternalStorageDirectory();
-      final filePath = "${dir!.path}/app-release.apk";
+      // getExternalStorageDirectory ممكن ترجّع null على بعض الأجهزة
+      final dir = await getExternalStorageDirectory() ??
+          await getTemporaryDirectory();
+      final filePath = "${dir.path}/app-release.apk";
 
       final oldFile = File(filePath);
       if (await oldFile.exists()) {
@@ -153,6 +189,17 @@ class VersionService {
         },
       );
 
+      // لو version.json فيه sha256 لازم يطابق الملف المحمّل
+      final expected = sha256?.trim().toLowerCase();
+      if (expected != null && expected.isNotEmpty) {
+        final actual = await _sha256Of(File(filePath));
+        if (actual != expected) {
+          await File(filePath).delete();
+          onError('فشل التحقق من سلامة الملف');
+          return;
+        }
+      }
+
       onComplete(filePath);
       await OpenFilex.open(filePath);
     } catch (e) {
@@ -166,6 +213,7 @@ class UpdateDialog extends StatefulWidget {
   final String version;
   final String changelog;
   final String downloadUrl;
+  final String? sha256;
   final bool mandatory;
 
   const UpdateDialog({
@@ -173,6 +221,7 @@ class UpdateDialog extends StatefulWidget {
     required this.version,
     required this.changelog,
     required this.downloadUrl,
+    this.sha256,
     required this.mandatory,
   });
 
@@ -194,6 +243,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
 
     await VersionService.downloadAndInstall(
       url: widget.downloadUrl,
+      sha256: widget.sha256,
       onProgress: (progress) {
         if (mounted) setState(() => _progress = progress);
       },
@@ -222,8 +272,8 @@ class _UpdateDialogState extends State<UpdateDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: () async => !widget.mandatory && !_downloading,
+    return PopScope(
+      canPop: !widget.mandatory && !_downloading,
       child: Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
@@ -233,7 +283,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF047857).withOpacity(0.15),
+                  color: const Color(0xFF047857).withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: const Icon(Icons.system_update_alt,
@@ -414,21 +464,29 @@ class _AgriConsultantAppState extends State<AgriConsultantApp> {
     });
   }
 
-  Future<void> _checkForUpdate() async {
-    final update = await VersionService.checkUpdate();
-    if (update == null) return;
-    if (_navigatorKey.currentContext == null) return;
+  // مانع ظهور أكتر من نافذة تحديث (الفحص بيتكرر مع كل رجوع للاتصال)
+  bool _updateDialogShowing = false;
 
-    showDialog(
-      context: _navigatorKey.currentContext!,
+  Future<void> _checkForUpdate() async {
+    if (_updateDialogShowing) return;
+    final update = await VersionService.checkUpdate();
+    if (update == null || _updateDialogShowing) return;
+    final ctx = _navigatorKey.currentContext;
+    if (ctx == null) return;
+
+    _updateDialogShowing = true;
+    await showDialog(
+      context: ctx,
       barrierDismissible: false,
       builder: (_) => UpdateDialog(
-        version: update['version'],
-        changelog: update['changelog'],
-        downloadUrl: update['downloadUrl'],
-        mandatory: update['mandatory'],
+        version: update['version'].toString(),
+        changelog: update['changelog'].toString(),
+        downloadUrl: update['downloadUrl'].toString(),
+        sha256: update['sha256']?.toString(),
+        mandatory: update['mandatory'] == true,
       ),
     );
+    _updateDialogShowing = false;
   }
 
   @override
@@ -446,6 +504,14 @@ class _AgriConsultantAppState extends State<AgriConsultantApp> {
           debugShowCheckedModeBanner: false,
           title: 'نباتي',
           navigatorKey: _navigatorKey,
+          // واجهة عربية كاملة (اتجاه RTL، منتقي التاريخ، قوائم النظام)
+          locale: const Locale('ar'),
+          supportedLocales: const [Locale('ar'), Locale('en')],
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
           themeMode: mode,
           theme: ThemeData(
             colorScheme:
@@ -534,7 +600,7 @@ class _SplashScreenState extends State<SplashScreen>
                     borderRadius: BorderRadius.circular(30),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.2),
+                        color: Colors.black.withValues(alpha: 0.2),
                         blurRadius: 20,
                         offset: const Offset(0, 10),
                       ),
@@ -593,7 +659,8 @@ class AuthWrapper extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<User?>(
-      stream: FirebaseAuth.instance.authStateChanges(),
+      // userChanges (مش authStateChanges) عشان تغيير الاسم يظهر فورًا
+      stream: FirebaseAuth.instance.userChanges(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
@@ -791,6 +858,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // IndexedStack بيحافظ على State كل تبويب (صورة التشخيص، الطقس) وفي نفس
+    // الوقت الـ widgets بتتبني من جديد هنا فأي تغيير في الاسم بيوصل للشاشات.
     final screens = [
       HomeDashboard(userName: widget.userName, userPhone: widget.userPhone),
       AiScannerScreen(userName: widget.userName, userPhone: widget.userPhone),
@@ -798,7 +867,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     ];
 
     return Scaffold(
-      body: screens[_currentIndex],
+      body: IndexedStack(index: _currentIndex, children: screens),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         selectedItemColor: const Color(0xFF047857),
@@ -1006,9 +1075,16 @@ class _HomeDashboardState extends State<HomeDashboard> {
     final prefs = await SharedPreferences.getInstance();
     _selectedGovernorate = prefs.getString('selected_gov') ?? "";
     final cached = prefs.getString('weather_data');
+    // عمر الكاش: لو أقدم من 30 دقيقة (أو بدون وقت) نحدّث في الخلفية
+    bool stale = true;
     if (cached != null) {
       try {
         final data = json.decode(cached) as Map<String, dynamic>;
+        final savedAt = int.tryParse('${data['saved_at'] ?? ''}');
+        if (savedAt != null) {
+          final age = DateTime.now().millisecondsSinceEpoch - savedAt;
+          stale = age > const Duration(minutes: 30).inMilliseconds;
+        }
         _safeSet(() {
           weatherTemp = (data['temp'] ?? "--").toString();
           weatherHumidity = (data['humidity'] ?? "--").toString();
@@ -1018,8 +1094,22 @@ class _HomeDashboardState extends State<HomeDashboard> {
         });
       } catch (_) {}
     }
-    if (!isWeatherLoaded) {
-      _fetchWeatherByLocation();
+    if (!mounted) return;
+    if (!isWeatherLoaded || stale) {
+      GovernorateInfo? gov;
+      if (_selectedGovernorate.isNotEmpty) {
+        for (final g in EgyptData.governorates) {
+          if (g.name == _selectedGovernorate) {
+            gov = g;
+            break;
+          }
+        }
+      }
+      if (gov != null) {
+        _fetchWeatherForGovernorate(gov.name, gov.lat, gov.lon);
+      } else {
+        _fetchWeatherByLocation();
+      }
     }
   }
 
@@ -1033,6 +1123,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
           'status': weatherStatusText,
           'location': locationName,
           'loaded': isWeatherLoaded,
+          'saved_at': DateTime.now().millisecondsSinceEpoch,
         }));
   }
 
@@ -1106,9 +1197,12 @@ class _HomeDashboardState extends State<HomeDashboard> {
         return;
       }
 
+      // medium بدل best: داخل المباني الـ GPS الدقيق غالبًا بيعمل timeout
       Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.best,
-        timeLimit: const Duration(seconds: 20),
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.medium,
+          timeLimit: Duration(seconds: 20),
+        ),
       );
 
       String cityName = await _getCityName(
@@ -1134,6 +1228,11 @@ class _HomeDashboardState extends State<HomeDashboard> {
               "درجة الحرارة: $weatherTemp°م | الرطوبة: $weatherHumidity%";
           isWeatherLoaded = true;
         });
+        // اختيار المحافظة المحفوظ ما بقاش صحيح بعد ما استخدمنا الـ GPS
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.remove('selected_gov');
+        } catch (_) {}
         await _saveWeatherCache();
       } else {
         _safeSet(() => weatherStatusText = "تعذر جلب بيانات الطقس حالياً");
@@ -1273,11 +1372,13 @@ class _HomeDashboardState extends State<HomeDashboard> {
                           onTap: () async {
                             Navigator.pop(context);
                             final uri =
-                                Uri.parse("https://wa.me/201284172047");
+                                Uri.parse(AppConfig.whatsappUrl);
                             try {
                               await launchUrl(uri,
                                   mode: LaunchMode.externalApplication);
-                            } catch (e) {}
+                            } catch (e) {
+                              debugPrint('تعذر فتح واتساب: $e');
+                            }
                           }),
                       _buildActionItem(
                           icon: Icons.info_outline,
@@ -1312,9 +1413,9 @@ class _HomeDashboardState extends State<HomeDashboard> {
       borderRadius: BorderRadius.circular(14),
       child: Container(
         decoration: BoxDecoration(
-          color: color.withOpacity(0.08),
+          color: color.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: color.withOpacity(0.2)),
+          border: Border.all(color: color.withValues(alpha: 0.2)),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -1362,7 +1463,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
               width: 55,
               height: 55,
               decoration: BoxDecoration(
-                color: color.withOpacity(0.12),
+                color: color.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(14),
               ),
               alignment: Alignment.center,
@@ -1459,7 +1560,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(
-                          color: const Color(0xFF047857).withOpacity(0.3)),
+                          color: const Color(0xFF047857).withValues(alpha: 0.3)),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -1693,9 +1794,14 @@ class _AiScannerScreenState extends State<AiScannerScreen> {
     await _flutterTts.setLanguage("ar-EG");
     await _flutterTts.setSpeechRate(0.45);
     await _flutterTts.setPitch(1.0);
-    _flutterTts.setCompletionHandler(() {
+    void reset() {
       if (mounted) setState(() => _isPlayingVoice = false);
-    });
+    }
+
+    _flutterTts.setCompletionHandler(reset);
+    // لو القراءة اتلغت أو حصل خطأ لازم الزر يرجع لحالته (كان بيفضل "إيقاف")
+    _flutterTts.setCancelHandler(reset);
+    _flutterTts.setErrorHandler((_) => reset());
   }
 
   Future<void> _pickImage() async {
@@ -1769,8 +1875,18 @@ class _AiScannerScreenState extends State<AiScannerScreen> {
     }
   }
 
+  // نوع الصورة من امتدادها (كان ثابت image/jpeg حتى لو الصورة PNG أو WebP)
+  static String _imageMimeType(String path) {
+    final lower = path.toLowerCase();
+    if (lower.endsWith('.png')) return 'image/png';
+    if (lower.endsWith('.webp')) return 'image/webp';
+    if (lower.endsWith('.heic')) return 'image/heic';
+    if (lower.endsWith('.heif')) return 'image/heif';
+    return 'image/jpeg';
+  }
+
   Future<void> _sendToEngineerWhatsApp() async {
-    const engineerPhone = "201284172047";
+    const engineerPhone = AppConfig.engineerPhone;
     final message = """
 السلام عليكم يا بشمهندس علي، معي استشارة زراعية:
 🌱 *اسم المزارع:* ${widget.userName}
@@ -1807,7 +1923,8 @@ $_diagnosis
 ━━━━━━━━━━━━━━━━━━
 📱 تطبيق نباتي - مستشارك الزراعي الذكي
 """;
-    await Share.share(text, subject: 'تشخيص نباتي');
+    await SharePlus.instance.share(
+        ShareParams(text: text, subject: 'تشخيص نباتي'));
   }
 
   @override
@@ -1839,7 +1956,7 @@ $_diagnosis
       if (mounted) {
         setState(() {
           _diagnosis =
-              '⚠️ لا يوجد اتصال بالإنترنت حالياً.\nتم حفظ سؤالك وسيتم إرساله تلقائياً عند عودة الاتصال.';
+              '⚠️ لا يوجد اتصال بالإنترنت حالياً.\nتم حفظ سؤالك في سجل التشخيصات، أعد إرساله عند عودة الاتصال للحصول على التشخيص.';
         });
       }
       await OfflineService.saveDiagnosis(
@@ -1847,7 +1964,7 @@ $_diagnosis
         userPhone: widget.userPhone,
         question: question,
         imagePath: _imageFile?.path,
-        diagnosis: 'في انتظار الاتصال بالإنترنت...',
+        diagnosis: 'لم يُرسل بعد: لا يوجد اتصال بالإنترنت',
       );
       return;
     }
@@ -1866,7 +1983,7 @@ $_diagnosis
         attempt++;
 
         final model = GenerativeModel(
-          model: 'gemini-3.8-flash',
+          model: AppConfig.geminiModel,
           apiKey: _apiKey,
           generationConfig: GenerationConfig(
             temperature: 0.3,
@@ -1918,7 +2035,7 @@ $_diagnosis
 
         if (_imageFile != null) {
           final imageBytes = await _imageFile!.readAsBytes();
-          parts.add(DataPart('image/jpeg', imageBytes));
+          parts.add(DataPart(_imageMimeType(_imageFile!.path), imageBytes));
         }
 
         final response = await model.generateContent([Content.multi(parts)]);
@@ -2164,13 +2281,15 @@ class _HistoryScreenState extends State<HistoryScreen> {
     if (mounted) {
       setState(() {
         _allItems = items;
-        _filteredItems = items;
         _loading = false;
       });
+      // نعيد تطبيق البحث الحالي (قبل كده بعد المسح كان بيرجع السجل كله)
+      _filterItems();
     }
   }
 
   void _filterItems() {
+    if (!mounted) return;
     final query = _searchCtrl.text.trim().toLowerCase();
     if (query.isEmpty) {
       setState(() => _filteredItems = _allItems);
@@ -2205,7 +2324,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
     if (confirm == true) {
       await OfflineService.deleteDiagnosis(id);
-      _loadHistory();
+      if (!mounted) return;
+      await _loadHistory();
     }
   }
 
@@ -2240,7 +2360,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
               );
               if (confirm == true) {
                 await OfflineService.clearAll();
-                _loadHistory();
+                if (!mounted) return;
+                await _loadHistory();
               }
             },
           ),
@@ -2302,9 +2423,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
                             final date = item['createdAt']?.toString() ?? '';
                             String dateFormatted = date;
                             try {
-                              final dt = DateTime.parse(date);
+                              final dt = DateTime.parse(date).toLocal();
+                              String two(int n) => n.toString().padLeft(2, '0');
                               dateFormatted =
-                                  "${dt.day}/${dt.month}/${dt.year} - ${dt.hour}:${dt.minute}";
+                                  "${dt.day}/${dt.month}/${dt.year} - ${two(dt.hour)}:${two(dt.minute)}";
                             } catch (_) {}
 
                             return Card(
@@ -2431,6 +2553,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (user != null) {
         await user.updateDisplayName(newName);
         await user.reload();
+        // نحدّث مستند المستخدم كمان عشان الاسم يبقى واحد في Auth وFirestore
+        try {
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .set({'name': newName}, SetOptions(merge: true));
+        } catch (e) {
+          debugPrint('تعذر تحديث اسم المستخدم في Firestore: $e');
+        }
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -2469,6 +2600,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
     if (confirm == true) {
+      // نقفل الشاشات المفتوحة الأول، وإلا بتفضل فوق شاشة تسجيل الدخول
+      if (mounted) Navigator.of(context).popUntil((r) => r.isFirst);
       await _authService.logout();
     }
   }
@@ -2489,7 +2622,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Center(
               child: CircleAvatar(
                 radius: 50,
-                backgroundColor: const Color(0xFF047857).withOpacity(0.15),
+                backgroundColor: const Color(0xFF047857).withValues(alpha: 0.15),
                 child: const Icon(Icons.person,
                     size: 60, color: Color(0xFF047857)),
               ),
@@ -2580,7 +2713,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         style: TextStyle(fontWeight: FontWeight.bold)),
                     subtitle: Text(isDark ? 'مُفعّل' : 'مُعطّل'),
                     value: isDark,
-                    activeColor: const Color(0xFF047857),
+                    activeThumbColor: const Color(0xFF047857),
                     onChanged: (value) async {
                       await ThemeController.toggle();
                     },
@@ -2654,10 +2787,12 @@ class AboutScreen extends StatelessWidget {
   const AboutScreen({super.key});
 
   Future<void> _openWhatsApp() async {
-    final uri = Uri.parse("https://wa.me/201284172047");
+    final uri = Uri.parse(AppConfig.whatsappUrl);
     try {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } catch (e) {}
+    } catch (e) {
+      debugPrint('تعذر فتح واتساب: $e');
+    }
   }
 
   @override
@@ -2682,7 +2817,7 @@ class AboutScreen extends StatelessWidget {
                   borderRadius: BorderRadius.circular(25),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
+                      color: Colors.black.withValues(alpha: 0.1),
                       blurRadius: 15,
                       offset: const Offset(0, 5),
                     ),
@@ -2716,10 +2851,13 @@ class AboutScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 6),
-            const Center(
-              child: Text(
-                'الإصدار 1.0.0',
-                style: TextStyle(fontSize: 12, color: Colors.grey),
+            Center(
+              child: FutureBuilder<PackageInfo>(
+                future: PackageInfo.fromPlatform(),
+                builder: (context, snap) => Text(
+                  snap.hasData ? 'الإصدار ${snap.data!.version}' : 'الإصدار',
+                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                ),
               ),
             ),
             const SizedBox(height: 24),
@@ -2832,10 +2970,10 @@ class AboutScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 20),
-            const Center(
+            Center(
               child: Text(
-                '© 2025 نباتي - جميع الحقوق محفوظة',
-                style: TextStyle(fontSize: 12, color: Colors.grey),
+                '© ${DateTime.now().year} نباتي - جميع الحقوق محفوظة',
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
               ),
             ),
           ],
@@ -2846,17 +2984,20 @@ class AboutScreen extends StatelessWidget {
 }
 
 // ---------------- EncyclopediaScreen ----------------
-class EncyclopediaScreen extends StatelessWidget {
+class EncyclopediaScreen extends StatefulWidget {
   const EncyclopediaScreen({super.key});
 
-  Color _hexToColor(String hex) {
-    try {
-      final cleaned = hex.replaceAll('#', '');
-      return Color(int.parse('FF$cleaned', radix: 16));
-    } catch (e) {
-      return const Color(0xFF047857);
-    }
-  }
+  @override
+  State<EncyclopediaScreen> createState() => _EncyclopediaScreenState();
+}
+
+class _EncyclopediaScreenState extends State<EncyclopediaScreen> {
+  // الـ Stream بيتعمل مرة واحدة (قبل كده كان بيتعمل من جديد مع كل rebuild
+  // فالـ spinner بيرجع يظهر ويتعمل قراءة جديدة من Firestore)
+  late final Stream<List<EncyclopediaSection>> _sectionsStream =
+      EncyclopediaService.getSectionsStream();
+
+  Color _hexToColor(String hex) => ColorUtils.fromHex(hex);
 
   @override
   Widget build(BuildContext context) {
@@ -2870,7 +3011,7 @@ class EncyclopediaScreen extends StatelessWidget {
       body: Directionality(
         textDirection: TextDirection.rtl,
         child: StreamBuilder<List<EncyclopediaSection>>(
-          stream: EncyclopediaService.getSectionsStream(),
+          stream: _sectionsStream,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
@@ -2936,8 +3077,8 @@ class EncyclopediaScreen extends StatelessWidget {
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
                           colors: [
-                            color.withOpacity(0.1),
-                            color.withOpacity(0.05),
+                            color.withValues(alpha: 0.1),
+                            color.withValues(alpha: 0.05),
                           ],
                         ),
                         borderRadius: BorderRadius.circular(16),
@@ -2948,7 +3089,7 @@ class EncyclopediaScreen extends StatelessWidget {
                             width: 60,
                             height: 60,
                             decoration: BoxDecoration(
-                              color: color.withOpacity(0.2),
+                              color: color.withValues(alpha: 0.2),
                               borderRadius: BorderRadius.circular(14),
                             ),
                             alignment: Alignment.center,
@@ -2995,18 +3136,22 @@ class EncyclopediaScreen extends StatelessWidget {
 }
 
 // ---------------- EncyclopediaSectionView ----------------
-class EncyclopediaSectionView extends StatelessWidget {
+class EncyclopediaSectionView extends StatefulWidget {
   final EncyclopediaSection section;
   const EncyclopediaSectionView({super.key, required this.section});
 
-  Color _hexToColor(String hex) {
-    try {
-      final cleaned = hex.replaceAll('#', '');
-      return Color(int.parse('FF$cleaned', radix: 16));
-    } catch (e) {
-      return const Color(0xFF047857);
-    }
-  }
+  @override
+  State<EncyclopediaSectionView> createState() =>
+      _EncyclopediaSectionViewState();
+}
+
+class _EncyclopediaSectionViewState extends State<EncyclopediaSectionView> {
+  late final Stream<List<EncyclopediaItem>> _itemsStream =
+      EncyclopediaService.getItemsStream(widget.section.id);
+
+  EncyclopediaSection get section => widget.section;
+
+  Color _hexToColor(String hex) => ColorUtils.fromHex(hex);
 
   @override
   Widget build(BuildContext context) {
@@ -3022,7 +3167,7 @@ class EncyclopediaSectionView extends StatelessWidget {
       body: Directionality(
         textDirection: TextDirection.rtl,
         child: StreamBuilder<List<EncyclopediaItem>>(
-          stream: EncyclopediaService.getItemsStream(section.id),
+          stream: _itemsStream,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
@@ -3068,7 +3213,7 @@ class EncyclopediaSectionView extends StatelessWidget {
           width: 45,
           height: 45,
           decoration: BoxDecoration(
-            color: color.withOpacity(0.15),
+            color: color.withValues(alpha: 0.15),
             borderRadius: BorderRadius.circular(10),
           ),
           alignment: Alignment.center,
@@ -3091,7 +3236,7 @@ class EncyclopediaSectionView extends StatelessWidget {
               width: double.infinity,
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: color.withOpacity(0.05),
+                color: color.withValues(alpha: 0.05),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text(item.content,
@@ -3194,6 +3339,8 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // بنحسبها مرة واحدة في كل build (كانت بتتحسب لكل عنصر في القائمة)
+    final topKeywords = _getTopKeywords();
     return Scaffold(
       appBar: AppBar(
         title: const Text('الإحصائيات',
@@ -3265,9 +3412,8 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                         child: Padding(
                           padding: const EdgeInsets.all(16),
                           child: Column(
-                            children: _getTopKeywords().entries.map((e) {
-                              final allValues =
-                                  _getTopKeywords().values.toList();
+                            children: topKeywords.entries.map((e) {
+                              final allValues = topKeywords.values.toList();
                               final max = allValues.isEmpty
                                   ? 1
                                   : (allValues.reduce(

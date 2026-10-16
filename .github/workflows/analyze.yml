@@ -1,0 +1,48 @@
+name: Analyze
+
+on:
+  push:
+    branches-ignore: [ gh-pages ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.0'
+          channel: 'stable'
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      # التحليل ما بيوقّفش الـ job هنا؛ بنحوّل النتائج لـ annotations الأول
+      # وبعدين آخر خطوة بتفشّل الـ job لو فيه أخطاء أو تحذيرات.
+      - name: Analyze
+        run: |
+          flutter analyze --no-fatal-infos --no-pub > analyze.txt 2>&1 || touch analyze.failed
+          cat analyze.txt
+
+      # GitHub بيعرض 10 أخطاء + 10 تحذيرات فقط لكل خطوة، فنقسّم على 3 خطوات
+      - name: Annotate problems (1-10)
+        if: always()
+        run: python3 .github/scripts/annotate_analyze.py analyze.txt 0
+
+      - name: Annotate problems (11-20)
+        if: always()
+        run: python3 .github/scripts/annotate_analyze.py analyze.txt 1
+
+      - name: Annotate problems (21-30)
+        if: always()
+        run: python3 .github/scripts/annotate_analyze.py analyze.txt 2
+
+      - name: Fail if the analyzer found problems
+        run: |
+          if [ -f analyze.failed ]; then
+            echo "flutter analyze reported errors or warnings (see annotations above)"
+            exit 1
+          fi
