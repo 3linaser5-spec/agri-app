@@ -1,3 +1,5 @@
+import 'formula_evaluator.dart';
+
 /// تحقق من شكل قالب الحاسبة (JSON) قبل حفظه في Firestore.
 ///
 /// الهدف: ملف JSON واحد غلط ما يبوّظش قوالب القسم كله. بنرجّع قائمة أخطاء
@@ -19,6 +21,15 @@ class TemplateValidator {
 
     for (final key in const ['emoji', 'description', 'area_unit']) {
       if (t[key] != null && t[key] is! String) err('"$key" لازم يكون نص');
+    }
+
+    // المتغيرات المسموحة في المعادلات: ids الحقول + area
+    final knownVars = <String>{'area'};
+    final rawFields = t['fields'];
+    if (rawFields is List) {
+      for (final f in rawFields) {
+        if (f is Map && f['id'] is String) knownVars.add((f['id'] as String).trim());
+      }
     }
 
     // ---- fields ----
@@ -106,6 +117,15 @@ class TemplateValidator {
             continue;
           }
           if (!_isNonEmptyString(m['name'])) err('$at: "name" مطلوب');
+          final qf = m['quantity_formula'];
+          if (qf != null) {
+            if (qf is! String) {
+              err('$at: "quantity_formula" لازم تكون نص');
+            } else {
+              final e = FormulaEvaluator.validate(qf, knownVars);
+              if (e != null) err('$at: معادلة الكمية: $e');
+            }
+          }
           for (final k in const ['quantity_per_unit', 'price_per_unit']) {
             final v = m[k];
             if (v != null && (!_isNum(v) || (v as num) < 0)) {
@@ -125,6 +145,15 @@ class TemplateValidator {
         for (final k in const ['expected_yield', 'expected_price']) {
           if (fin[k] != null && !_isNum(fin[k])) {
             err('financial.$k لازم يكون رقم');
+          }
+        }
+        final yf = fin['yield_formula'];
+        if (yf != null) {
+          if (yf is! String) {
+            err('financial.yield_formula لازم تكون نص');
+          } else {
+            final e = FormulaEvaluator.validate(yf, knownVars);
+            if (e != null) err('معادلة الإنتاج: $e');
           }
         }
         final dist = fin['cost_distribution'];
