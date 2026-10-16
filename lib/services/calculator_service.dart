@@ -6,6 +6,23 @@ import 'package:flutter/foundation.dart' show debugPrint;
 class CalculatorService {
   static final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
+  // تحويل المستندات واحد واحد: مستند تالف يتخطّى بدل ما يخفي كل القسم
+  static List<T> _parseDocs<T>(
+    List<QueryDocumentSnapshot> docs,
+    T Function(DocumentSnapshot) parse,
+    String what,
+  ) {
+    final result = <T>[];
+    for (final doc in docs) {
+      try {
+        result.add(parse(doc));
+      } catch (e) {
+        debugPrint('❌ $what تالف (${doc.id}): $e');
+      }
+    }
+    return result;
+  }
+
   // ======== الأقسام ========
   static Future<List<CalculatorSection>> getSections() async {
     try {
@@ -13,9 +30,7 @@ class CalculatorService {
           .collection('calculator_sections')
           .orderBy('order')
           .get();
-      return snapshot.docs
-          .map((doc) => CalculatorSection.fromFirestore(doc))
-          .toList();
+      return _parseDocs(snapshot.docs, CalculatorSection.fromFirestore, 'قسم');
     } catch (e) {
       debugPrint('❌ خطأ في جلب الأقسام: $e');
       return [];
@@ -30,9 +45,8 @@ class CalculatorService {
           .collection('calculator_templates')
           .where('section_id', isEqualTo: sectionId)
           .get();
-      return snapshot.docs
-          .map((doc) => CalculatorTemplate.fromFirestore(doc))
-          .toList();
+      return _parseDocs(
+          snapshot.docs, CalculatorTemplate.fromFirestore, 'قالب');
     } catch (e) {
       debugPrint('❌ خطأ في جلب القوالب: $e');
       return [];
@@ -89,10 +103,10 @@ class CalculatorService {
   static Future<bool> updateTemplate(
       String id, Map<String, dynamic> data) async {
     try {
-      await _firestore
-          .collection('calculator_templates')
-          .doc(id)
-          .update(data);
+      await _firestore.collection('calculator_templates').doc(id).update({
+        ...data,
+        'updated_at': FieldValue.serverTimestamp(),
+      });
       return true;
     } catch (e) {
       debugPrint('❌ خطأ في تعديل القالب: $e');

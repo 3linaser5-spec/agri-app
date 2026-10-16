@@ -25,9 +25,18 @@ class MyFarmService {
         .where('user_id', isEqualTo: userId)
         .orderBy('created_at', descending: true)
         .snapshots()
-        .map((snap) => snap.docs
-            .map((doc) => MyFarmProgram.fromFirestore(doc))
-            .toList());
+        .map((snap) {
+      // مستند تالف يتخطّى بدل ما يوقّف القائمة كلها
+      final result = <MyFarmProgram>[];
+      for (final doc in snap.docs) {
+        try {
+          result.add(MyFarmProgram.fromFirestore(doc));
+        } catch (e) {
+          debugPrint('❌ برنامج تالف (${doc.id}): $e');
+        }
+      }
+      return result;
+    });
   }
 
   // ✅ جلب برنامج واحد

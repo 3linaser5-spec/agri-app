@@ -5,17 +5,20 @@ import '../../models/my_farm_model.dart';
 import '../../services/my_farm_service.dart';
 import '../../services/pdf_service.dart';
 import '../../services/notification_service.dart';
+import '../../utils/calc_engine.dart';
 
 class CalculatorResultScreen extends StatefulWidget {
   final CalculatorTemplate template;
   final Map<String, dynamic> inputValues;
   final Color primaryColor;
+  final String? sectionName;
 
   const CalculatorResultScreen({
     super.key,
     required this.template,
     required this.inputValues,
     required this.primaryColor,
+    this.sectionName,
   });
 
   @override
@@ -27,30 +30,47 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
   bool _saving = false;
   bool _saved = false;
 
-  double get _areaMultiplier {
-    final area = _inputValues['area'];
-    if (area is num) return area.toDouble();
-    for (var entry in _inputValues.entries) {
-      if (entry.key.toLowerCase().contains('area') ||
-          entry.key.contains('مساحة')) {
-        if (entry.value is num) return (entry.value as num).toDouble();
+  // المدخلات + القيم الافتراضية للحقول الرقمية اللي المستخدم سابها فاضية.
+  // دي اللي بتتحسب بيها المعادلات وبتتحفظ في البرنامج، فالنتيجة بعد الحفظ
+  // تفضل زي ما شافها المستخدم.
+  late final Map<String, dynamic> _inputValues;
+
+  // المهام مرتبة مرة واحدة (كانت بتتنسخ وتترتب مع كل عنصر بيترسم)
+  late final List<CalculatorTask> _sortedTasks;
+
+  @override
+  void initState() {
+    super.initState();
+    final merged = Map<String, dynamic>.from(widget.inputValues);
+    for (final f in widget.template.fields) {
+      final isNumeric = f.type == 'number' || f.type == 'slider';
+      if (isNumeric && merged[f.id] == null && f.defaultValue != null) {
+        merged[f.id] = f.defaultValue;
       }
     }
-    return 1.0;
+    _inputValues = merged;
+    _sortedTasks = List<CalculatorTask>.from(widget.template.tasks)
+      ..sort((a, b) => a.dayFromStart.compareTo(b.dayFromStart));
   }
 
-  Map<String, dynamic> get _inputValues => widget.inputValues;
+  double get _areaMultiplier => CalcEngine.areaMultiplier(_inputValues);
 
-  List<CalculatorTask> get _sortedTasks {
-    final list = List<CalculatorTask>.from(widget.template.tasks);
-    list.sort((a, b) => a.dayFromStart.compareTo(b.dayFromStart));
-    return list;
-  }
+  double _materialQty(CalculatorMaterial m) => CalcEngine.quantity(
+        perUnit: m.quantityPerUnit,
+        formula: m.quantityFormula,
+        inputs: _inputValues,
+      );
+
+  double get _totalYield => CalcEngine.totalYield(
+        perUnit: widget.template.financial.expectedYieldPerUnit,
+        yieldFormula: widget.template.financial.yieldFormula,
+        inputs: _inputValues,
+      );
 
   double get _totalMaterialsCost {
     double total = 0;
     for (var m in widget.template.materials) {
-      total += m.quantityPerUnit * m.estimatedPricePerUnit * _areaMultiplier;
+      total += _materialQty(m) * m.estimatedPricePerUnit;
     }
     return total;
   }
@@ -87,32 +107,12 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
       await PdfService.generateAndSharePdf(
         programTitle: widget.template.name,
         programEmoji: widget.template.emoji,
-        governorate: _inputValues['governorate'] ?? 'غير محدد',
-        sectionName: widget.template.name,
+        governorate: _inputValues['governorate']?.toString() ?? 'غير محدد',
+        sectionName: widget.sectionName ?? widget.template.name,
         inputValues: _inputValues,
-        tasks: widget.template.tasks
-            .map((t) => {
-                  'title': t.title,
-                  'description': t.description,
-                  'day_from_start': t.dayFromStart,
-                  'category': t.category,
-                })
-            .toList(),
-        materials: widget.template.materials
-            .map((m) => {
-                  'name': m.name,
-                  'category': m.category,
-                  'quantity_per_unit': m.quantityPerUnit,
-                  'unit': m.unit,
-                  'price_per_unit': m.estimatedPricePerUnit,
-                })
-            .toList(),
-        financial: {
-          'expected_yield': widget.template.financial.expectedYieldPerUnit,
-          'yield_unit': widget.template.financial.yieldUnit,
-          'expected_price':
-              widget.template.financial.expectedPricePerYieldUnit,
-        },
+        tasks: widget.template.tasks.map((t) => t.toMap()).toList(),
+        materials: widget.template.materials.map((m) => m.toMap()).toList(),
+        financial: widget.template.financial.toMap(),
       );
     } catch (e) {
       debugPrint('❌ فشل إنشاء PDF: $e');
@@ -163,35 +163,13 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
       templateName: widget.template.name,
       templateEmoji: widget.template.emoji,
       sectionId: widget.template.sectionId,
-      sectionName: widget.template.name,
-      governorate: _inputValues['governorate'] ?? '',
-      climateZone: _inputValues['climate_zone'] ?? '',
+      sectionName: widget.sectionName ?? widget.template.name,
+      governorate: _inputValues['governorate']?.toString() ?? '',
+      climateZone: _inputValues['climate_zone']?.toString() ?? '',
       inputValues: _inputValues,
-      tasks: widget.template.tasks
-          .map((t) => {
-                'title': t.title,
-                'description': t.description,
-                'day_from_start': t.dayFromStart,
-                'category': t.category,
-              })
-          .toList(),
-      materials: widget.template.materials
-          .map((m) => {
-                'name': m.name,
-                'category': m.category,
-                'quantity_per_unit': m.quantityPerUnit,
-                'unit': m.unit,
-                'price_per_unit': m.estimatedPricePerUnit,
-              })
-          .toList(),
-      financial: {
-        'expected_yield': widget.template.financial.expectedYieldPerUnit,
-        'yield_unit': widget.template.financial.yieldUnit,
-        'expected_price':
-            widget.template.financial.expectedPricePerYieldUnit,
-        'cost_distribution':
-            widget.template.financial.costDistribution,
-      },
+      tasks: widget.template.tasks.map((t) => t.toMap()).toList(),
+      materials: widget.template.materials.map((m) => m.toMap()).toList(),
+      financial: widget.template.financial.toMap(),
       startDate: startDate,
       createdAt: DateTime.now(),
       status: 'active',
@@ -509,7 +487,9 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'الكميات محسوبة على مساحة ${_areaMultiplier.toStringAsFixed(2)} ${widget.template.areaUnit}',
+                  CalcEngine.hasExplicitArea(_inputValues)
+                      ? 'الكميات محسوبة على مساحة ${_areaMultiplier.toStringAsFixed(2)} ${widget.template.areaUnit}'
+                      : 'لم تُحدد مساحة، الكميات محسوبة لوحدة واحدة (${widget.template.areaUnit})',
                   style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.bold,
@@ -542,7 +522,7 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
                   ),
                   const Divider(height: 16),
                   ...entry.value.map((m) {
-                    final totalQty = m.quantityPerUnit * _areaMultiplier;
+                    final totalQty = _materialQty(m);
                     final totalCost = totalQty * m.estimatedPricePerUnit;
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 8),
@@ -628,7 +608,7 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
   Widget _buildFinancialTab() {
     final financial = widget.template.financial;
 
-    final totalYield = financial.expectedYieldPerUnit * _areaMultiplier;
+    final totalYield = _totalYield;
     final totalRevenue = totalYield * financial.expectedPricePerYieldUnit;
     final netProfit = totalRevenue - _totalMaterialsCost;
     final roi =
@@ -674,7 +654,7 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
             padding: const EdgeInsets.all(16),
             child: Column(
               children: [
-                _buildRow('إجمالي التكاليف',
+                _buildRow('إجمالي تكلفة المشتريات',
                     '${_totalMaterialsCost.toStringAsFixed(0)} ج.م',
                     color: Colors.red),
                 const Divider(height: 20),

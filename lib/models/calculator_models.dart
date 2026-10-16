@@ -75,6 +75,19 @@ class FormFieldConfig {
       defaultValue: SafeParse.doubleOrNull(m['default']),
     );
   }
+
+  Map<String, dynamic> toMap() => {
+        'id': id,
+        'label': label,
+        'type': type,
+        'unit': unit,
+        'hint': hint,
+        'required': required,
+        if (options.isNotEmpty) 'options': options,
+        if (min != null) 'min': min,
+        if (max != null) 'max': max,
+        if (defaultValue != null) 'default': defaultValue,
+      };
 }
 
 // ============= مهمة في الجدول الزمني =============
@@ -97,6 +110,13 @@ class CalculatorTask {
         dayFromStart: SafeParse.integer(m['day_from_start']),
         category: SafeParse.string(m['category'], 'عام'),
       );
+
+  Map<String, dynamic> toMap() => {
+        'title': title,
+        'description': description,
+        'day_from_start': dayFromStart,
+        'category': category,
+      };
 }
 
 // ============= مادة في قائمة المشتريات =============
@@ -107,12 +127,17 @@ class CalculatorMaterial {
   final String unit;
   final double estimatedPricePerUnit;
 
+  /// معادلة اختيارية للكمية الكلية (مثال: area * seed_rate / 1000).
+  /// لو فاضية الكمية = quantityPerUnit × المساحة.
+  final String? quantityFormula;
+
   CalculatorMaterial({
     required this.name,
     required this.category,
     required this.quantityPerUnit,
     required this.unit,
     required this.estimatedPricePerUnit,
+    this.quantityFormula,
   });
 
   factory CalculatorMaterial.fromMap(Map<String, dynamic> m) =>
@@ -122,7 +147,22 @@ class CalculatorMaterial {
         quantityPerUnit: SafeParse.decimal(m['quantity_per_unit']),
         unit: SafeParse.string(m['unit'], 'كجم'),
         estimatedPricePerUnit: SafeParse.decimal(m['price_per_unit']),
+        quantityFormula: _nonEmpty(m['quantity_formula']),
       );
+
+  Map<String, dynamic> toMap() => {
+        'name': name,
+        'category': category,
+        'quantity_per_unit': quantityPerUnit,
+        'unit': unit,
+        'price_per_unit': estimatedPricePerUnit,
+        if (quantityFormula != null) 'quantity_formula': quantityFormula,
+      };
+}
+
+String? _nonEmpty(dynamic v) {
+  final s = v?.toString().trim();
+  return (s == null || s.isEmpty) ? null : s;
 }
 
 // ============= التحليل المالي =============
@@ -132,11 +172,15 @@ class CalculatorFinancial {
   final double expectedPricePerYieldUnit;
   final Map<String, double> costDistribution;
 
+  /// معادلة اختيارية للإنتاج الكلي (لو فاضية = الإنتاج لكل وحدة × المساحة).
+  final String? yieldFormula;
+
   CalculatorFinancial({
     required this.expectedYieldPerUnit,
     required this.yieldUnit,
     required this.expectedPricePerYieldUnit,
     required this.costDistribution,
+    this.yieldFormula,
   });
 
   factory CalculatorFinancial.fromMap(Map<String, dynamic> m) {
@@ -150,8 +194,17 @@ class CalculatorFinancial {
       yieldUnit: SafeParse.string(m['yield_unit'], 'طن'),
       expectedPricePerYieldUnit: SafeParse.decimal(m['expected_price']),
       costDistribution: dist,
+      yieldFormula: _nonEmpty(m['yield_formula']),
     );
   }
+
+  Map<String, dynamic> toMap() => {
+        'expected_yield': expectedYieldPerUnit,
+        'yield_unit': yieldUnit,
+        'expected_price': expectedPricePerYieldUnit,
+        'cost_distribution': costDistribution,
+        if (yieldFormula != null) 'yield_formula': yieldFormula,
+      };
 }
 
 // ============= القالب الكامل =============
