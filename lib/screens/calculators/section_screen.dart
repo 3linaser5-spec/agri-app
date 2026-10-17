@@ -154,6 +154,7 @@ class _SectionScreenState extends State<SectionScreen> {
               builder: (_) => DynamicFormScreen(
                 template: template,
                 primaryColor: primary,
+                sectionName: widget.section.name,
               ),
             ),
           );

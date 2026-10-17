@@ -3,6 +3,7 @@ import '../../models/my_farm_model.dart';
 import '../../services/my_farm_service.dart';
 import '../../services/pdf_service.dart';
 import '../../services/notification_service.dart';
+import '../../utils/calc_engine.dart';
 import '../../utils/safe_parse.dart';
 
 class ProgramDetailsScreen extends StatefulWidget {
@@ -455,16 +456,17 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
       return const Center(child: Text('لا يوجد مشتريات'));
     }
 
-    double areaMultiplier = 1.0;
-    final area = _program.inputValues['area'];
-    if (area is num) areaMultiplier = area.toDouble();
+    // نفس دوال شاشة النتيجة بالظبط، فالكميات ما بتتغيرش بعد الحفظ
+    final inputs = _program.inputValues;
+    final totalAll =
+        CalcEngine.materialsTotalCost(_program.materials, inputs);
 
     return ListView(
       padding: const EdgeInsets.all(16),
-      children: _program.materials.map((m) {
-        final qty = (m['quantity_per_unit'] as num? ?? 0) * areaMultiplier;
-        final price = m['price_per_unit'] as num? ?? 0;
-        final totalCost = qty * price;
+      children: [
+        ..._program.materials.map((m) {
+        final qty = CalcEngine.materialQuantity(m, inputs);
+        final totalCost = CalcEngine.materialCost(m, inputs);
         final unit = m['unit']?.toString() ?? '';
 
         return Card(
@@ -486,7 +488,30 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
                     color: Color(0xFF047857))),
           ),
         );
-      }).toList(),
+        }),
+        const SizedBox(height: 4),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: const Color(0xFF047857),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.shopping_bag, color: Colors.white),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text('إجمالي تكلفة المشتريات',
+                    style: TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.bold)),
+              ),
+              Text('${totalAll.toStringAsFixed(0)} ج.م',
+                  style: const TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.bold)),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

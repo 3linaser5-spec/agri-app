@@ -40,9 +40,26 @@ jobs:
         if: always()
         run: python3 .github/scripts/annotate_analyze.py analyze.txt 2
 
-      - name: Fail if the analyzer found problems
+      # الاختبارات بتتشغّل بعد التحليل. النتيجة JSON بنحوّلها لـ annotations
+      # (أخطاء الاختبارات وأخطاء تجميع ملفات الاختبار) عشان تتقري من غير اللوج.
+      - name: Test
         run: |
+          flutter test --no-pub --reporter json > test.json 2>&1 || touch test.failed
+
+      - name: Annotate test failures
+        if: always()
+        run: |
+          if [ -f test.json ]; then python3 .github/scripts/annotate_tests.py test.json; fi
+
+      - name: Fail if the analyzer or the tests found problems
+        run: |
+          status=0
           if [ -f analyze.failed ]; then
             echo "flutter analyze reported errors or warnings (see annotations above)"
-            exit 1
+            status=1
           fi
+          if [ -f test.failed ]; then
+            echo "flutter test failed (see annotations above)"
+            status=1
+          fi
+          exit $status

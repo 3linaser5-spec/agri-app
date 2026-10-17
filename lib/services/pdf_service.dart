@@ -1,5 +1,6 @@
 import 'package:share_plus/share_plus.dart';
 import 'package:flutter_pdf_export/flutter_pdf_export.dart';
+import '../utils/calc_engine.dart';
 import '../utils/safe_parse.dart';
 import '../config/app_config.dart';
 
@@ -15,18 +16,12 @@ class PdfService {
     required Map<String, dynamic> financial,
   }) async {
     // ✅ حساب القيم
-    final double areaMultiplier =
-        SafeParse.doubleOrNull(inputValues['area']) ?? 1.0;
+    // نفس دوال شاشة النتيجة وتفاصيل البرنامج (مساحة + معادلات) عشان الأرقام تتطابق
+    final double areaMultiplier = CalcEngine.areaMultiplier(inputValues);
+    final double totalMaterialsCost =
+        CalcEngine.materialsTotalCost(materials, inputValues);
 
-    double totalMaterialsCost = 0;
-    for (var m in materials) {
-      final qty = SafeParse.decimal(m['quantity_per_unit']) * areaMultiplier;
-      final price = SafeParse.decimal(m['price_per_unit']);
-      totalMaterialsCost += qty * price;
-    }
-
-    final double expectedYield =
-        SafeParse.decimal(financial['expected_yield']) * areaMultiplier;
+    final double expectedYield = CalcEngine.yieldOf(financial, inputValues);
     final double expectedPrice = SafeParse.decimal(financial['expected_price']);
     final double totalRevenue = (expectedYield * expectedPrice).toDouble();
     final double netProfit = (totalRevenue - totalMaterialsCost).toDouble();
@@ -92,9 +87,8 @@ class PdfService {
 
       for (int i = 0; i < materials.length; i++) {
         final m = materials[i];
-        final qty = SafeParse.decimal(m['quantity_per_unit']) * areaMultiplier;
-        final price = SafeParse.decimal(m['price_per_unit']);
-        final cost = qty * price;
+        final qty = CalcEngine.materialQuantity(m, inputValues);
+        final cost = CalcEngine.materialCost(m, inputValues);
         final name = m['name'] ?? '';
         final unit = m['unit'] ?? '';
 
@@ -115,7 +109,7 @@ class PdfService {
       sections.add(PdfSection.paragraph(
           'الإيراد المتوقع: ${_formatNumber(totalRevenue)} ج.م'));
       sections.add(PdfSection.paragraph(
-          'إجمالي التكاليف: ${_formatNumber(totalMaterialsCost)} ج.م'));
+          'إجمالي تكلفة المشتريات: ${_formatNumber(totalMaterialsCost)} ج.م'));
       sections.add(PdfSection.paragraph(
           'صافي الربح: ${_formatNumber(netProfit)} ج.م'));
       sections.add(PdfSection.paragraph(

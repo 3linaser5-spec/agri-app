@@ -8,11 +8,13 @@ import 'calculator_result_screen.dart';
 class DynamicFormScreen extends StatefulWidget {
   final CalculatorTemplate template;
   final Color primaryColor;
+  final String? sectionName;
 
   const DynamicFormScreen({
     super.key,
     required this.template,
     required this.primaryColor,
+    this.sectionName,
   });
 
   @override
@@ -94,6 +96,7 @@ class _DynamicFormScreenState extends State<DynamicFormScreen> {
           template: widget.template,
           inputValues: Map<String, dynamic>.from(_values),
           primaryColor: widget.primaryColor,
+          sectionName: widget.sectionName,
         ),
       ),
     );
