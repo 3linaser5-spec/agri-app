@@ -38,12 +38,13 @@ class _DynamicFormScreenState extends State<DynamicFormScreen> {
       if (field.type == 'dropdown') {
         // القيمة الافتراضية للقائمة لازم تكون String وموجودة ضمن الخيارات،
         // وإلا DropdownButtonFormField<String> بيرمي خطأ في النوع
-        if (field.options.isNotEmpty) {
+        final options = _usableDropdownOptions(field);
+        if (options.isNotEmpty) {
           final d = field.defaultValue?.toString();
-          final available = field.options.map((o) => o['value']).toList();
+          final available = options.map((o) => o['value']).toList();
           _values[field.id] = (d != null && available.contains(d))
               ? d
-              : field.options.first['value'];
+              : options.first['value'];
         }
       } else if (field.defaultValue != null) {
         _values[field.id] = field.defaultValue;
@@ -72,6 +73,18 @@ class _DynamicFormScreenState extends State<DynamicFormScreen> {
   Future<void> _saveGovernorate(String gov) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('user_governorate', gov);
+  }
+
+  List<Map<String, String>> _usableDropdownOptions(FormFieldConfig field) {
+    final options = <Map<String, String>>[];
+    final seen = <String>{};
+    for (final option in field.options) {
+      final value = option['value']?.trim() ?? '';
+      final label = option['label']?.trim() ?? '';
+      if (value.isEmpty || label.isEmpty || !seen.add(value)) continue;
+      options.add({'value': value, 'label': label});
+    }
+    return options;
   }
 
   void _submit() {
@@ -529,6 +542,12 @@ class _DynamicFormScreenState extends State<DynamicFormScreen> {
           if (v != null && v.trim().isNotEmpty) {
             final n = NumberUtils.tryParseDouble(v);
             if (n == null) return 'ادخل رقم صحيح';
+            final id = field.id.toLowerCase();
+            final isAreaField = id == 'area' ||
+                id.contains('area') || field.label.contains('مساحة');
+            if (isAreaField && n <= 0) {
+              return 'ادخل مساحة أكبر من صفر';
+            }
             if (field.min != null && n < field.min!) {
               return 'أقل قيمة ${field.min}';
             }
@@ -553,23 +572,28 @@ class _DynamicFormScreenState extends State<DynamicFormScreen> {
   }
 
   Widget _buildDropdownField(FormFieldConfig field) {
-    if (field.options.isEmpty) {
+    final options = _usableDropdownOptions(field);
+    if (options.isEmpty) {
       // قالب بدون خيارات: كان بيرمي StateError عند field.options.first
       return Padding(
         padding: const EdgeInsets.only(bottom: 16),
-        child: InputDecorator(
-          decoration: InputDecoration(
-            labelText: field.label,
-            border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12)),
-            filled: true,
+        child: FormField<String>(
+          validator: (_) => field.required ? 'أضف خيارات صالحة لـ ${field.label}' : null,
+          builder: (state) => InputDecorator(
+            decoration: InputDecoration(
+              labelText: field.label,
+              border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12)),
+              filled: true,
+              errorText: state.errorText,
+            ),
+            child: const Text('لا توجد خيارات متاحة لهذا الحقل'),
           ),
-          child: const Text('لا توجد خيارات متاحة لهذا الحقل'),
         ),
       );
     }
     final current =
-        _values[field.id]?.toString() ?? field.options.first['value'];
+        _values[field.id]?.toString() ?? options.first['value']!;
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: DropdownButtonFormField<String>(
@@ -581,10 +605,10 @@ class _DynamicFormScreenState extends State<DynamicFormScreen> {
               borderRadius: BorderRadius.circular(12)),
           filled: true,
         ),
-        items: field.options
+        items: options
             .map((o) => DropdownMenuItem(
                   value: o['value'],
-                  child: Text(o['label'] ?? ''),
+                  child: Text(o['label']!),
                 ))
             .toList(),
         onChanged: (v) => setState(() => _values[field.id] = v),

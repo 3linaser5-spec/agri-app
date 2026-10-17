@@ -25,9 +25,59 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // ملف المستخدم: صاحبه فقط
+    // ملف المستخدم: صاحبه فقط، وبالحقول التي يكتبها التطبيق حالياً.
+    function validUserName() {
+      return request.resource.data.name is string
+        // size() في Rules يقيس حجم النص بالبايت؛ 400 بايت يغطي 100
+        // حرف Unicode تقريباً، مع إبقاء اسم الملف الشخصي غير فارغ.
+        && request.resource.data.name.size() >= 1
+        && request.resource.data.name.size() <= 400;
+    }
+
+    function validUserPhone() {
+      // التطبيق يحفظ الرقم بعد التطبيع إلى أرقام إنجليزية (رقم مصري).
+      return request.resource.data.phone is string
+        && request.resource.data.phone.matches('^01[0125][0-9]{8}$');
+    }
+
+    function validUserDocumentShape() {
+      return request.resource.data.keys().hasOnly([
+          'uid', 'name', 'phone', 'createdAt'
+        ])
+        && request.resource.data.uid is string
+        && request.resource.data.name is string
+        && request.resource.data.phone is string
+        && request.resource.data.createdAt is timestamp;
+    }
+
     match /users/{uid} {
-      allow read, write: if signedIn() && request.auth.uid == uid;
+      allow read: if signedIn() && request.auth.uid == uid;
+
+      // التسجيل ينشئ المستند بالحقول الأربعة نفسها التي يرسلها AuthService.
+      // serverTimestamp() يُقيَّد بوقت الطلب حتى لا يزوّر العميل تاريخ الإنشاء.
+      allow create: if signedIn()
+        && request.auth.uid == uid
+        && validUserDocumentShape()
+        && request.resource.data.uid == uid
+        && validUserName()
+        && validUserPhone()
+        && request.resource.data.createdAt == request.time;
+
+      // شاشة الملف الشخصي تستخدم set(..., merge: true) لتعديل الاسم فقط.
+      // uid والهاتف وتاريخ الإنشاء غير قابلين للتغيير من التطبيق.
+      allow update: if signedIn()
+        && request.auth.uid == uid
+        && resource.data.uid == uid
+        && validUserDocumentShape()
+        && request.resource.data.uid == uid
+        && validUserName()
+        && validUserPhone()
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.phone == resource.data.phone
+        && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['name']);
+
+      allow delete: if false;
     }
 
     // التشخيصات: صاحبها يكتب (create) ويقرأ، الأدمن يقرأ

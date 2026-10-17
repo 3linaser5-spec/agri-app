@@ -14,12 +14,12 @@ class CalcEngine {
   /// area أو مساحة، وإلا 1.
   static double areaMultiplier(Map<String, dynamic> inputs) {
     final direct = _asNum(inputs['area']);
-    if (direct != null) return direct;
+    if (direct != null) return direct > 0 ? direct : 1.0;
     for (final entry in inputs.entries) {
       final key = entry.key.toLowerCase();
       if (key.contains('area') || entry.key.contains('مساحة')) {
         final v = _asNum(entry.value);
-        if (v != null) return v;
+        if (v != null && v > 0) return v;
       }
     }
     return 1.0;
@@ -27,11 +27,11 @@ class CalcEngine {
 
   /// هل المساحة اتحددت صراحة؟ (للتنبيه لو اتحسبت على افتراض 1)
   static bool hasExplicitArea(Map<String, dynamic> inputs) {
-    if (_asNum(inputs['area']) != null) return true;
+    if ((_asNum(inputs['area']) ?? 0) > 0) return true;
     for (final entry in inputs.entries) {
       final key = entry.key.toLowerCase();
       if ((key.contains('area') || entry.key.contains('مساحة')) &&
-          _asNum(entry.value) != null) {
+          (_asNum(entry.value) ?? 0) > 0) {
         return true;
       }
     }

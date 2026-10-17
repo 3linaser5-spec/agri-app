@@ -1,37 +1,123 @@
 # إعدادات Firebase (قواعد الأمان والفهارس)
 
-الكود في التطبيق **بيخفي** أزرار الأدمن بس. اللي بيحمي البيانات فعلًا هو
-**قواعد Firestore**. الملفات هنا قوالب جاهزة، ولازم تتراجع وتتنشر من عندك.
+الكود في التطبيق قد يخفي أزرار الأدمن، لكن الحماية الفعلية للبيانات هي **قواعد
+Firestore**. هذه الملفات مهيأة لتُراجع وتُطبَّق من صاحب مشروع Firebase؛ لم يتم
+نشر القواعد من هذه النسخة.
+
+## الملفات وربط Firebase CLI
+
+يوجد في جذر المشروع `firebase.json` يربط Firebase CLI بالملفات الموجودة هنا:
+
+- `firebase/firestore.rules` لقواعد Firestore.
+- `firebase/firestore.indexes.json` للفهارس المركّبة.
+
+لا يوجد في المستودع `.firebaserc`، لذلك لا يُفترض مشروع Firebase بعينه. اختر
+المشروع الصحيح صراحةً في Firebase Console أو عبر `firebase use` قبل أي نشر.
 
 ## 1) الفهارس (Indexes)
-الاستعلامات `my_farm` (user_id + created_at) و`encyclopedia_items`
-(section_id + order) محتاجة فهارس مركّبة، من غيرها الشاشة بتعرض خطأ.
 
-    firebase deploy --only firestore:indexes
+الاستعلامات `my_farm` (`user_id` + `created_at`) و`encyclopedia_items`
+(`section_id` + `order`) تحتاج فهارس مركّبة. يمكن إنشاؤها من Console ←
+Firestore Database ← Indexes، أو بعد مراجعة المشروع شغّل يدويًا:
 
-أو من الـ Console ← Firestore ← Indexes، أو اضغط على الرابط اللي بيظهر في رسالة
-الخطأ (Flutter debug console) وهيفتح الفهرس جاهز للإنشاء.
+```sh
+firebase deploy --only firestore:indexes
+```
 
-## 2) القواعد (Rules)
-1. شغّل التطبيق وسجّل دخول بحساب الأدمن مرة واحدة.
-2. من Console ← Authentication انسخ الـ UID بتاعه.
-3. أنشئ يدويًا مستند `admins/<UID>` (أي حقل، مثلًا `role: "admin"`).
-4. جرّب `firestore.rules` في **Rules Playground** (قراءة/كتابة لكل collection).
-5. انشر: `firebase deploy --only firestore:rules`
+يمكن أيضًا فتح رابط إنشاء الفهرس الذي يظهر في رسالة الخطأ في سجل Flutter.
 
-> لو في أي collection تاني بيستخدمه التطبيق ومش موجود في الملف، القاعدة الأخيرة
-> `match /{document=**}` هتمنعه. راجع الـ Playground قبل النشر.
+## 2) قواعد Firestore وملف users
 
-## 3) مفاتيح الـ API
-- مفتاح Firebase في `lib/firebase_options.dart`: **قيّده** من Google Cloud Console
-  (Credentials) بحيث يشتغل مع package name `com.dahshory.agri.agri_app`
-  وبصمة SHA-1 بتاعة الـ keystore فقط. وتأكد إن الـ appId كامل
-  (من `flutterfire configure`).
-- مفتاح Gemini بيتمرر `--dart-define` وبيتحط جوه الـ APK، فأي حد يفك الـ APK
-  يقدر يستخرجه. قيّده بالـ package وSHA-1 من Google Cloud، وحط حد استخدام يومي
-  (quota)، أو انقل النداء لـ Cloud Function / Firebase AI Logic.
+قواعد `users/{uid}` تسمح لصاحب الحساب بقراءة مستنده فقط. عند الإنشاء يجب أن
+تكون الحقول التي يكتبها `AuthService` هي بالضبط:
 
-## 4) تحديث التطبيق
-`version.json` يقدر يحتوي حقل `sha256` (SHA-256 للـ APK بحروف صغيرة).
-لو موجود التطبيق بيتحقق منه قبل التثبيت. وروابط التحميل لازم تكون https على
-GitHub فقط.
+- `uid`: نص يساوي UID الخاص بالمستخدم.
+- `name`: نص غير فارغ، بحد أقصى 400 بايت في القاعدة؛ ويتحقق التسجيل في التطبيق
+  من 3 إلى 100 حرف، بينما يظل محرر الاسم الحالي قادراً على حفظ اسم غير فارغ.
+- `phone`: رقم مصري مطبّع إلى 11 رقمًا إنجليزيًا (`01[0125]xxxxxxxx`).
+- `createdAt`: Timestamp صادر من `FieldValue.serverTimestamp()` ومساوٍ لوقت
+  الطلب.
+
+التحديث الذي يستخدمه التطبيق حاليًا هو `set(..., merge: true)` لتغيير `name`
+فقط؛ لذلك تمنع القاعدة تغيير `uid` أو `phone` أو `createdAt` وتحظر الحذف.
+الحقول الزائدة والأنواع غير الصحيحة مرفوضة. أما باقي المجموعات فتظل خاضعة
+للصلاحيات المعرّفة في `firestore.rules`، والقاعدة النهائية تمنع أي مسار غير
+معرّف.
+
+## 3) حسابات الهاتف الحالية وملكية الرقم
+
+التطبيق الحالي يحوّل الرقم إلى بريد إلكتروني **اصطناعي** من الشكل
+`<normalized-phone>@agri-app.local` ويستخدم Email/Password. هذا الحساب الاصطناعي
+لا يثبت أن المستخدم يملك رقم الهاتف، ولا يرسل OTP. لا تعتمد على تسجيل الدخول
+الحالي لإثبات الملكية أو لاسترداد الرقم.
+
+إذا كانت ملكية الرقم مطلوبة:
+
+1. من Console ← Authentication ← Sign-in method فعّل **Phone**، واضبط متطلبات
+   Android (اسم الحزمة وبصمة SHA-1/reCAPTCHA عند طلبها) وحدود الاستخدام.
+2. غيّر تدفق التطبيق إلى Firebase Phone Auth: إرسال OTP، التحقق من الرمز، ثم
+   إنشاء/ربط الحساب بالاعتماد الناتج. تفعيل المزود في Console وحده لا يحوّل
+   التدفق الاصطناعي الحالي إلى OTP.
+3. اختبر سيناريوهات إعادة الإرسال، الحدّ من المحاولات، وأرقام الاختبار من
+   Console قبل الاعتماد على إثبات الملكية.
+
+## 4) إعداد الأدمن وتطبيق القواعد
+
+1. سجّل دخولًا بحساب الأدمن من التطبيق.
+2. من Console ← Authentication انسخ UID الخاص به.
+3. أنشئ يدويًا مستند `admins/<UID>` (مثلًا الحقل `role: "admin"`). الكتابة
+   إلى مجموعة `admins` ممنوعة من التطبيق.
+4. راجع `firestore.rules` في Rules Playground أو Firestore Emulator، خصوصًا
+   إنشاء/تحديث `users/{uid}` وعمليات المجموعات المستخدمة فعلًا.
+5. بعد اختيار المشروع الصحيح ومراجعة النتائج، انشر يدويًا عند الحاجة:
+
+```sh
+firebase deploy --only firestore:rules
+```
+
+هذه الخطوات توثيقية فقط ولم تُنفّذ هنا. إذا ظهرت مجموعة جديدة في التطبيق ولم
+تُضف إلى القواعد، فستمنعها القاعدة النهائية `match /{document=**}`.
+
+## 5) مفاتيح API
+
+مفاتيح العميل مثل `apiKey` في `lib/firebase_options.dart` **ليست أسرارًا**؛
+هي معرّفات/بيانات إعداد عامة للتطبيق ولا تحل محل قواعد Firestore أو التحقق من
+الهوية. لا تغيّر `apiKey` من هذه النسخة لأن القيمة الفعلية غير متاحة. استخدم
+Google Cloud Console لتقييد المفتاح باسم الحزمة
+`com.dahshory.agri.agri_app` وبصمة SHA-1 الصحيحة، مع إبقاء الحماية الحقيقية في
+قواعد Firebase.
+
+إعداد `apiKey` الحالي في `lib/firebase_options.dart` يبدو مبتوراً وغير مطابق
+لطول/صيغة القيمة التي يوفرها Firebase عادةً. لا يمكن استنتاج مفتاح أو `appId` أو
+`projectId` الصحيح من نسخة المستودع؛ على مالك المشروع تشغيل `flutterfire configure`
+أو نسخ القيم من إعداد تطبيق Android في Firebase Console، ثم التأكد من تطابق
+`google-services.json` المستخدم محلياً وسر GitHub `GOOGLE_SERVICES_JSON`.
+
+### Gemini عبر Firebase AI Logic
+
+التطبيق يستخدم حزمة Flutter `firebase_ai` لإرسال الطلبات عبر Firebase AI Logic؛
+لا تضف مفتاح Gemini إلى `lib/` أو `--dart-define` أو GitHub Actions. المفتاح
+المضمن في تطبيق عميل قابل للاستخراج حتى لو جاء من GitHub Secret.
+
+1. من Firebase Console افتح AI Services ← AI Logic، أكمِل إعداد المشروع واختر
+   مزود Gemini Developer API أو مزوداً مناسباً لمشروعك.
+2. من Security ← App Check سجّل تطبيق Android على **Play Integrity**، وتأكد من
+   إعداد بصمة التوقيع الصحيحة. الكود يفعّل Debug provider في debug وPlay Integrity
+   في release. لا تضع Debug token في إصدار منشور.
+3. راقب مؤشرات App Check وجرّب نسخة debug والنسخة الموقعة، ثم تحقق من أن Firebase
+   AI Logic يفرض App Check في صفحة APIs. عند رفض الطلبات راجع تسجيل التطبيق ورمز
+   App Check وإعداد Firebase قبل تعطيل enforcement.
+4. راقب الحصص والاستخدام، واضبط حدوداً مناسبة. App Check يقلل الطلبات من العملاء
+   غير المعتمدين لكنه لا يمنع إساءة الاستخدام من نسخة حقيقية مخترقة.
+
+إذا استُخدم مفتاح Gemini سابقاً داخل APK موزع، دوّره وأوقف القديم بعد التحقق من
+عمل المسار الجديد، واحذف سر `GEMINI_API_KEY` القديم من إعدادات GitHub، وراجع
+استخدام المشروع بحثاً عن نشاط غير مصرح به.
+
+## 6) تحديث التطبيق
+
+يمكن أن يحتوي `version.json` على `sha256` (قيمة SHA-256 للـ APK بحروف صغيرة).
+يفرض التطبيق الآن وجود قيمة سداسية عشرية من 64 خانة ويطابقها قبل التثبيت؛ لذلك
+يجب بناء APK ثم حساب hash له وإضافة `sha256` إلى `version.json` قبل رفع/الإعلان
+عن أي إصدار جديد. التحقق يكشف تلف الملف أثناء النقل لكنه لا يغني عن حماية حساب
+GitHub أو توقيع Android. روابط التحميل يجب أن تكون HTTPS على GitHub فقط.

@@ -21,6 +21,8 @@ void main() {
       expect(CalcEngine.areaMultiplier({}), 1.0);
       expect(CalcEngine.areaMultiplier({'area': ''}), 1.0);
       expect(CalcEngine.areaMultiplier({'area': 'abc'}), 1.0);
+      expect(CalcEngine.areaMultiplier({'area': 0}), 1.0);
+      expect(CalcEngine.areaMultiplier({'area': -2}), 1.0);
       expect(CalcEngine.areaMultiplier({'seed_rate': 20}), 1.0);
     });
   });
@@ -32,6 +34,8 @@ void main() {
       expect(CalcEngine.hasExplicitArea({}), isFalse);
       expect(CalcEngine.hasExplicitArea({'seed_rate': 5}), isFalse);
       expect(CalcEngine.hasExplicitArea({'area': ''}), isFalse);
+      expect(CalcEngine.hasExplicitArea({'area': 0}), isFalse);
+      expect(CalcEngine.hasExplicitArea({'area': -1}), isFalse);
     });
   });
 

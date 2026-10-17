@@ -8,6 +8,8 @@ import 'package:flutter/foundation.dart';
 class OfflineService {
   static Database? _db;
 
+  static String? get _currentUid => FirebaseAuth.instance.currentUser?.uid;
+
   static Future<Database> get database async {
     if (_db != null) return _db!;
     _db = await _initDB();
@@ -15,23 +17,37 @@ class OfflineService {
   }
 
   static Future<Database> _initDB() async {
-    String dbPath = join(await getDatabasesPath(), 'agri_offline.db');
-    return await openDatabase(
+    final dbPath = join(await getDatabasesPath(), 'agri_offline.db');
+    return openDatabase(
       dbPath,
-      version: 1,
+      version: 3,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE diagnoses (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ownerUid TEXT NOT NULL,
             userName TEXT,
             userPhone TEXT,
             question TEXT,
             imagePath TEXT,
             diagnosis TEXT,
+            analysisPending INTEGER NOT NULL DEFAULT 0,
             isSynced INTEGER DEFAULT 0,
             createdAt TEXT
           )
         ''');
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          // السجلات السابقة لا تحتوي هوية مالك موثوقة؛ تظل معزولة وغير قابلة
+          // للعرض أو المزامنة بدلاً من نسبها إلى أول حساب يسجل الدخول.
+          await db.execute('ALTER TABLE diagnoses ADD COLUMN ownerUid TEXT');
+        }
+        if (oldVersion < 3) {
+          await db.execute(
+            'ALTER TABLE diagnoses ADD COLUMN analysisPending INTEGER NOT NULL DEFAULT 0',
+          );
+        }
       },
     );
   }
@@ -42,83 +58,98 @@ class OfflineService {
     required String question,
     String? imagePath,
     required String diagnosis,
+    bool analysisPending = false,
   }) async {
+    final uid = _currentUid;
+    if (uid == null) {
+      throw StateError('يجب تسجيل الدخول قبل حفظ التشخيص.');
+    }
     final db = await database;
-    return await db.insert('diagnoses', {
+    return db.insert('diagnoses', {
+      'ownerUid': uid,
       'userName': userName,
       'userPhone': userPhone,
       'question': question,
       'imagePath': imagePath,
       'diagnosis': diagnosis,
+      'analysisPending': analysisPending ? 1 : 0,
       'isSynced': 0,
       'createdAt': DateTime.now().toIso8601String(),
     });
   }
 
   static Future<List<Map<String, dynamic>>> getAllDiagnoses() async {
+    final uid = _currentUid;
+    if (uid == null) return [];
     final db = await database;
-    return await db.query('diagnoses', orderBy: 'createdAt DESC');
+    return db.query(
+      'diagnoses',
+      where: 'ownerUid = ?',
+      whereArgs: [uid],
+      orderBy: 'createdAt DESC',
+    );
   }
 
-  // ✅ دالة جديدة: جلب التشخيصات اللي لسه متزامنتش
   static Future<List<Map<String, dynamic>>> getUnsyncedDiagnoses() async {
+    final uid = _currentUid;
+    if (uid == null) return [];
     final db = await database;
-    return await db.query('diagnoses',
-        where: 'isSynced = ?', whereArgs: [0]);
+    return db.query(
+      'diagnoses',
+      where: 'ownerUid = ? AND isSynced = ? AND analysisPending = ?',
+      whereArgs: [uid, 0, 0],
+      orderBy: 'createdAt ASC',
+    );
   }
 
-  // ✅ دالة جديدة: تحديث حالة التشخيص لـ "متزامن"
   static Future<void> markAsSynced(int id) async {
+    final uid = _currentUid;
+    if (uid == null) return;
     final db = await database;
-    await db.update('diagnoses', {'isSynced': 1},
-        where: 'id = ?', whereArgs: [id]);
+    await db.update(
+      'diagnoses',
+      {'isSynced': 1},
+      where: 'id = ? AND ownerUid = ?',
+      whereArgs: [id, uid],
+    );
   }
 
-  // ✅ دالة جديدة: مسح تشخيص واحد بالـ id
   static Future<void> deleteDiagnosis(int id) async {
+    final uid = _currentUid;
+    if (uid == null) return;
     final db = await database;
-    await db.delete('diagnoses', where: 'id = ?', whereArgs: [id]);
+    await db.delete(
+      'diagnoses',
+      where: 'id = ? AND ownerUid = ?',
+      whereArgs: [id, uid],
+    );
   }
 
-  // ✅ دالة جديدة: مزامنة كل التشخيصات المعلقة مع Firestore
   static bool _syncing = false;
 
   static Future<int> syncPendingDiagnoses() async {
-    // قفل: مستمع الاتصال ممكن يشغّل المزامنة أكتر من مرة في نفس الوقت
-    // وده كان بيرفع نفس التشخيص مرتين لـ Firestore
     if (_syncing) return 0;
     _syncing = true;
     try {
-      // 1. نتأكد إن في نت
-      final hasNet = await hasInternet();
-      if (!hasNet) {
-        debugPrint("⚠️ لا يوجد إنترنت، لن تتم المزامنة");
-        return 0;
-      }
-
-      // 2. نجيب كل التشخيصات اللي لسه متزامنتش
-      final pending = await getUnsyncedDiagnoses();
-      if (pending.isEmpty) {
-        debugPrint("✅ لا يوجد تشخيصات معلقة");
-        return 0;
-      }
-
-      debugPrint("🔄 جاري مزامنة ${pending.length} تشخيص...");
-
-      int successCount = 0;
-
-      // لازم مستخدم مسجّل: قواعد Firestore بتربط كل تشخيص بصاحبه
-      final uid = FirebaseAuth.instance.currentUser?.uid;
+      final uid = _currentUid;
       if (uid == null) {
-        debugPrint("⚠️ لا يوجد مستخدم مسجّل، لن تتم المزامنة");
+        debugPrint('⚠️ لا يوجد مستخدم مسجّل، لن تتم المزامنة');
+        return 0;
+      }
+      if (!await hasInternet()) {
+        debugPrint('⚠️ لا يوجد إنترنت، لن تتم المزامنة');
         return 0;
       }
 
-      // 3. نرفع كل واحد لـ Firestore
-      for (var item in pending) {
+      // getUnsyncedDiagnoses يقصر الصفوف على مالكها ويستبعد الطلبات
+      // التي لم تُحلّل بعد، كي لا تُرفع رسالة placeholder كتشخيص نهائي.
+      final pending = await getUnsyncedDiagnoses();
+      if (pending.isEmpty) return 0;
+
+      var successCount = 0;
+      for (final item in pending) {
         try {
-          // معرّف ثابت للمستند: لو الرفع نجح لكن markAsSynced فشل، إعادة
-          // المحاولة بتكتب نفس المستند بدل ما تعمل نسخة مكررة.
+          if (item['ownerUid'] != uid) continue;
           final stamp = (item['createdAt'] ?? '')
               .toString()
               .replaceAll(RegExp(r'[^0-9]'), '');
@@ -132,25 +163,20 @@ class OfflineService {
             'userName': item['userName'],
             'userPhone': item['userPhone'],
             'question': item['question'],
-            // imagePath اتشال: مسار محلي على الجهاز ملوش قيمة على السيرفر
             'diagnosis': item['diagnosis'],
             'createdAt': item['createdAt'],
             'syncedAt': FieldValue.serverTimestamp(),
           });
 
-          // 4. نحدّث حالته لـ "متزامن"
           await markAsSynced(item['id'] as int);
           successCount++;
-          debugPrint("✅ تمت مزامنة تشخيص رقم ${item['id']}");
         } catch (e) {
-          debugPrint("❌ فشلت مزامنة التشخيص رقم ${item['id']}: $e");
+          debugPrint('❌ فشلت مزامنة التشخيص رقم ${item['id']}: $e');
         }
       }
-
-      debugPrint("🎉 تمت مزامنة $successCount من ${pending.length}");
       return successCount;
     } catch (e) {
-      debugPrint("❌ خطأ في المزامنة: $e");
+      debugPrint('❌ خطأ في المزامنة: $e');
       return 0;
     } finally {
       _syncing = false;
@@ -158,13 +184,14 @@ class OfflineService {
   }
 
   static Future<bool> hasInternet() async {
-    // connectivity_plus 6.x يرجّع List<ConnectivityResult> وليس قيمة واحدة
     final result = await Connectivity().checkConnectivity();
     return result.isNotEmpty && !result.contains(ConnectivityResult.none);
   }
 
   static Future<void> clearAll() async {
+    final uid = _currentUid;
+    if (uid == null) return;
     final db = await database;
-    await db.delete('diagnoses');
+    await db.delete('diagnoses', where: 'ownerUid = ?', whereArgs: [uid]);
   }
 }

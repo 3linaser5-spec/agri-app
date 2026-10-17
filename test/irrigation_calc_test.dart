@@ -35,6 +35,10 @@ void main() {
           isNull);
       expect(
           IrrigationCalc.waterNeed(
+              areaM2: -10, etcMmDay: 5, efficiency: 0.9, intervalDays: 1),
+          isNull);
+      expect(
+          IrrigationCalc.waterNeed(
               areaM2: 100, etcMmDay: 5, efficiency: 1.5, intervalDays: 1),
           isNull);
       expect(
@@ -288,6 +292,12 @@ void main() {
       expect(dxf, contains('TABLES'));
       expect(dxf.trimRight().endsWith('EOF'), isTrue);
       expect('LATERAL'.allMatches(dxf).length, greaterThanOrEqualTo(20));
+    });
+
+    test('layer colors are written as numeric DXF values', () {
+      final dxf = (DxfBuilder()..line('TEST', 5, 0, 0, 1, 1)).build();
+      expect(dxf, contains('62\n5\n'));
+      expect(dxf, isNot(contains('62\n\$color\n')));
     });
 
     test('non-ASCII text is stripped', () {
