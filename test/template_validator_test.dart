@@ -3,13 +3,13 @@ import 'package:flutter_test/flutter_test.dart';
 
 Map<String, dynamic> validTemplate() => <String, dynamic>{
       'name': 'قمح',
-      'fields': [
+      'fields': <Map<String, dynamic>>[
         {'id': 'seed_rate', 'label': 'معدل التقاوي', 'type': 'number'},
       ],
-      'tasks': [
+      'tasks': <Map<String, dynamic>>[
         {'title': 'ري', 'day_from_start': 0},
       ],
-      'materials': [
+      'materials': <Map<String, dynamic>>[
         {
           'name': 'تقاوي',
           'quantity_per_unit': 50,
