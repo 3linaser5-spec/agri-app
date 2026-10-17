@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/calculator_models.dart';
 import '../../services/calculator_service.dart';
+import 'irrigation_calculator_screen.dart';
 import 'section_screen.dart';
 import '../../utils/color_utils.dart';
 
@@ -93,6 +94,24 @@ class _CalculatorHubScreenState extends State<CalculatorHubScreen> {
                             ),
                           ),
                         ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    Card(
+                      child: ListTile(
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) =>
+                                  const IrrigationCalculatorScreen()),
+                        ),
+                        leading: const Icon(Icons.water_drop,
+                            color: Color(0xFF0284C7)),
+                        title: const Text('تصميم شبكات الري',
+                            style: TextStyle(fontWeight: FontWeight.bold)),
+                        subtitle: const Text(
+                            'تنقيط، رش، سطحي، محوري + المضخة وتصدير DXF'),
+                        trailing: const Icon(Icons.chevron_left),
                       ),
                     ),
                     const SizedBox(height: 20),
