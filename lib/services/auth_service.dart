@@ -6,7 +6,8 @@ class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  // تحويل رقم الموبايل إلى بريد إلكتروني وهمي (لأن Firebase Auth يحتاج بريدًا)
+  // تحويل رقم الموبايل إلى بريد إلكتروني اصطناعي (لأن هذا التدفق يستخدم
+  // Email/Password). هذا لا يثبت ملكية الرقم؛ استخدم Phone Auth/OTP عند الحاجة.
   // الرقم بيتحوّل لأرقام إنجليزية الأول عشان نفس الرقم يطلع نفس الحساب
   // سواء اتكتب ٠١٠١٢٣٤٥٦٧٨ أو 01012345678
   String _phoneToEmail(String phone) =>
@@ -19,14 +20,17 @@ class AuthService {
     required String password,
   }) async {
     try {
+      final normalizedName = name.trim();
+      final normalizedPhone = NumberUtils.normalize(phone);
+
       // 1. إنشاء المستخدم في نظام Firebase Auth
       final credential = await _auth.createUserWithEmailAndPassword(
-        email: _phoneToEmail(phone),
+        email: _phoneToEmail(normalizedPhone),
         password: password,
       );
 
       // ✅ 2. حفظ الاسم في حساب المستخدم نفسه عشان يفضل موجود بعد إعادة فتح التطبيق
-      await credential.user!.updateDisplayName(name);
+      await credential.user!.updateDisplayName(normalizedName);
       
       // ✅ 3. إعادة تحميل بيانات المستخدم عشان الاسم يتحدث فوراً
       await credential.user!.reload();
@@ -34,14 +38,15 @@ class AuthService {
       // ✅ 4. تخزين بيانات المستخدم الإضافية في Firestore
       await _db.collection('users').doc(credential.user!.uid).set({
         'uid': credential.user!.uid,
-        'name': name,
-        'phone': NumberUtils.normalize(phone),
+        'name': normalizedName,
+        'phone': normalizedPhone,
         'createdAt': FieldValue.serverTimestamp(),
       });
       
       return null; // نجاح
     } on FirebaseAuthException catch (e) {
-      return _mapError(e.code); // تحويل الخطأ إلى رسالة عربية
+      // لا نكشف أن الرقم موجود مسبقاً؛ الرسالة الموحدة تقلل تعداد الأرقام.
+      return _mapError(e.code, forRegistration: true);
     } catch (e) {
       return 'حدث خطأ غير متوقع، حاول مرة أخرى.';
     }
@@ -72,10 +77,18 @@ class AuthService {
   User? get currentUser => _auth.currentUser;
 
   // دالة لتحويل أكواد الأخطاء إلى رسائل بالعربية
-  String _mapError(String code) {
+  static const _registrationFailure =
+      'تعذر إنشاء الحساب بهذه البيانات، حاول مرة أخرى.';
+
+  String _mapError(String code, {bool forRegistration = false}) {
+    if (forRegistration &&
+        (code == 'email-already-in-use' || code == 'invalid-email')) {
+      return _registrationFailure;
+    }
+
     switch (code) {
       case 'email-already-in-use':
-        return 'رقم الموبايل مسجّل بالفعل.';
+        return _registrationFailure;
       case 'invalid-email':
         return 'صيغة رقم الموبايل غير صحيحة.';
       case 'weak-password':

@@ -1,8 +1,11 @@
 import 'dart:io';
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_ai/firebase_ai.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -20,7 +23,6 @@ import 'package:open_filex/open_filex.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:convert';
-import 'package:google_generative_ai/google_generative_ai.dart';
 import 'firebase_options.dart';
 import 'config/app_config.dart';
 import 'data/egypt_data.dart';
@@ -38,6 +40,7 @@ import 'utils/color_utils.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  var firebaseReady = false;
 
   // الثيم الأول: لو Firebase فشل التطبيق يفضل بالثيم المحفوظ
   try {
@@ -51,11 +54,16 @@ void main() async {
       options: DefaultFirebaseOptions.currentPlatform,
     );
 
+    await FirebaseAppCheck.instance.activate(
+      androidProvider:
+          kDebugMode ? AndroidProvider.debug : AndroidProvider.playIntegrity,
+    );
+    firebaseReady = true;
+
     try {
       await NotificationService.initialize();
       await NotificationService.subscribeToPestAlerts();
-      final token = await NotificationService.getToken();
-      debugPrint("🔑 FCM Token: $token");
+      await NotificationService.getToken();
     } catch (e) {
       debugPrint("خطأ في تهيئة الإشعارات: $e");
     }
@@ -63,7 +71,7 @@ void main() async {
     debugPrint("Firebase initialization error: $e");
   }
 
-  runApp(const AgriConsultantApp());
+  runApp(AgriConsultantApp(firebaseReady: firebaseReady));
 }
 
 // ---------------- VersionService ----------------
@@ -106,7 +114,7 @@ class VersionService {
           'version': latestVersion,
           'downloadUrl': info['download_url'] ?? '',
           'changelog': info['changelog'] ?? '',
-          // SHA-256 اختياري لملف الـ APK (لو موجود في version.json بنتحقق منه)
+          // يجب أن ينشر مالك الإصدار SHA-256 صالحاً في version.json.
           'sha256': info['sha256'],
         };
       }
@@ -160,6 +168,11 @@ class VersionService {
         onError('رابط التحميل غير موثوق');
         return;
       }
+      final expected = sha256?.trim().toLowerCase();
+      if (expected == null || !RegExp(r'^[a-f0-9]{64}$').hasMatch(expected)) {
+        onError('بيانات التحديث لا تحتوي قيمة SHA-256 صالحة؛ أوقف التحميل');
+        return;
+      }
 
       if (Platform.isAndroid) {
         final installStatus = await Permission.requestInstallPackages.status;
@@ -189,15 +202,11 @@ class VersionService {
         },
       );
 
-      // لو version.json فيه sha256 لازم يطابق الملف المحمّل
-      final expected = sha256?.trim().toLowerCase();
-      if (expected != null && expected.isNotEmpty) {
-        final actual = await _sha256Of(File(filePath));
-        if (actual != expected) {
-          await File(filePath).delete();
-          onError('فشل التحقق من سلامة الملف');
-          return;
-        }
+      final actual = await _sha256Of(File(filePath));
+      if (actual != expected) {
+        await File(filePath).delete();
+        onError('فشل التحقق من سلامة الملف');
+        return;
       }
 
       onComplete(filePath);
@@ -431,7 +440,8 @@ class ThemeController {
 
 // ---------------- AgriConsultantApp ----------------
 class AgriConsultantApp extends StatefulWidget {
-  const AgriConsultantApp({super.key});
+  final bool firebaseReady;
+  const AgriConsultantApp({super.key, required this.firebaseReady});
 
   @override
   State<AgriConsultantApp> createState() => _AgriConsultantAppState();
@@ -454,9 +464,11 @@ class _AgriConsultantAppState extends State<AgriConsultantApp> {
         .listen((List<ConnectivityResult> results) async {
       final hasNet = !results.contains(ConnectivityResult.none);
       if (hasNet) {
-        debugPrint("🌐 عاد الاتصال بالإنترنت، جاري المزامنة...");
-        final synced = await OfflineService.syncPendingDiagnoses();
-        if (synced > 0) debugPrint("✅ تمت مزامنة $synced تشخيص");
+        if (widget.firebaseReady) {
+          debugPrint("🌐 عاد الاتصال بالإنترنت، جاري المزامنة...");
+          final synced = await OfflineService.syncPendingDiagnoses();
+          if (synced > 0) debugPrint("✅ تمت مزامنة $synced تشخيص");
+        }
         _checkForUpdate();
       } else {
         debugPrint("📴 انقطع الاتصال بالإنترنت");
@@ -529,9 +541,32 @@ class _AgriConsultantAppState extends State<AgriConsultantApp> {
             fontFamily: 'Cairo',
             brightness: Brightness.dark,
           ),
-          home: const SplashScreen(),
+          home: widget.firebaseReady
+              ? const SplashScreen()
+              : const FirebaseSetupErrorScreen(),
         );
       },
+    );
+  }
+}
+
+class FirebaseSetupErrorScreen extends StatelessWidget {
+  const FirebaseSetupErrorScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Text(
+              'تعذر الاتصال بخدمات Firebase أو التحقق من التطبيق. تحقق من إعداد Firebase وApp Check ثم أعد تشغيل التطبيق.',
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -1766,8 +1801,16 @@ class _HomeDashboardState extends State<HomeDashboard> {
 class AiScannerScreen extends StatefulWidget {
   final String userName;
   final String userPhone;
+  final String? initialQuestion;
+  final String? initialImagePath;
+  final int? pendingDiagnosisId;
   const AiScannerScreen(
-      {super.key, required this.userName, required this.userPhone});
+      {super.key,
+      required this.userName,
+      required this.userPhone,
+      this.initialQuestion,
+      this.initialImagePath,
+      this.pendingDiagnosisId});
 
   @override
   State<AiScannerScreen> createState() => _AiScannerScreenState();
@@ -1782,11 +1825,14 @@ class _AiScannerScreenState extends State<AiScannerScreen> {
   File? _imageFile;
   final ImagePicker _picker = ImagePicker();
 
-  final String _apiKey = const String.fromEnvironment('GEMINI_API_KEY');
-
   @override
   void initState() {
     super.initState();
+    _questionCtrl.text = widget.initialQuestion ?? '';
+    final path = widget.initialImagePath;
+    if (path != null && File(path).existsSync()) {
+      _imageFile = File(path);
+    }
     _initVoiceSettings();
   }
 
@@ -1943,29 +1989,24 @@ $_diagnosis
       return;
     }
 
-    if (_apiKey.isEmpty) {
-      setState(() {
-        _diagnosis =
-            'خطأ في الإعدادات: مفتاح API (GEMINI_API_KEY) غير موجود.\nيرجى التأكد من تمرير المفتاح أثناء عملية البناء (Build) باستخدام --dart-define.';
-      });
-      return;
-    }
-
     final hasInternet = await OfflineService.hasInternet();
     if (!hasInternet) {
       if (mounted) {
         setState(() {
           _diagnosis =
-              '⚠️ لا يوجد اتصال بالإنترنت حالياً.\nتم حفظ سؤالك في سجل التشخيصات، أعد إرساله عند عودة الاتصال للحصول على التشخيص.';
+              '⚠️ لا يوجد اتصال بالإنترنت حالياً.\nحُفظ السؤال محلياً، لكنه لم يُحلل بعد. أعد إرسال الطلب بعد عودة الاتصال للحصول على التشخيص.';
         });
       }
-      await OfflineService.saveDiagnosis(
-        userName: widget.userName,
-        userPhone: widget.userPhone,
-        question: question,
-        imagePath: _imageFile?.path,
-        diagnosis: 'لم يُرسل بعد: لا يوجد اتصال بالإنترنت',
-      );
+      if (widget.pendingDiagnosisId == null) {
+        await OfflineService.saveDiagnosis(
+          userName: widget.userName,
+          userPhone: widget.userPhone,
+          question: question,
+          imagePath: _imageFile?.path,
+          diagnosis: 'لم يُرسل بعد: لا يوجد اتصال بالإنترنت',
+          analysisPending: true,
+        );
+      }
       return;
     }
 
@@ -1982,9 +2023,8 @@ $_diagnosis
       try {
         attempt++;
 
-        final model = GenerativeModel(
+        final model = FirebaseAI.googleAI().generativeModel(
           model: AppConfig.geminiModel,
-          apiKey: _apiKey,
           generationConfig: GenerationConfig(
             temperature: 0.3,
             maxOutputTokens: 4096,
@@ -2031,11 +2071,13 @@ $_diagnosis
 سؤال/مشكلة المزارع: $question
 """;
 
-        List<Part> parts = [TextPart(prompt)];
+        final parts = <Part>[TextPart(prompt)];
 
         if (_imageFile != null) {
           final imageBytes = await _imageFile!.readAsBytes();
-          parts.add(DataPart(_imageMimeType(_imageFile!.path), imageBytes));
+          parts.add(
+            InlineDataPart(_imageMimeType(_imageFile!.path), imageBytes),
+          );
         }
 
         final response = await model.generateContent([Content.multi(parts)]);
@@ -2059,6 +2101,10 @@ $_diagnosis
             imagePath: _imageFile?.path,
             diagnosis: diagnosisText,
           );
+          final oldPendingId = widget.pendingDiagnosisId;
+          if (oldPendingId != null) {
+            await OfflineService.deleteDiagnosis(oldPendingId);
+          }
         } catch (e) {
           debugPrint("⚠️ تعذر حفظ التشخيص محلياً: $e");
         }
@@ -2288,6 +2334,24 @@ class _HistoryScreenState extends State<HistoryScreen> {
     }
   }
 
+  Future<void> _retryDiagnosis(Map<String, dynamic> item) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => AiScannerScreen(
+          userName: user.displayName ?? 'مزارع',
+          userPhone: user.email?.split('@').first ?? '',
+          initialQuestion: item['question']?.toString() ?? '',
+          initialImagePath: item['imagePath']?.toString(),
+          pendingDiagnosisId: item['id'] as int,
+        ),
+      ),
+    );
+    if (mounted) await _loadHistory();
+  }
+
   void _filterItems() {
     if (!mounted) return;
     final query = _searchCtrl.text.trim().toLowerCase();
@@ -2474,7 +2538,33 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                                 color: Colors.grey)),
                                         Row(
                                           children: [
-                                            if (item['isSynced'] == 0)
+                                            if (item['analysisPending'] == 1)
+                                              IconButton(
+                                                tooltip: 'إعادة إرسال الفحص',
+                                                icon: const Icon(
+                                                  Icons.replay,
+                                                  color: Color(0xFF047857),
+                                                  size: 20,
+                                                ),
+                                                onPressed: () =>
+                                                    _retryDiagnosis(item),
+                                                padding: EdgeInsets.zero,
+                                                constraints:
+                                                    const BoxConstraints(),
+                                              ),
+                                            if (item['analysisPending'] == 1)
+                                              const Padding(
+                                                padding:
+                                                    EdgeInsets.only(left: 8),
+                                                child: Text(
+                                                  'لم يُحلل بعد',
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                    color: Colors.deepOrange,
+                                                  ),
+                                                ),
+                                              )
+                                            else if (item['isSynced'] == 0)
                                               const Padding(
                                                 padding:
                                                     EdgeInsets.only(left: 8),

@@ -166,9 +166,10 @@ class _TemplateEditorScreenState extends State<TemplateEditorScreen>
     final dist = <String, double>{};
     for (final e in _costDistribution.entries) {
       final v = NumberUtils.tryParseDouble(e.value.text);
-      if (e.value.text.trim().isNotEmpty && v == null) {
+      if (e.value.text.trim().isNotEmpty &&
+          (v == null || !v.isFinite || v < 0 || v > 100)) {
         _tabController.animateTo(0);
-        _snack('نسبة "${e.key}" غير صالحة');
+        _snack('نسبة "${e.key}" لازم تكون رقمًا بين 0 و100');
         return;
       }
       if (v != null && v > 0) dist[e.key] = v;
@@ -180,10 +181,22 @@ class _TemplateEditorScreenState extends State<TemplateEditorScreen>
       return;
     }
 
-    final expectedYield =
-        NumberUtils.tryParseDouble(_expectedYieldCtrl.text) ?? 0;
-    final expectedPrice =
-        NumberUtils.tryParseDouble(_expectedPriceCtrl.text) ?? 0;
+    final yieldText = _expectedYieldCtrl.text.trim();
+    final expectedYield = NumberUtils.tryParseDouble(yieldText);
+    if (yieldText.isNotEmpty &&
+        (expectedYield == null || !expectedYield.isFinite || expectedYield < 0)) {
+      _tabController.animateTo(0);
+      _snack('الإنتاج المتوقع لازم يكون رقمًا 0 أو أكبر');
+      return;
+    }
+    final priceText = _expectedPriceCtrl.text.trim();
+    final expectedPrice = NumberUtils.tryParseDouble(priceText);
+    if (priceText.isNotEmpty &&
+        (expectedPrice == null || !expectedPrice.isFinite || expectedPrice < 0)) {
+      _tabController.animateTo(0);
+      _snack('سعر البيع لازم يكون رقمًا 0 أو أكبر، ولا يمكن تحويله لصفر');
+      return;
+    }
     final yieldFormula = _yieldFormulaCtrl.text.trim();
 
     final data = <String, dynamic>{
@@ -199,10 +212,10 @@ class _TemplateEditorScreenState extends State<TemplateEditorScreen>
       'tasks': _tasks,
       'materials': _materials,
       'financial': <String, dynamic>{
-        'expected_yield': expectedYield,
+        'expected_yield': expectedYield ?? 0,
         'yield_unit':
             _yieldUnitCtrl.text.trim().isEmpty ? 'طن' : _yieldUnitCtrl.text.trim(),
-        'expected_price': expectedPrice,
+        'expected_price': expectedPrice ?? 0,
         'cost_distribution': dist,
         if (yieldFormula.isNotEmpty) 'yield_formula': yieldFormula,
       },
@@ -754,7 +767,8 @@ class _FieldDialogState extends State<_FieldDialog> {
 
   String? _optionalNumber(String? v) {
     if (v == null || v.trim().isEmpty) return null;
-    return NumberUtils.tryParseDouble(v) == null ? 'رقم غير صالح' : null;
+    final n = NumberUtils.tryParseDouble(v);
+    return n == null || !n.isFinite ? 'رقم غير صالح' : null;
   }
 
   void _submit() {
@@ -822,8 +836,10 @@ class _FieldDialogState extends State<_FieldDialog> {
                     hintText: 'مثال: area',
                   ),
                   validator: (v) {
-                    final id = v?.trim() ?? '';
+                    final raw = v ?? '';
+                    final id = raw.trim();
                     if (id.isEmpty) return 'ادخل الـ ID';
+                    if (raw != id) return 'الـ ID لا يقبل فراغات في بدايته أو نهايته';
                     if (!_idRegex.hasMatch(id)) {
                       return 'حروف إنجليزية وأرقام و _ فقط، ويبدأ بحرف';
                     }
@@ -870,11 +886,25 @@ class _FieldDialogState extends State<_FieldDialog> {
                       helperMaxLines: 2,
                     ),
                     validator: (v) {
+                      for (final raw in _options.text.split('\n')) {
+                        final line = raw.trim();
+                        if (line.isEmpty) continue;
+                        final bar = line.indexOf('|');
+                        if (bar != -1 &&
+                            (line.substring(0, bar).trim().isEmpty ||
+                                line.substring(bar + 1).trim().isEmpty)) {
+                          return 'كل خيار لازم يكون له قيمة واسم غير فارغين';
+                        }
+                      }
                       final opts = _parseOptions();
                       if (opts.isEmpty) return 'ادخل خيار واحد على الأقل';
                       final values = opts.map((o) => o['value']).toList();
                       if (values.toSet().length != values.length) {
                         return 'فيه قيم مكررة بين الخيارات';
+                      }
+                      final labels = opts.map((o) => o['label']).toList();
+                      if (labels.toSet().length != labels.length) {
+                        return 'فيه أسماء مكررة بين الخيارات';
                       }
                       return null;
                     },

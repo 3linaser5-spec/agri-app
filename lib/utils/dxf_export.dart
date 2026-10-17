@@ -90,7 +90,7 @@ class DxfBuilder {
       _pair(b, 0, 'LAYER');
       _pair(b, 2, name);
       _pair(b, 70, '0');
-      _pair(b, 62, '$color');
+      _pair(b, 62, color.toString());
       _pair(b, 6, 'CONTINUOUS');
     });
     _pair(b, 0, 'ENDTAB');

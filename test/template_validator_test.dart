@@ -106,6 +106,58 @@ void main() {
       expect(TemplateValidator.validate(t), isEmpty);
     });
 
+    test('rejects ids with whitespace and non-boolean required', () {
+      final t = validTemplate();
+      final field = (t['fields'] as List)[0] as Map<String, dynamic>;
+      field['id'] = 'seed rate';
+      field['required'] = 'true';
+      final errors = TemplateValidator.validate(t);
+      expect(anyContains(errors, 'id'), isTrue);
+      expect(anyContains(errors, 'required'), isTrue);
+    });
+
+    test('rejects invalid numeric field ranges and defaults', () {
+      final t = validTemplate();
+      final field = (t['fields'] as List)[0] as Map<String, dynamic>;
+      field['min'] = 10;
+      field['max'] = 5;
+      field['default'] = 20;
+      final errors = TemplateValidator.validate(t);
+      expect(anyContains(errors, 'max'), isTrue);
+      expect(anyContains(errors, 'الافتراضية'), isTrue);
+    });
+
+    test('rejects empty and duplicate dropdown options', () {
+      final t = validTemplate();
+      (t['fields'] as List).add({
+        'id': 'crop',
+        'label': 'المحصول',
+        'type': 'dropdown',
+        'options': [
+          {'value': 'a', 'label': 'أ'},
+          {'value': 'a', 'label': 'أخرى'},
+          {'value': '', 'label': 'فارغ'},
+        ],
+      });
+      final errors = TemplateValidator.validate(t);
+      expect(anyContains(errors, 'مكررة'), isTrue);
+      expect(anyContains(errors, 'الخيار 3'), isTrue);
+    });
+
+    test('validates non-negative financial ranges and distribution sum', () {
+      final t = validTemplate();
+      final financial = t['financial'] as Map<String, dynamic>;
+      financial['expected_price'] = -1;
+      financial['cost_distribution'] = {'تقاوي': 40, 'عمالة': 40};
+      final errors = TemplateValidator.validate(t);
+      expect(anyContains(errors, 'expected_price'), isTrue);
+      expect(anyContains(errors, 'مجموعها 100'), isTrue);
+
+      financial['expected_price'] = 100;
+      financial['cost_distribution'] = {'تقاوي': 101};
+      expect(anyContains(TemplateValidator.validate(t), 'بين 0 و100'), isTrue);
+    });
+
     test('rejects tasks with a negative or missing day', () {
       final t = validTemplate();
       (t['tasks'] as List)[0]['day_from_start'] = -1;

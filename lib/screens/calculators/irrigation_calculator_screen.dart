@@ -200,6 +200,33 @@ class _IrrigationCalculatorScreenState
       return;
     }
 
+    if (_type != IrrigationType.pivot &&
+        (!_v('area').isFinite || _v('area') <= 0)) {
+      _snack('المساحة لازم تكون أكبر من صفر');
+      return;
+    }
+
+    final integerKeys = <String>[
+      if (_type == IrrigationType.drip || _type == IrrigationType.sprinkler)
+        'sectors',
+      if (_type == IrrigationType.drip) 'emitters',
+    ];
+    for (final key in integerKeys) {
+      final value = _v(key);
+      if (!value.isFinite || value < 1 || value != value.truncateToDouble()) {
+        _snack('${_labels[key] ?? key} لازم يكون عددًا صحيحًا أكبر من صفر');
+        return;
+      }
+    }
+    if (_type == IrrigationType.sprinkler ||
+        _type == IrrigationType.surface) {
+      final aspect = _v('aspect');
+      if (!aspect.isFinite || aspect <= 0) {
+        _snack('نسبة طول/عرض الحقل لازم تكون أكبر من صفر');
+        return;
+      }
+    }
+
     final etc = IrrigationCalc.etc(_v('eto'), _v('kc'));
     final eff = _v('eff') / 100;
     final interval = _v('interval');

@@ -16,8 +16,12 @@ class Validators {
 
   // التحقق من الاسم
   static String? name(String? value) {
-    if (value == null || value.trim().length < 3) {
+    final normalized = value?.trim() ?? '';
+    if (normalized.length < 3) {
       return 'الاسم قصير جدًا (3 أحرف على الأقل)';
+    }
+    if (normalized.length > 100) {
+      return 'الاسم طويل جدًا (100 حرف كحد أقصى)';
     }
     return null;
   }

@@ -5,6 +5,9 @@ on:
     branches: [ main, "رئيسي" ]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -196,35 +199,50 @@ jobs:
           cat android/app/build.gradle
 
       - name: Create google-services.json
+        env:
+          GOOGLE_SERVICES_JSON_B64: ${{ secrets.GOOGLE_SERVICES_JSON }}
         run: |
-          echo '${{ secrets.GOOGLE_SERVICES_JSON }}' | base64 -d > android/app/google-services.json
+          umask 077
+          printf '%s' "$GOOGLE_SERVICES_JSON_B64" | base64 --decode > android/app/google-services.json
 
       - name: Decode Keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
-          echo '${{ secrets.KEYSTORE_BASE64 }}' | base64 -d > android/app/agri-release-key.jks
+          umask 077
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > android/app/agri-release-key.jks
+          test -s android/app/agri-release-key.jks
 
       - name: Create key.properties
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
         run: |
-          cat << EOF > android/key.properties
-          storePassword=${{ secrets.KEYSTORE_PASSWORD }}
-          keyPassword=${{ secrets.KEY_PASSWORD }}
-          keyAlias=${{ secrets.KEY_ALIAS }}
-          storeFile=agri-release-key.jks
-          EOF
+          umask 077
+          {
+            printf 'storePassword=%s\n' "$KEYSTORE_PASSWORD"
+            printf 'keyPassword=%s\n' "$KEY_PASSWORD"
+            printf 'keyAlias=%s\n' "$KEY_ALIAS"
+            printf 'storeFile=agri-release-key.jks\n'
+          } > android/key.properties
 
       - name: Install dependencies
         run: flutter pub get
 
       - name: Generate Launcher Icons
-        run: |
-          flutter pub add flutter_launcher_icons
-          flutter pub run flutter_launcher_icons
+        run: dart run flutter_launcher_icons
 
       - name: Build Signed APK
-        run: flutter build apk --release --no-tree-shake-icons --dart-define=GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+        run: flutter build apk --release --no-tree-shake-icons
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: app-release
           path: build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Remove signing material
+        if: ${{ always() }}
+        run: |
+          rm -f android/app/agri-release-key.jks android/key.properties android/app/google-services.json
