@@ -31,6 +31,7 @@ import 'data/egypt_data.dart';
 import 'services/auth_service.dart';
 import 'services/offline_service.dart';
 import 'services/notification_service.dart';
+import 'services/weather_push_service.dart';
 import 'services/calculator_service.dart';
 import 'services/encyclopedia_service.dart';
 import 'models/encyclopedia_model.dart';
@@ -63,9 +64,9 @@ void main() async {
     firebaseReady = true;
 
     try {
+      WeatherPushService.initialize();
       await NotificationService.initialize();
       await NotificationService.subscribeToPestAlerts();
-      await NotificationService.getToken();
     } catch (e) {
       debugPrint("خطأ في تهيئة الإشعارات: $e");
     }
@@ -946,11 +947,16 @@ class _HomeDashboardState extends State<HomeDashboard> {
   String _selectedGovernorate = "";
   List<GovernorateInfo> _governorates = [];
   WeatherSnapshot? _weatherSnapshot;
+  double? _weatherLatitude;
+  double? _weatherLongitude;
+  bool _weatherPushEnabled = false;
+  bool _weatherPushBusy = false;
 
   @override
   void initState() {
     super.initState();
     _loadCachedWeather();
+    _loadWeatherPushPreference();
   }
 
   bool _isAdmin() {
@@ -1066,6 +1072,93 @@ class _HomeDashboardState extends State<HomeDashboard> {
     if (mounted) setState(fn);
   }
 
+  Future<void> _loadWeatherPushPreference() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    final enabled = await WeatherPushService.isEnabled(uid);
+    if (FirebaseAuth.instance.currentUser?.uid != uid) return;
+    _safeSet(() => _weatherPushEnabled = enabled);
+    if (enabled) {
+      try {
+        await WeatherPushService.syncStoredLocation(uid);
+      } catch (error) {
+        debugPrint('تعذر مزامنة اشتراك الطقس المحفوظ: $error');
+      }
+    }
+  }
+
+  Future<void> _syncWeatherPushLocation(double latitude, double longitude) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    try {
+      await WeatherPushService.syncLocation(
+        uid: uid,
+        latitude: latitude,
+        longitude: longitude,
+      );
+    } catch (error) {
+      debugPrint('تعذر تحديث موقع تنبيهات الطقس: $error');
+    }
+  }
+
+  Future<void> _setWeatherPushEnabled(bool enabled) async {
+    if (_weatherPushBusy) return;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('سجّل الدخول أولاً لتفعيل التنبيهات.')),
+      );
+      return;
+    }
+    if (enabled && (_weatherLatitude == null || _weatherLongitude == null)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('حدّد موقع المزرعة أولاً من بطاقة الطقس.')),
+      );
+      return;
+    }
+
+    _safeSet(() => _weatherPushBusy = true);
+    try {
+      if (enabled) {
+        await WeatherPushService.enable(
+          uid: uid,
+          latitude: _weatherLatitude!,
+          longitude: _weatherLongitude!,
+        );
+      } else {
+        await WeatherPushService.disable(uid);
+      }
+      _safeSet(() => _weatherPushEnabled = enabled);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(enabled
+                ? 'تم تفعيل إشعارات الطقس لهذا الجهاز.'
+                : 'تم إيقاف إشعارات الطقس لهذا الجهاز.'),
+          ),
+        );
+      }
+    } on WeatherPushPermissionDenied {
+      _safeSet(() => _weatherPushEnabled = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('اسمح بالإشعارات من إعدادات الهاتف لتفعيلها.')),
+        );
+      }
+    } catch (error) {
+      debugPrint('تعذر تغيير اشتراك إشعارات الطقس: $error');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('تعذر تحديث اشتراك الطقس. تحقق من الاتصال ثم أعد المحاولة.'),
+          ),
+        );
+      }
+    } finally {
+      _safeSet(() => _weatherPushBusy = false);
+    }
+  }
+
   String _weatherSummary(WeatherSnapshot snapshot) {
     final temperature = snapshot.currentTemperatureC;
     final formattedTemperature = temperature == temperature.roundToDouble()
@@ -1093,6 +1186,8 @@ class _HomeDashboardState extends State<HomeDashboard> {
       );
       _safeSet(() {
         _weatherSnapshot = snapshot;
+        _weatherLatitude = lat;
+        _weatherLongitude = lon;
         weatherTemp = snapshot.currentTemperatureC.toString();
         weatherHumidity = snapshot.currentHumidityPercent.toString();
         weatherStatusText = _weatherSummary(snapshot);
@@ -1102,6 +1197,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('selected_gov', govName);
       await _saveWeatherCache();
+      unawaited(_syncWeatherPushLocation(lat, lon));
     } catch (e) {
       debugPrint("❌ خطأ في توقعات الطقس: $e");
       _safeSet(() => weatherStatusText = "⚠️ تعذر الاتصال بالخدمة");
@@ -1271,6 +1367,8 @@ class _HomeDashboardState extends State<HomeDashboard> {
       );
       _safeSet(() {
         _weatherSnapshot = snapshot;
+        _weatherLatitude = position.latitude;
+        _weatherLongitude = position.longitude;
         weatherTemp = snapshot.currentTemperatureC.toString();
         weatherHumidity = snapshot.currentHumidityPercent.toString();
         locationName = cityName;
@@ -1284,6 +1382,9 @@ class _HomeDashboardState extends State<HomeDashboard> {
         await prefs.remove('selected_gov');
       } catch (_) {}
       await _saveWeatherCache();
+      unawaited(
+        _syncWeatherPushLocation(position.latitude, position.longitude),
+      );
     } catch (e) {
       debugPrint("❌ خطأ في جلب الموقع: $e");
       if (!isWeatherLoaded) {
@@ -1716,6 +1817,53 @@ class _HomeDashboardState extends State<HomeDashboard> {
     );
   }
 
+  Widget _buildWeatherPushControl() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFD1FAE5)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.notifications_active_outlined,
+              color: Color(0xFF047857)),
+          const SizedBox(width: 8),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('إشعارات الطقس على هذا الجهاز',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                SizedBox(height: 3),
+                Text(
+                  'تنبيه عند توقع أمطار أو حر/برد شديد. عند التفعيل نستخدم موقعًا تقريبيًا (نحو 1 كم).',
+                  style: TextStyle(fontSize: 10, height: 1.35),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 4),
+          _weatherPushBusy
+              ? const SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Color(0xFF047857),
+                  ),
+                )
+              : Switch.adaptive(
+                  value: _weatherPushEnabled,
+                  activeTrackColor: const Color(0xFF047857),
+                  onChanged: _setWeatherPushEnabled,
+                ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildWeatherCard() {
     return Card(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -1795,6 +1943,10 @@ class _HomeDashboardState extends State<HomeDashboard> {
                 style: const TextStyle(
                     color: Colors.black87, fontWeight: FontWeight.bold)),
             if (_weatherSnapshot != null) ...[
+              if (FirebaseAuth.instance.currentUser != null) ...[
+                const SizedBox(height: 12),
+                _buildWeatherPushControl(),
+              ],
               const SizedBox(height: 12),
               _buildWeatherAlertList(_weatherSnapshot!.alerts),
               const SizedBox(height: 12),
@@ -2875,6 +3027,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
     if (confirm == true) {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid != null) {
+        try {
+          await WeatherPushService.disable(uid);
+        } catch (error) {
+          debugPrint('تعذر إلغاء تسجيل طقس الجهاز قبل الخروج: $error');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'تعذر إلغاء اشتراك الطقس من الخادم. تحقق من الاتصال ثم أعد تسجيل الخروج.',
+                ),
+              ),
+            );
+          }
+          return;
+        }
+      }
       // نقفل الشاشات المفتوحة الأول، وإلا بتفضل فوق شاشة تسجيل الدخول
       if (mounted) Navigator.of(context).popUntil((r) => r.isFirst);
       await _authService.logout();

@@ -121,6 +121,38 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // تسجيل رمز FCM لكل تثبيت. موقع المزرعة تقريبي ولا يُكتب إلا لحساب صاحبه.
+    // لا يقرأ العميل الرمز أو بيانات الأجهزة؛ Functions يستخدم Admin SDK.
+    match /users/{uid}/weather_push_devices/{token} {
+      allow read: if false;
+      allow create, update: if signedIn()
+        && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly([
+          'token', 'latitude', 'longitude', 'enabled', 'updatedAt'
+        ])
+        && request.resource.data.keys().hasAll([
+          'token', 'latitude', 'longitude', 'enabled', 'updatedAt'
+        ])
+        && request.resource.data.token is string
+        && request.resource.data.token == token
+        && request.resource.data.token.size() > 0
+        && request.resource.data.token.size() <= 1500
+        && request.resource.data.latitude is number
+        && request.resource.data.latitude >= -90
+        && request.resource.data.latitude <= 90
+        && request.resource.data.longitude is number
+        && request.resource.data.longitude >= -180
+        && request.resource.data.longitude <= 180
+        && request.resource.data.enabled == true
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if signedIn() && request.auth.uid == uid;
+    }
+
+    // مفاتيح منع تكرار الإشعارات لا يكتبها ولا يقرأها تطبيق العميل.
+    match /users/{uid}/weather_push_state/{deviceKey} {
+      allow read, write: if false;
+    }
+
     // أي حاجة تانية ممنوعة
     match /{document=**} {
       allow read, write: if false;

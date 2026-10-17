@@ -49,6 +49,16 @@ class NotificationService {
       },
     );
 
+    await _localNotifications
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(const AndroidNotificationChannel(
+          'weather_alerts',
+          'تنبيهات الطقس',
+          description: 'تنبيهات الطقس الزراعية المرسلة عبر Firebase',
+          importance: Importance.high,
+        ));
+
     // 3. طلب صلاحيات الإشعارات
     await _requestPermissions();
 
@@ -93,10 +103,13 @@ class NotificationService {
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       debugPrint("📩 إشعار جديد (التطبيق مفتوح): ${message.notification?.title}");
       if (message.notification != null) {
-        showLocalNotification(
-          title: message.notification!.title ?? 'تنبيه',
-          body: message.notification!.body ?? '',
-        );
+        final title = message.notification!.title ?? 'تنبيه';
+        final body = message.notification!.body ?? '';
+        if (message.data['type'] == 'weather_alert') {
+          showWeatherNotification(title: title, body: body);
+        } else {
+          showLocalNotification(title: title, body: body);
+        }
       }
     });
 
@@ -128,6 +141,30 @@ class NotificationService {
     const NotificationDetails details = NotificationDetails(
       android: androidDetails,
       iOS: iosDetails,
+    );
+
+    await _localNotifications.show(
+      DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      title,
+      body,
+      details,
+    );
+  }
+
+  static Future<void> showWeatherNotification({
+    required String title,
+    required String body,
+  }) async {
+    const details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        'weather_alerts',
+        'تنبيهات الطقس',
+        channelDescription: 'تنبيهات الطقس الزراعية المرسلة عبر Firebase',
+        importance: Importance.high,
+        priority: Priority.high,
+        icon: '@mipmap/ic_launcher',
+      ),
+      iOS: DarwinNotificationDetails(),
     );
 
     await _localNotifications.show(
@@ -285,7 +322,4 @@ class NotificationService {
     debugPrint("❌ تم إلغاء الاشتراك من تنبيهات الآفات");
   }
 
-  static Future<String?> getToken() async {
-    return await FirebaseMessaging.instance.getToken();
-  }
 }
