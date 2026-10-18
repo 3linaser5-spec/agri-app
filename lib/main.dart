@@ -3913,7 +3913,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                 style:
                     const TextStyle(fontSize: 13, color: Colors.grey)),
           ],
-        31)),
+        ),
       ),
     );
   }
