@@ -2112,30 +2112,23 @@ class _HomeDashboardState extends State<HomeDashboard> {
             ),
             const SizedBox(height: 12),
             Row(
-              children: [
-                Expanded(
-                  child: _buildQuickActionCard(
-                      icon: Icons.menu_book,
-                      color: const Color(0xFF0EA5E9),
-                      title: 'الموسوعة',
-                      onTap: () {
-                        Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (context) =>
-                                    const EncyclopediaScreen()));
-                      }),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _buildQuickActionCard(
-                      icon: Icons.apps,
-                      color: const Color(0xFF6366F1),
-                      title: 'كل الخدمات',
-                      onTap: _showAllActions),
-                ),
-              ],
-            ),
+  children: [
+    Expanded(
+      child: _buildQuickActionCard(
+          icon: Icons.menu_book,
+          color: const Color(0xFF0EA5E9),
+          title: 'الموسوعة',
+          onTap: () {
+            Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (context) =>
+                        const EncyclopediaScreen()));
+          }),
+    ),
+    // --- مسحنا زرار كل الخدمات من هنا عشان مفيش خطأ ومفيش تكرار ---
+  ],
+),
           ],
         ),
       ),
