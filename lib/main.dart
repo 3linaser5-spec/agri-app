@@ -43,9 +43,19 @@ import 'utils/color_utils.dart';
 /// يهيئ Firebase ويرجّع null لو نجح، أو نص الخطأ لو فشل (عشان يتعرض للمستخدم).
 Future<String?> _initFirebase() async {
   try {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
+    // على أندرويد google-services.json بيهيّئ التطبيق الافتراضي أصلاً من
+    // الـ native، فاستدعاء initializeApp تاني بيرمي duplicate-app.
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+    }
+  } on FirebaseException catch (e) {
+    if (e.code != 'duplicate-app') {
+      debugPrint("Firebase initialization error: $e");
+      return e.toString();
+    }
+    // موجود بالفعل: نكمل عادي
   } catch (e) {
     debugPrint("Firebase initialization error: $e");
     return e.toString();
