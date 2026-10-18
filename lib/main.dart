@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_ai/firebase_ai.dart';
@@ -53,14 +52,11 @@ void main() async {
   }
 
   try {
-    // 1. تهيئة Firebase الأساسية
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
-    // بمجرد نجاح تهيئة Firebase، نعتبر التطبيق جاهزاً للفتح حتى لا يتوقف على الشاشة الرمادية
     firebaseReady = true;
 
-    // 2. تفعيل App Check في بلوك منفصل ليعمل مع الـ APK دون تعطيل فتح التطبيق
     try {
       await FirebaseAppCheck.instance.activate(
         androidProvider: AndroidProvider.debug,
@@ -69,7 +65,6 @@ void main() async {
       debugPrint("تحذير أثناء تفعيل App Check: $e");
     }
 
-    // 3. تهيئة الإشعارات
     try {
       WeatherPushService.initialize();
       await NotificationService.initialize();
@@ -78,6 +73,11 @@ void main() async {
       debugPrint("خطأ في تهيئة الإشعارات: $e");
     }
   } catch (e) {
+    debugPrint("Firebase initialization error: $e");
+  }
+
+  runApp(AgriConsultantApp(firebaseReady: firebaseReady));
+}
     debugPrint("Firebase initialization error: $e");
   }
 
