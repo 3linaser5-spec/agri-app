@@ -43,8 +43,6 @@ import 'utils/color_utils.dart';
 /// يهيئ Firebase ويرجّع null لو نجح، أو نص الخطأ لو فشل (عشان يتعرض للمستخدم).
 Future<String?> _initFirebase() async {
   try {
-    // على أندرويد google-services.json بيهيّئ التطبيق الافتراضي أصلاً من
-    // الـ native، فاستدعاء initializeApp تاني بيرمي duplicate-app.
     if (Firebase.apps.isEmpty) {
       await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform,
@@ -55,7 +53,6 @@ Future<String?> _initFirebase() async {
       debugPrint("Firebase initialization error: $e");
       return e.toString();
     }
-    // موجود بالفعل: نكمل عادي
   } catch (e) {
     debugPrint("Firebase initialization error: $e");
     return e.toString();
@@ -947,7 +944,7 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 }
 
-// ---------------- MainNavigationScreen ----------------
+// ---------------- MainNavigationScreen (تم تعديله) ----------------
 class MainNavigationScreen extends StatefulWidget {
   final String userName;
   final String userPhone;
@@ -961,29 +958,170 @@ class MainNavigationScreen extends StatefulWidget {
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
   int _currentIndex = 0;
 
+  // الشاشات التي سيتم التنقل بينها
+  late final List<Widget> _screens;
+
   @override
-  Widget build(BuildContext context) {
-    final screens = [
+  void initState() {
+    super.initState();
+    _screens = [
       HomeDashboard(userName: widget.userName, userPhone: widget.userPhone),
       AiScannerScreen(userName: widget.userName, userPhone: widget.userPhone),
-      const EncyclopediaScreen(),
     ];
+  }
 
+  // قائمة الخدمات المنبثقة
+  void _showAllActions() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: Container(
+          height: MediaQuery.of(context).size.height * 0.65,
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Column(
+            children: [
+              Container(
+                margin: const EdgeInsets.only(top: 12, bottom: 20),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              const Text(
+                'كل الخدمات',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 20),
+              Expanded(
+                child: GridView.count(
+                  crossAxisCount: 3,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  mainAxisSpacing: 20,
+                  crossAxisSpacing: 20,
+                  children: [
+                    _buildActionItem(Icons.agriculture, 'مزرعتي', const Color(0xFF10B981), () {
+                      Navigator.pop(context);
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => const MyFarmScreen()));
+                    }),
+                    _buildActionItem(Icons.calculate, 'الحاسبات', const Color(0xFF047857), () {
+                      Navigator.pop(context);
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => const CalculatorHubScreen()));
+                    }),
+                    _buildActionItem(Icons.menu_book, 'الموسوعة', const Color(0xFF0EA5E9), () {
+                      Navigator.pop(context);
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => const EncyclopediaScreen()));
+                    }),
+                    _buildActionItem(Icons.history, 'السجل', const Color(0xFFF59E0B), () {
+                      Navigator.pop(context);
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => const HistoryScreen()));
+                    }),
+                    _buildActionItem(Icons.bar_chart, 'إحصائيات', const Color(0xFF6366F1), () {
+                      Navigator.pop(context);
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => const StatisticsScreen()));
+                    }),
+                    _buildActionItem(Icons.info_outline, 'عن التطبيق', const Color(0xFF8B5CF6), () {
+                      Navigator.pop(context);
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => const AboutScreen()));
+                    }),
+                    _buildActionItem(Icons.person, 'حسابي', Colors.blueGrey, () {
+                      Navigator.pop(context);
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => ProfileScreen(userName: widget.userName, userPhone: widget.userPhone)));
+                    }),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActionItem(IconData icon, String title, Color color, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: color.withValues(alpha: 0.2)),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: color, size: 30),
+            const SizedBox(height: 6),
+            Text(title,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 11,
+                    color: color)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(index: _currentIndex, children: screens),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        selectedItemColor: const Color(0xFF047857),
-        unselectedItemColor: Colors.grey,
-        onTap: (index) => setState(() => _currentIndex = index),
-        items: const [
-          BottomNavigationBarItem(
-              icon: Icon(Icons.home_filled), label: 'الرئيسية'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.camera_alt), label: 'فحص الآفات'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.menu_book), label: 'الموسوعة'),
-        ],
+      body: IndexedStack(index: _currentIndex, children: _screens),
+      
+      // الزر العائم في المنتصف
+      floatingActionButton: FloatingActionButton(
+        onPressed: _showAllActions,
+        backgroundColor: const Color(0xFF047857),
+        elevation: 4,
+        shape: const CircleBorder(),
+        child: const Icon(Icons.add, color: Colors.white, size: 32),
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+
+      // الشريط السفلي الجديد
+      bottomNavigationBar: BottomAppBar(
+        shape: const CircularNotchedRectangle(),
+        notchMargin: 8.0,
+        color: Colors.white,
+        elevation: 10,
+        child: SizedBox(
+          height: 60,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              // زر الرئيسية (يمين)
+              IconButton(
+                onPressed: () => setState(() => _currentIndex = 0),
+                icon: Icon(
+                  Icons.home_filled,
+                  size: 30,
+                  color: _currentIndex == 0 ? const Color(0xFF047857) : Colors.grey,
+                ),
+              ),
+              
+              const SizedBox(width: 40), // مساحة للزر العائم
+              
+              // زر فحص الآفات (شمال)
+              IconButton(
+                onPressed: () => setState(() => _currentIndex = 1),
+                icon: Icon(
+                  Icons.camera_alt,
+                  size: 30,
+                  color: _currentIndex == 1 ? const Color(0xFF047857) : Colors.grey,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1450,192 +1588,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
     }
 
     if (manual) _safeSet(() => _refreshing = false);
-  }
-
-  void _showAllActions() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => Directionality(
-        textDirection: TextDirection.rtl,
-        child: SafeArea(
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  margin: const EdgeInsets.symmetric(vertical: 10),
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(16, 6, 16, 16),
-                  child: Row(
-                    children: [
-                      Icon(Icons.apps, color: Color(0xFF047857), size: 24),
-                      SizedBox(width: 10),
-                      Text('كل الخدمات',
-                          style: TextStyle(
-                              fontWeight: FontWeight.bold, fontSize: 17)),
-                    ],
-                  ),
-                ),
-                const Divider(height: 1),
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: GridView.count(
-                    shrinkWrap: true,
-                    crossAxisCount: 3,
-                    crossAxisSpacing: 12,
-                    mainAxisSpacing: 12,
-                    physics: const NeverScrollableScrollPhysics(),
-                    childAspectRatio: 1.1,
-                    children: [
-                      if (_isAdmin())
-                        _buildActionItem(
-                            icon: Icons.admin_panel_settings,
-                            color: Colors.amber.shade700,
-                            title: 'لوحة الأدمن',
-                            onTap: () {
-                              Navigator.pop(context);
-                              Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                      builder: (_) =>
-                                          const AdminPanelScreen()));
-                            }),
-                      _buildActionItem(
-                          icon: Icons.calculate,
-                          color: const Color(0xFF047857),
-                          title: 'حاسبات ومخططات',
-                          onTap: () {
-                            Navigator.pop(context);
-                            Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                    builder: (_) =>
-                                        const CalculatorHubScreen()));
-                          }),
-                      _buildActionItem(
-                          icon: Icons.agriculture,
-                          color: const Color(0xFF10B981),
-                          title: 'مزرعتي',
-                          onTap: () {
-                            Navigator.pop(context);
-                            Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                    builder: (_) => const MyFarmScreen()));
-                          }),
-                      _buildActionItem(
-                          icon: Icons.menu_book,
-                          color: const Color(0xFF0EA5E9),
-                          title: 'الموسوعة',
-                          onTap: () {
-                            Navigator.pop(context);
-                            Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                    builder: (_) =>
-                                        const EncyclopediaScreen()));
-                          }),
-                      _buildActionItem(
-                          icon: Icons.history,
-                          color: const Color(0xFFF59E0B),
-                          title: 'السجل',
-                          onTap: () {
-                            Navigator.pop(context);
-                            Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                    builder: (_) => const HistoryScreen()));
-                          }),
-                      _buildActionItem(
-                          icon: Icons.bar_chart,
-                          color: const Color(0xFF6366F1),
-                          title: 'إحصائيات',
-                          onTap: () {
-                            Navigator.pop(context);
-                            Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                    builder: (_) =>
-                                        const StatisticsScreen()));
-                          }),
-                      _buildActionItem(
-                          icon: Icons.chat,
-                          color: const Color(0xFF25D366),
-                          title: 'الدعم الفني',
-                          onTap: () async {
-                            Navigator.pop(context);
-                            final uri =
-                                Uri.parse(AppConfig.whatsappUrl);
-                            try {
-                              await launchUrl(uri,
-                                  mode: LaunchMode.externalApplication);
-                            } catch (e) {
-                              debugPrint('تعذر فتح واتساب');
-                            }
-                          }),
-                      _buildActionItem(
-                          icon: Icons.info_outline,
-                          color: const Color(0xFF8B5CF6),
-                          title: 'عن التطبيق',
-                          onTap: () {
-                            Navigator.pop(context);
-                            Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                    builder: (_) => const AboutScreen()));
-                          }),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildActionItem({
-    required IconData icon,
-    required Color color,
-    required String title,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
-      child: Container(
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: color.withValues(alpha: 0.2)),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: color, size: 30),
-            const SizedBox(height: 6),
-            Text(title,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 11,
-                    color: color)),
-          ],
-        ),
-      ),
-    );
   }
 
   Widget _buildQuickActionCard({
