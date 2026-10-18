@@ -53,16 +53,23 @@ void main() async {
   }
 
   try {
+    // 1. تهيئة Firebase الأساسية
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
-
-    await FirebaseAppCheck.instance.activate(
-      androidProvider:
-          kDebugMode ? AndroidProvider.debug : AndroidProvider.playIntegrity,
-    );
+    // بمجرد نجاح تهيئة Firebase، نعتبر التطبيق جاهزاً للفتح حتى لا يتوقف على الشاشة الرمادية
     firebaseReady = true;
 
+    // 2. تفعيل App Check في بلوك منفصل ليعمل مع الـ APK دون تعطيل فتح التطبيق
+    try {
+      await FirebaseAppCheck.instance.activate(
+        androidProvider: AndroidProvider.debug,
+      );
+    } catch (e) {
+      debugPrint("تحذير أثناء تفعيل App Check: $e");
+    }
+
+    // 3. تهيئة الإشعارات
     try {
       WeatherPushService.initialize();
       await NotificationService.initialize();
@@ -923,6 +930,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     );
   }
 }
+
 // ---------------- HomeDashboard ----------------
 class HomeDashboard extends StatefulWidget {
   final String userName;
@@ -2134,6 +2142,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
     );
   }
 }
+
 // ---------------- AiScannerScreen ----------------
 class AiScannerScreen extends StatefulWidget {
   final String userName;
@@ -2937,6 +2946,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 }
+
 // ---------------- ProfileScreen ----------------
 class ProfileScreen extends StatefulWidget {
   final String userName;
@@ -3727,6 +3737,7 @@ class _EncyclopediaSectionViewState extends State<EncyclopediaSectionView> {
     );
   }
 }
+
 // ---------------- StatisticsScreen ----------------
 class StatisticsScreen extends StatefulWidget {
   const StatisticsScreen({super.key});
