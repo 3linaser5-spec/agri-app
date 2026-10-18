@@ -1087,36 +1087,68 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
 
-      // الشريط السفلي الجديد
+      // الشريط السفلي الجديد مع النصوص
       bottomNavigationBar: BottomAppBar(
         shape: const CircularNotchedRectangle(),
         notchMargin: 8.0,
         color: Colors.white,
         elevation: 10,
         child: SizedBox(
-          height: 60,
+          height: 65, // زودنا الارتفاع عشان النص
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              // زر الرئيسية (يمين)
-              IconButton(
-                onPressed: () => setState(() => _currentIndex = 0),
-                icon: Icon(
-                  Icons.home_filled,
-                  size: 30,
-                  color: _currentIndex == 0 ? const Color(0xFF047857) : Colors.grey,
+              // الرئيسية (يمين)
+              Expanded(
+                child: InkWell(
+                  onTap: () => setState(() => _currentIndex = 0),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.home_filled,
+                        size: 26,
+                        color: _currentIndex == 0 ? const Color(0xFF047857) : Colors.grey,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'الرئيسية',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: _currentIndex == 0 ? FontWeight.bold : FontWeight.normal,
+                          color: _currentIndex == 0 ? const Color(0xFF047857) : Colors.grey,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
               
               const SizedBox(width: 40), // مساحة للزر العائم
               
-              // زر فحص الآفات (شمال)
-              IconButton(
-                onPressed: () => setState(() => _currentIndex = 1),
-                icon: Icon(
-                  Icons.camera_alt,
-                  size: 30,
-                  color: _currentIndex == 1 ? const Color(0xFF047857) : Colors.grey,
+              // فحص الآفات (شمال)
+              Expanded(
+                child: InkWell(
+                  onTap: () => setState(() => _currentIndex = 1),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.camera_alt,
+                        size: 26,
+                        color: _currentIndex == 1 ? const Color(0xFF047857) : Colors.grey,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'فحص الآفات',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: _currentIndex == 1 ? FontWeight.bold : FontWeight.normal,
+                          color: _currentIndex == 1 ? const Color(0xFF047857) : Colors.grey,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -1600,7 +1632,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
       onTap: onTap,
       borderRadius: BorderRadius.circular(14),
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 8),
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
         decoration: BoxDecoration(
           color: Theme.of(context).cardColor,
           borderRadius: BorderRadius.circular(14),
@@ -2074,12 +2106,14 @@ class _HomeDashboardState extends State<HomeDashboard> {
       body: Directionality(
         textDirection: TextDirection.rtl,
         child: ListView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
           children: [
             _buildWeatherCard(),
             const SizedBox(height: 16),
             _buildTipCard(),
             const SizedBox(height: 20),
+            
+            // تم إبقاء زرار الحاسبات فقط وشيل الباقي
             Row(
               children: [
                 Expanded(
@@ -2095,40 +2129,8 @@ class _HomeDashboardState extends State<HomeDashboard> {
                                     const CalculatorHubScreen()));
                       }),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _buildQuickActionCard(
-                      icon: Icons.agriculture,
-                      color: const Color(0xFF10B981),
-                      title: 'مزرعتي',
-                      onTap: () {
-                        Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (context) => const MyFarmScreen()));
-                      }),
-                ),
               ],
             ),
-            const SizedBox(height: 12),
-            Row(
-  children: [
-    Expanded(
-      child: _buildQuickActionCard(
-          icon: Icons.menu_book,
-          color: const Color(0xFF0EA5E9),
-          title: 'الموسوعة',
-          onTap: () {
-            Navigator.push(
-                context,
-                MaterialPageRoute(
-                    builder: (context) =>
-                        const EncyclopediaScreen()));
-          }),
-    ),
-    // --- مسحنا زرار كل الخدمات من هنا عشان مفيش خطأ ومفيش تكرار ---
-  ],
-),
           ],
         ),
       ),
