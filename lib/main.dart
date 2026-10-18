@@ -44,7 +44,6 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   var firebaseReady = false;
 
-  // الثيم الأول: لو Firebase فشل التطبيق يفضل بالثيم المحفوظ
   try {
     await ThemeController.load();
   } catch (e) {
@@ -78,11 +77,6 @@ void main() async {
 
   runApp(AgriConsultantApp(firebaseReady: firebaseReady));
 }
-    debugPrint("Firebase initialization error: $e");
-  }
-
-  runApp(AgriConsultantApp(firebaseReady: firebaseReady));
-}
 
 // ---------------- VersionService ----------------
 class VersionService {
@@ -99,7 +93,7 @@ class VersionService {
       }
       return null;
     } catch (e) {
-      debugPrint("❌ خطأ في قراءة معلومات النسخة: $e");
+      debugPrint("خطأ في قراءة معلومات النسخة: $e");
       return null;
     }
   }
@@ -124,13 +118,12 @@ class VersionService {
           'version': latestVersion,
           'downloadUrl': info['download_url'] ?? '',
           'changelog': info['changelog'] ?? '',
-          // يجب أن ينشر مالك الإصدار SHA-256 صالحاً في version.json.
           'sha256': info['sha256'],
         };
       }
       return null;
     } catch (e) {
-      debugPrint("❌ خطأ في فحص التحديث: $e");
+      debugPrint("خطأ في فحص التحديث: $e");
       return null;
     }
   }
@@ -147,8 +140,6 @@ class VersionService {
     return 0;
   }
 
-  // مواقع التحميل المسموحة فقط (https على GitHub). أي رابط تاني بيترفض
-  // عشان لو ملف version.json اتغيّر ما يبقاش ممكن نثبّت APK من مصدر مجهول.
   static bool isTrustedDownloadUrl(String url) {
     final uri = Uri.tryParse(url);
     if (uri == null || uri.scheme != 'https') return false;
@@ -180,7 +171,7 @@ class VersionService {
       }
       final expected = sha256?.trim().toLowerCase();
       if (expected == null || !RegExp(r'^[a-f0-9]{64}$').hasMatch(expected)) {
-        onError('بيانات التحديث لا تحتوي قيمة SHA-256 صالحة؛ أوقف التحميل');
+        onError('بيانات التحديث لا تحتوي قيمة SHA-256 صالحة');
         return;
       }
 
@@ -191,7 +182,6 @@ class VersionService {
         }
       }
 
-      // getExternalStorageDirectory ممكن ترجّع null على بعض الأجهزة
       final dir = await getExternalStorageDirectory() ??
           await getTemporaryDirectory();
       final filePath = "${dir.path}/app-release.apk";
@@ -271,7 +261,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
           setState(() => _downloading = false);
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('✅ تم التحميل! اتبع تعليمات التثبيت.'),
+              content: Text('تم التحميل! اتبع تعليمات التثبيت.'),
               backgroundColor: Color(0xFF047857),
               duration: Duration(seconds: 4),
             ),
@@ -475,18 +465,17 @@ class _AgriConsultantAppState extends State<AgriConsultantApp> {
       final hasNet = !results.contains(ConnectivityResult.none);
       if (hasNet) {
         if (widget.firebaseReady) {
-          debugPrint("🌐 عاد الاتصال بالإنترنت، جاري المزامنة...");
+          debugPrint("عاد الاتصال بالإنترنت، جاري المزامنة...");
           final synced = await OfflineService.syncPendingDiagnoses();
-          if (synced > 0) debugPrint("✅ تمت مزامنة $synced تشخيص");
+          if (synced > 0) debugPrint("تمت مزامنة $synced تشخيص");
         }
         _checkForUpdate();
       } else {
-        debugPrint("📴 انقطع الاتصال بالإنترنت");
+        debugPrint("انقطع الاتصال بالإنترنت");
       }
     });
   }
 
-  // مانع ظهور أكتر من نافذة تحديث (الفحص بيتكرر مع كل رجوع للاتصال)
   bool _updateDialogShowing = false;
 
   Future<void> _checkForUpdate() async {
@@ -526,7 +515,6 @@ class _AgriConsultantAppState extends State<AgriConsultantApp> {
           debugShowCheckedModeBanner: false,
           title: 'نباتي',
           navigatorKey: _navigatorKey,
-          // واجهة عربية كاملة (اتجاه RTL، منتقي التاريخ، قوائم النظام)
           locale: const Locale('ar'),
           supportedLocales: const [Locale('ar'), Locale('en')],
           localizationsDelegates: const [
@@ -704,7 +692,6 @@ class AuthWrapper extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<User?>(
-      // userChanges (مش authStateChanges) عشان تغيير الاسم يظهر فورًا
       stream: FirebaseAuth.instance.userChanges(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
@@ -903,8 +890,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // IndexedStack بيحافظ على State كل تبويب (صورة التشخيص، الطقس) وفي نفس
-    // الوقت الـ widgets بتتبني من جديد هنا فأي تغيير في الاسم بيوصل للشاشات.
     final screens = [
       HomeDashboard(userName: widget.userName, userPhone: widget.userPhone),
       AiScannerScreen(userName: widget.userName, userPhone: widget.userPhone),
@@ -972,7 +957,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
     return CalculatorService.isAdmin(email);
   }
 
-  // ✅ تحميل قائمة المحافظات من EgyptData
   void _loadGovernorates() {
     if (_governorates.isNotEmpty) return;
     setState(() {
@@ -980,7 +964,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
     });
   }
 
-  // ✅ عرض قائمة اختيار المحافظة
   void _showGovernoratePicker() {
     _loadGovernorates();
     if (!mounted) return;
@@ -1075,7 +1058,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
     );
   }
 
-  // setState آمن: بعد أي await ممكن المستخدم يكون غيّر التبويب والـ State اتعمله dispose
   void _safeSet(VoidCallback fn) {
     if (mounted) setState(fn);
   }
@@ -1090,7 +1072,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
       try {
         await WeatherPushService.syncStoredLocation(uid);
       } catch (error) {
-        debugPrint('تعذر مزامنة اشتراك الطقس المحفوظ: $error');
+        debugPrint('تعذر مزامنة اشتراك الطقس المحفوظ');
       }
     }
   }
@@ -1105,7 +1087,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
         longitude: longitude,
       );
     } catch (error) {
-      debugPrint('تعذر تحديث موقع تنبيهات الطقس: $error');
+      debugPrint('تعذر تحديث موقع تنبيهات الطقس');
     }
   }
 
@@ -1154,7 +1136,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
         );
       }
     } catch (error) {
-      debugPrint('تعذر تغيير اشتراك إشعارات الطقس: $error');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -1175,7 +1156,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
     return '${snapshot.currentCondition} · درجة الحرارة: $formattedTemperature°م | الرطوبة: ${snapshot.currentHumidityPercent}%';
   }
 
-  // ✅ جلب الطقس لمحافظة
   Future<void> _fetchWeatherForGovernorate(
     String govName,
     double lat,
@@ -1207,7 +1187,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
       await _saveWeatherCache();
       unawaited(_syncWeatherPushLocation(lat, lon));
     } catch (e) {
-      debugPrint("❌ خطأ في توقعات الطقس: $e");
+      debugPrint("خطأ في توقعات الطقس");
       _safeSet(() => weatherStatusText = "⚠️ تعذر الاتصال بالخدمة");
     } finally {
       _safeSet(() => _refreshing = false);
@@ -1218,7 +1198,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
     final prefs = await SharedPreferences.getInstance();
     _selectedGovernorate = prefs.getString('selected_gov') ?? "";
     final cached = prefs.getString('weather_data');
-    // عمر الكاش: لو أقدم من 30 دقيقة (أو بدون وقت) نحدّث في الخلفية
     bool stale = true;
     if (cached != null) {
       try {
@@ -1319,13 +1298,12 @@ class _HomeDashboardState extends State<HomeDashboard> {
         }
       }
     } catch (e) {
-      debugPrint("Nominatim error: $e");
+      debugPrint("Nominatim error");
     }
     if (fallback.isNotEmpty) return fallback;
     return '${lat.toStringAsFixed(2)}, ${lon.toStringAsFixed(2)}';
   }
 
-  // ✅ تحديث الموقع (بـ geolocator الأصلي)
   Future<void> _fetchWeatherByLocation({bool manual = false}) async {
     if (manual) _safeSet(() => _refreshing = true);
 
@@ -1355,7 +1333,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
         return;
       }
 
-      // medium بدل best: داخل المباني الـ GPS الدقيق غالبًا بيعمل timeout
       Position position = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.medium,
@@ -1384,7 +1361,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
         weatherStatusText = _weatherSummary(snapshot);
         isWeatherLoaded = true;
       });
-      // اختيار المحافظة المحفوظ ما بقاش صحيح بعد ما استخدمنا الـ GPS
       try {
         final prefs = await SharedPreferences.getInstance();
         await prefs.remove('selected_gov');
@@ -1394,7 +1370,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
         _syncWeatherPushLocation(position.latitude, position.longitude),
       );
     } catch (e) {
-      debugPrint("❌ خطأ في جلب الموقع: $e");
       if (!isWeatherLoaded) {
         _safeSet(
             () => weatherStatusText = "⚠️ برجاء تشغيل GPS والانتظار قليلاً");
@@ -1533,7 +1508,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
                               await launchUrl(uri,
                                   mode: LaunchMode.externalApplication);
                             } catch (e) {
-                              debugPrint('تعذر فتح واتساب: $e');
+                              debugPrint('تعذر فتح واتساب');
                             }
                           }),
                       _buildActionItem(
@@ -2191,7 +2166,6 @@ class _AiScannerScreenState extends State<AiScannerScreen> {
     }
 
     _flutterTts.setCompletionHandler(reset);
-    // لو القراءة اتلغت أو حصل خطأ لازم الزر يرجع لحالته (كان بيفضل "إيقاف")
     _flutterTts.setCancelHandler(reset);
     _flutterTts.setErrorHandler((_) => reset());
   }
@@ -2267,7 +2241,6 @@ class _AiScannerScreenState extends State<AiScannerScreen> {
     }
   }
 
-  // نوع الصورة من امتدادها (كان ثابت image/jpeg حتى لو الصورة PNG أو WebP)
   static String _imageMimeType(String path) {
     final lower = path.toLowerCase();
     if (lower.endsWith('.png')) return 'image/png';
@@ -2289,7 +2262,6 @@ $_diagnosis
     final uri = Uri.parse(
         "https://wa.me/$engineerPhone?text=${Uri.encodeComponent(message)}");
     try {
-      // launchUrl بترجّع false (مش بترمي استثناء) لو الواتساب مش متثبت
       final opened =
           await launchUrl(uri, mode: LaunchMode.externalApplication);
       if (!opened && mounted) {
@@ -2430,8 +2402,6 @@ $_diagnosis
         final diagnosisText =
             response.text ?? 'لم يتمكن الذكاء الاصطناعي من تقديم تشخيص.';
 
-        // التشخيص نجح: نعتبر العملية ناجحة حتى لو الحفظ المحلي فشل،
-        // عشان ما نعيدش استدعاء Gemini (مدفوع) 3 مرات بسبب خطأ في قاعدة البيانات
         success = true;
         if (mounted) {
           setState(() {
@@ -2452,18 +2422,16 @@ $_diagnosis
             await OfflineService.deleteDiagnosis(oldPendingId);
           }
         } catch (e) {
-          debugPrint("⚠️ تعذر حفظ التشخيص محلياً: $e");
+          debugPrint("تعذر حفظ التشخيص محلياً");
         }
       } catch (e) {
-        if (!mounted) break; // المستخدم خرج من الشاشة، مفيش داعي نكمل المحاولات
+        if (!mounted) break;
         if (attempt >= maxRetries) {
           setState(() {
             _diagnosis =
                 'عذراً، خدمة الذكاء الاصطناعي مشغولة حالياً.\nبرجاء المحاولة مرة أخرى بعد قليل.';
           });
-          debugPrint("❌ فشل بعد $attempt محاولات. الخطأ: $e");
         } else {
-          debugPrint("⚠️ المحاولة رقم $attempt فشلت. جاري إعادة المحاولة...");
           await Future.delayed(const Duration(seconds: 2));
         }
       }
@@ -2675,7 +2643,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
         _allItems = items;
         _loading = false;
       });
-      // نعيد تطبيق البحث الحالي (قبل كده بعد المسح كان بيرجع السجل كله)
       _filterItems();
     }
   }
@@ -2990,14 +2957,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (user != null) {
         await user.updateDisplayName(newName);
         await user.reload();
-        // نحدّث مستند المستخدم كمان عشان الاسم يبقى واحد في Auth وFirestore
         try {
           await FirebaseFirestore.instance
               .collection('users')
               .doc(user.uid)
               .set({'name': newName}, SetOptions(merge: true));
         } catch (e) {
-          debugPrint('تعذر تحديث اسم المستخدم في Firestore: $e');
+          debugPrint('تعذر تحديث اسم المستخدم في Firestore');
         }
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -3011,7 +2977,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('حدث خطأ: $e')),
+          const SnackBar(content: Text('حدث خطأ أثناء الحفظ')),
         );
       }
     }
@@ -3042,7 +3008,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         try {
           await WeatherPushService.disable(uid);
         } catch (error) {
-          debugPrint('تعذر إلغاء تسجيل طقس الجهاز قبل الخروج: $error');
+          debugPrint('تعذر إلغاء تسجيل طقس الجهاز قبل الخروج');
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
@@ -3055,7 +3021,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
           return;
         }
       }
-      // نقفل الشاشات المفتوحة الأول، وإلا بتفضل فوق شاشة تسجيل الدخول
       if (mounted) Navigator.of(context).popUntil((r) => r.isFirst);
       await _authService.logout();
     }
@@ -3246,7 +3211,7 @@ class AboutScreen extends StatelessWidget {
     try {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } catch (e) {
-      debugPrint('تعذر فتح واتساب: $e');
+      debugPrint('تعذر فتح واتساب');
     }
   }
 
@@ -3447,8 +3412,6 @@ class EncyclopediaScreen extends StatefulWidget {
 }
 
 class _EncyclopediaScreenState extends State<EncyclopediaScreen> {
-  // الـ Stream بيتعمل مرة واحدة (قبل كده كان بيتعمل من جديد مع كل rebuild
-  // فالـ spinner بيرجع يظهر ويتعمل قراءة جديدة من Firestore)
   late final Stream<List<EncyclopediaSection>> _sectionsStream =
       EncyclopediaService.getSectionsStream();
 
@@ -3476,7 +3439,7 @@ class _EncyclopediaScreenState extends State<EncyclopediaScreen> {
               return Center(
                 child: Padding(
                   padding: const EdgeInsets.all(20),
-                  child: Text('حدث خطأ: ${snapshot.error}'),
+                  child: Text('حدث خطأ في جلب البيانات'),
                 ),
               );
             }
@@ -3795,7 +3758,6 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // بنحسبها مرة واحدة في كل build (كانت بتتحسب لكل عنصر في القائمة)
     final topKeywords = _getTopKeywords();
     return Scaffold(
       appBar: AppBar(
@@ -3951,7 +3913,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                 style:
                     const TextStyle(fontSize: 13, color: Colors.grey)),
           ],
-        ),
+        31)),
       ),
     );
   }
