@@ -40,9 +40,37 @@ import 'screens/farm/my_farm_screen.dart';
 import 'utils/validators.dart';
 import 'utils/color_utils.dart';
 
+/// يهيئ Firebase ويرجّع null لو نجح، أو نص الخطأ لو فشل (عشان يتعرض للمستخدم).
+Future<String?> _initFirebase() async {
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  } catch (e) {
+    debugPrint("Firebase initialization error: $e");
+    return e.toString();
+  }
+
+  try {
+    await FirebaseAppCheck.instance.activate(
+      androidProvider: AndroidProvider.debug,
+    );
+  } catch (e) {
+    debugPrint("تحذير أثناء تفعيل App Check: $e");
+  }
+
+  try {
+    WeatherPushService.initialize();
+    await NotificationService.initialize();
+    await NotificationService.subscribeToPestAlerts();
+  } catch (e) {
+    debugPrint("خطأ في تهيئة الإشعارات: $e");
+  }
+  return null;
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  var firebaseReady = false;
 
   try {
     await ThemeController.load();
@@ -50,32 +78,8 @@ void main() async {
     debugPrint("تعذر تحميل الثيم: $e");
   }
 
-  try {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
-    firebaseReady = true;
-
-    try {
-      await FirebaseAppCheck.instance.activate(
-        androidProvider: AndroidProvider.debug,
-      );
-    } catch (e) {
-      debugPrint("تحذير أثناء تفعيل App Check: $e");
-    }
-
-    try {
-      WeatherPushService.initialize();
-      await NotificationService.initialize();
-      await NotificationService.subscribeToPestAlerts();
-    } catch (e) {
-      debugPrint("خطأ في تهيئة الإشعارات: $e");
-    }
-  } catch (e) {
-    debugPrint("Firebase initialization error: $e");
-  }
-
-  runApp(AgriConsultantApp(firebaseReady: firebaseReady));
+  final error = await _initFirebase();
+  runApp(AgriConsultantApp(firebaseReady: error == null, firebaseError: error));
 }
 
 // ---------------- VersionService ----------------
@@ -441,7 +445,9 @@ class ThemeController {
 // ---------------- AgriConsultantApp ----------------
 class AgriConsultantApp extends StatefulWidget {
   final bool firebaseReady;
-  const AgriConsultantApp({super.key, required this.firebaseReady});
+  final String? firebaseError;
+  const AgriConsultantApp(
+      {super.key, required this.firebaseReady, this.firebaseError});
 
   @override
   State<AgriConsultantApp> createState() => _AgriConsultantAppState();
@@ -541,26 +547,83 @@ class _AgriConsultantAppState extends State<AgriConsultantApp> {
           ),
           home: widget.firebaseReady
               ? const SplashScreen()
-              : const FirebaseSetupErrorScreen(),
+              : FirebaseSetupErrorScreen(error: widget.firebaseError),
         );
       },
     );
   }
 }
 
-class FirebaseSetupErrorScreen extends StatelessWidget {
-  const FirebaseSetupErrorScreen({super.key});
+class FirebaseSetupErrorScreen extends StatefulWidget {
+  final String? error;
+  const FirebaseSetupErrorScreen({super.key, this.error});
+
+  @override
+  State<FirebaseSetupErrorScreen> createState() =>
+      _FirebaseSetupErrorScreenState();
+}
+
+class _FirebaseSetupErrorScreenState extends State<FirebaseSetupErrorScreen> {
+  bool _retrying = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _error = widget.error;
+  }
+
+  Future<void> _retry() async {
+    setState(() => _retrying = true);
+    final error = await _initFirebase();
+    if (error == null) {
+      runApp(const AgriConsultantApp(firebaseReady: true));
+      return;
+    }
+    if (!mounted) return;
+    setState(() {
+      _retrying = false;
+      _error = error;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
+    return Scaffold(
       body: SafeArea(
         child: Center(
-          child: Padding(
-            padding: EdgeInsets.all(24),
-            child: Text(
-              'تعذر الاتصال بخدمات Firebase أو التحقق من التطبيق. تحقق من إعداد Firebase وApp Check ثم أعد تشغيل التطبيق.',
-              textAlign: TextAlign.center,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'تعذر الاتصال بخدمات Firebase. تأكد من الإنترنت (وإن وضع الطيران مقفول) ثم أعد المحاولة.',
+                  textAlign: TextAlign.center,
+                ),
+                if (_error != null) ...[
+                  const SizedBox(height: 16),
+                  const Text('تفاصيل الخطأ (للمطور):',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 6),
+                  SelectableText(
+                    _error!,
+                    textDirection: TextDirection.ltr,
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                ],
+                const SizedBox(height: 20),
+                ElevatedButton.icon(
+                  onPressed: _retrying ? null : _retry,
+                  icon: _retrying
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.refresh),
+                  label: const Text('إعادة المحاولة'),
+                ),
+              ],
             ),
           ),
         ),
