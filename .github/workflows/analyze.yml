@@ -12,6 +12,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Test Firebase Functions
+        working-directory: functions
+        run: npm ci && npm test
+
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.44.0'
