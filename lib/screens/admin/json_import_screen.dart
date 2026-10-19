@@ -36,6 +36,16 @@ class _JsonImportScreenState extends State<JsonImportScreen> {
     }
   }
 
+  /// ✅ تطبيع JSON: تحويل علامات التنصيص الغريبة للعلامات العادية
+  String _normalizeJson(String input) {
+    return input
+        .replaceAll('"', '"')
+        .replaceAll('"', '"')
+        .replaceAll(''', "'")
+        .replaceAll(''', "'")
+        .replaceAll('ʼ', "'");
+  }
+
   Future<void> _importJson() async {
     final jsonText = _jsonCtrl.text.trim();
     if (jsonText.isEmpty) {
@@ -46,13 +56,16 @@ class _JsonImportScreenState extends State<JsonImportScreen> {
       return;
     }
 
+    // ✅ تطبيع النص
+    final normalizedText = _normalizeJson(jsonText);
+
     setState(() {
       _loading = true;
       _resultMessage = null;
     });
 
     try {
-      final dynamic parsed = json.decode(jsonText);
+      final dynamic parsed = json.decode(normalizedText);
       final List<dynamic> templates = parsed is List ? parsed : [parsed];
 
       if (templates.isEmpty) {
@@ -60,8 +73,7 @@ class _JsonImportScreenState extends State<JsonImportScreen> {
         return;
       }
 
-      // 1) نتحقق من كل القوالب الأول. لو أي واحد غلط ما نحفظش حاجة
-      //    (قبل كده كان بيحفظ جزء ويسيب الباقي، وإعادة الاستيراد تكرّر المحفوظ).
+      // 1) نتحقق من كل القوالب الأول
       final List<Map<String, dynamic>> valid = [];
       final List<String> errors = [];
       for (var i = 0; i < templates.length; i++) {
@@ -93,10 +105,42 @@ class _JsonImportScreenState extends State<JsonImportScreen> {
         return;
       }
 
-      // 2) كتابة ذرية بـ WriteBatch واحدة: كل القوالب تتحفظ أو ولا واحد.
-      //    حد Firestore 500 عملية للدفعة، فنحدد 400 قالب في الاستيراد الواحد
-      //    بدل ما نقسّم على دفعات (التقسيم كان ممكن يسيب استيراد ناقص لو
-      //    الدفعة التانية فشلت، وده عكس رسالة "لم يتم حفظ أي قالب").
+      // ✅ تحذير قبل الاستيراد لو القوالب كتير
+      if (valid.length > 5) {
+        if (!mounted) return;
+        final confirm = await showDialog<bool>(
+          context: context,
+          builder: (ctx) {
+            final isDark = Theme.of(ctx).brightness == Brightness.dark;
+            return AlertDialog(
+              backgroundColor: isDark ? const Color(0xFF1E1E1E) : null,
+              title: const Text('تأكيد الاستيراد'),
+              content: Text('هيتم استيراد ${valid.length} قالب. هل أنت متأكد؟'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('إلغاء'),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF047857),
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text('استيراد'),
+                ),
+              ],
+            );
+          },
+        );
+        
+        if (confirm != true) {
+          if (mounted) setState(() => _loading = false);
+          return;
+        }
+      }
+
+      // 2) كتابة ذرية بـ WriteBatch
       const maxTemplates = 400;
       if (valid.length > maxTemplates) {
         _finish(
@@ -119,7 +163,7 @@ class _JsonImportScreenState extends State<JsonImportScreen> {
         data['created_at'] = FieldValue.serverTimestamp();
         batch.set(col.doc(), data);
       }
-      // بدون نت الـ commit بيفضل معلّق، فنحط مهلة
+      
       await batch.commit().timeout(const Duration(seconds: 25));
 
       _finish(true, '✅ تم استيراد ${valid.length} قالب بنجاح');
@@ -155,6 +199,8 @@ class _JsonImportScreenState extends State<JsonImportScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
       appBar: AppBar(
         title: Text('استيراد JSON - ${widget.section.name}',
@@ -181,23 +227,28 @@ class _JsonImportScreenState extends State<JsonImportScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            // ✅ تعليمات
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: Colors.blue.shade50,
+                // ✅ دعم الوضع الليلي
+                color: isDark 
+                    ? Colors.blue.shade900.withValues(alpha: 0.3) 
+                    : Colors.blue.shade50,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Row(
                 children: [
                   Icon(Icons.info_outline,
-                      color: Colors.blue.shade700, size: 24),
+                      color: isDark ? Colors.blue.shade300 : Colors.blue.shade700, 
+                      size: 24),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
                       'الصق كود JSON للقالب (أو عدة قوالب في مصفوفة [ ])\nسيتم ربط القالب تلقائياً بقسم: ${widget.section.name}',
                       style: TextStyle(
                           fontSize: 12,
-                          color: Colors.blue.shade700,
+                          color: isDark ? Colors.blue.shade300 : Colors.blue.shade700,
                           height: 1.5),
                     ),
                   ),
@@ -206,34 +257,46 @@ class _JsonImportScreenState extends State<JsonImportScreen> {
             ),
             const SizedBox(height: 16),
 
+            // ✅ حقل JSON
             TextField(
               controller: _jsonCtrl,
               maxLines: 15,
-              style: const TextStyle(
-                  fontFamily: 'monospace', fontSize: 12, height: 1.4),
+              style: TextStyle(
+                  fontFamily: 'monospace', 
+                  fontSize: 12, 
+                  height: 1.4,
+                  color: isDark ? Colors.white : null),
               decoration: InputDecoration(
                 hintText: '{\n  "name": "قمح",\n  "emoji": "🌾",\n  ...\n}',
-                hintStyle: TextStyle(color: Colors.grey.shade400),
+                hintStyle: TextStyle(
+                  color: isDark ? Colors.grey.shade600 : Colors.grey.shade400),
                 border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12)),
                 filled: true,
-                fillColor: Colors.grey.shade50,
+                // ✅ دعم الوضع الليلي
+                fillColor: isDark ? const Color(0xFF1E1E1E) : Colors.grey.shade50,
               ),
             ),
             const SizedBox(height: 16),
 
+            // ✅ رسالة النتيجة
             if (_resultMessage != null) ...[
               Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
+                  // ✅ دعم الوضع الليلي
                   color: _isSuccess
-                      ? Colors.green.shade50
-                      : Colors.red.shade50,
+                      ? (isDark 
+                          ? Colors.green.shade900.withValues(alpha: 0.3) 
+                          : Colors.green.shade50)
+                      : (isDark 
+                          ? Colors.red.shade900.withValues(alpha: 0.3) 
+                          : Colors.red.shade50),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
                     color: _isSuccess
-                        ? Colors.green.shade200
-                        : Colors.red.shade200,
+                        ? (isDark ? Colors.green.shade700 : Colors.green.shade200)
+                        : (isDark ? Colors.red.shade700 : Colors.red.shade200),
                   ),
                 ),
                 child: Row(
@@ -241,7 +304,9 @@ class _JsonImportScreenState extends State<JsonImportScreen> {
                   children: [
                     Icon(
                       _isSuccess ? Icons.check_circle : Icons.error_outline,
-                      color: _isSuccess ? Colors.green : Colors.red,
+                      color: _isSuccess 
+                          ? (isDark ? Colors.green.shade300 : Colors.green) 
+                          : (isDark ? Colors.red.shade300 : Colors.red),
                       size: 24,
                     ),
                     const SizedBox(width: 10),
@@ -251,8 +316,8 @@ class _JsonImportScreenState extends State<JsonImportScreen> {
                         style: TextStyle(
                           fontSize: 12,
                           color: _isSuccess
-                              ? Colors.green.shade800
-                              : Colors.red.shade800,
+                              ? (isDark ? Colors.green.shade200 : Colors.green.shade800)
+                              : (isDark ? Colors.red.shade200 : Colors.red.shade800),
                           height: 1.5,
                         ),
                       ),
@@ -263,6 +328,7 @@ class _JsonImportScreenState extends State<JsonImportScreen> {
               const SizedBox(height: 16),
             ],
 
+            // ✅ زر الاستيراد
             ElevatedButton.icon(
               onPressed: _loading ? null : _importJson,
               icon: _loading
@@ -289,7 +355,9 @@ class _JsonImportScreenState extends State<JsonImportScreen> {
 
             const SizedBox(height: 24),
 
+            // ✅ ملاحظات
             Card(
+              color: isDark ? const Color(0xFF1E1E1E) : null, // ✅ دعم الوضع الليلي
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12)),
               child: Padding(
@@ -317,7 +385,7 @@ class _JsonImportScreenState extends State<JsonImportScreen> {
                       style: TextStyle(
                           fontSize: 12,
                           height: 1.8,
-                          color: Colors.grey.shade700),
+                          color: isDark ? Colors.grey[400] : Colors.grey.shade700),
                     ),
                   ],
                 ),
