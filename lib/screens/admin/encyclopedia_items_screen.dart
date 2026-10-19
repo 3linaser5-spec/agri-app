@@ -14,20 +14,75 @@ class EncyclopediaItemsScreen extends StatefulWidget {
 }
 
 class _EncyclopediaItemsScreenState extends State<EncyclopediaItemsScreen> {
-  late final Stream<List<EncyclopediaItem>> _itemsStream;
-
-  @override
-  void initState() {
-    super.initState();
-    _itemsStream = EncyclopediaService.getItemsStream(widget.section.id);
-  }
-
   Color _hexToColor(String hex) => ColorUtils.fromHex(hex);
+
+  Future<void> _confirmDelete(
+      BuildContext context, EncyclopediaItem item) async {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          backgroundColor: isDark ? const Color(0xFF1E1E1E) : null,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text('حذف العنصر'),
+          content: Text('هل أنت متأكد من حذف "${item.title}"؟'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('إلغاء'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('حذف'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirm != true) return;
+    if (!context.mounted) return;
+
+    // ✅ إظهار مؤشر تحميل أثناء الحذف
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+
+    bool ok = false;
+    try {
+      ok = await EncyclopediaService.deleteItem(item.id);
+    } catch (e) {
+      debugPrint('❌ فشل الحذف: $e');
+    } finally {
+      // ✅ نقفل الـ Loading في finally (حتى لو الشاشة اتقفلت)
+      if (context.mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+    }
+
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(ok ? '✅ تم حذف العنصر' : '❌ فشل الحذف'),
+        backgroundColor: ok ? const Color(0xFF047857) : Colors.red,
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final section = widget.section;
     final color = _hexToColor(section.color);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
       appBar: AppBar(
@@ -51,13 +106,13 @@ class _EncyclopediaItemsScreenState extends State<EncyclopediaItemsScreen> {
         },
         backgroundColor: color,
         icon: const Icon(Icons.add, color: Colors.white),
-        label:
-            const Text('عنصر جديد', style: TextStyle(color: Colors.white)),
+        label: const Text('عنصر جديد', style: TextStyle(color: Colors.white)),
       ),
       body: Directionality(
         textDirection: TextDirection.rtl,
         child: StreamBuilder<List<EncyclopediaItem>>(
-          stream: _itemsStream,
+          // ✅ نمرر الـ Stream مباشرة، عشان يتحدث مع الـ sectionId
+          stream: EncyclopediaService.getItemsStream(section.id),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
@@ -67,7 +122,10 @@ class _EncyclopediaItemsScreenState extends State<EncyclopediaItemsScreen> {
               return Center(
                 child: Padding(
                   padding: const EdgeInsets.all(20),
-                  child: Text('حدث خطأ: ${snapshot.error}'),
+                  child: Text('حدث خطأ: ${snapshot.error}',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                          color: isDark ? Colors.white : Colors.black87)),
                 ),
               );
             }
@@ -75,21 +133,33 @@ class _EncyclopediaItemsScreenState extends State<EncyclopediaItemsScreen> {
             final items = snapshot.data ?? [];
 
             if (items.isEmpty) {
-              return Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.inbox,
-                        size: 100, color: Colors.grey.shade400),
-                    const SizedBox(height: 16),
-                    const Text('لا توجد عناصر في هذا القسم',
-                        style: TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    const Text('دوس "عنصر جديد" لتبدأ',
-                        style: TextStyle(fontSize: 13, color: Colors.grey)),
-                  ],
-                ),
+              // ✅ نلفها في ListView عشان الـ Scroll يشتغل
+              return ListView(
+                children: [
+                  SizedBox(
+                    height: MediaQuery.of(context).size.height * 0.7,
+                    child: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.inbox,
+                              size: 100, color: Colors.grey.shade400),
+                          const SizedBox(height: 16),
+                          Text('لا توجد عناصر في هذا القسم',
+                              style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: isDark ? Colors.white : Colors.black87)),
+                          const SizedBox(height: 8),
+                          Text('دوس "عنصر جديد" لتبدأ',
+                              style: TextStyle(
+                                  fontSize: 13,
+                                  color: isDark ? Colors.grey[400] : Colors.grey)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               );
             }
 
@@ -100,6 +170,7 @@ class _EncyclopediaItemsScreenState extends State<EncyclopediaItemsScreen> {
                 final item = items[index];
 
                 return Card(
+                  color: isDark ? const Color(0xFF1E1E1E) : null,
                   margin: const EdgeInsets.only(bottom: 12),
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14)),
@@ -130,9 +201,10 @@ class _EncyclopediaItemsScreenState extends State<EncyclopediaItemsScreen> {
                                   Expanded(
                                     child: Text(
                                       item.title,
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                           fontWeight: FontWeight.bold,
-                                          fontSize: 15),
+                                          fontSize: 15,
+                                          color: isDark ? Colors.white : Colors.black87),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                     ),
@@ -142,8 +214,7 @@ class _EncyclopediaItemsScreenState extends State<EncyclopediaItemsScreen> {
                                         horizontal: 6, vertical: 2),
                                     decoration: BoxDecoration(
                                       color: color.withValues(alpha: 0.15),
-                                      borderRadius:
-                                          BorderRadius.circular(6),
+                                      borderRadius: BorderRadius.circular(6),
                                     ),
                                     child: Text('#${item.order}',
                                         style: TextStyle(
@@ -158,8 +229,9 @@ class _EncyclopediaItemsScreenState extends State<EncyclopediaItemsScreen> {
                                 item.subtitle.isEmpty
                                     ? 'بدون تصنيف'
                                     : item.subtitle,
-                                style: const TextStyle(
-                                    fontSize: 11, color: Colors.grey),
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    color: isDark ? Colors.grey[400] : Colors.grey),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -167,13 +239,14 @@ class _EncyclopediaItemsScreenState extends State<EncyclopediaItemsScreen> {
                               Row(
                                 children: [
                                   Icon(Icons.list,
-                                      size: 12, color: Colors.grey),
+                                      size: 12,
+                                      color: isDark ? Colors.grey[500] : Colors.grey),
                                   const SizedBox(width: 3),
                                   Text(
                                     '${item.sections.length} فقرة',
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                         fontSize: 10,
-                                        color: Colors.grey),
+                                        color: isDark ? Colors.grey[500] : Colors.grey),
                                   ),
                                 ],
                               ),
@@ -202,8 +275,7 @@ class _EncyclopediaItemsScreenState extends State<EncyclopediaItemsScreen> {
                           icon: const Icon(Icons.delete,
                               color: Colors.red, size: 22),
                           tooltip: 'حذف',
-                          onPressed: () =>
-                              _confirmDelete(context, item),
+                          onPressed: () => _confirmDelete(context, item),
                         ),
                       ],
                     ),
@@ -215,48 +287,5 @@ class _EncyclopediaItemsScreenState extends State<EncyclopediaItemsScreen> {
         ),
       ),
     );
-  }
-
-  // ============ تأكيد الحذف ============
-  Future<void> _confirmDelete(
-      BuildContext context, EncyclopediaItem item) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => Directionality(
-        textDirection: TextDirection.rtl,
-        child: AlertDialog(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text('حذف العنصر'),
-          content: Text('هل أنت متأكد من حذف "${item.title}"؟'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('إلغاء'),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                foregroundColor: Colors.white,
-              ),
-              child: const Text('حذف'),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    if (confirm == true) {
-      final ok = await EncyclopediaService.deleteItem(item.id);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(ok ? '✅ تم حذف العنصر' : '❌ فشل الحذف'),
-            backgroundColor: ok ? const Color(0xFF047857) : Colors.red,
-          ),
-        );
-      }
-    }
   }
 }
