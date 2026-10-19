@@ -15,6 +15,7 @@ class CalculatorHubScreen extends StatefulWidget {
 class _CalculatorHubScreenState extends State<CalculatorHubScreen> {
   List<CalculatorSection> _sections = [];
   bool _loading = true;
+  String? _error;
 
   @override
   void initState() {
@@ -23,12 +24,26 @@ class _CalculatorHubScreenState extends State<CalculatorHubScreen> {
   }
 
   Future<void> _loadSections() async {
-    final sections = await CalculatorService.getSections();
-    if (mounted) {
-      setState(() {
-        _sections = sections;
-        _loading = false;
-      });
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    
+    try {
+      final sections = await CalculatorService.getSections();
+      if (mounted) {
+        setState(() {
+          _sections = sections;
+          _loading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = 'تعذر تحميل الأقسام. تأكد من اتصالك بالإنترنت.';
+          _loading = false;
+        });
+      }
     }
   }
 
@@ -37,114 +52,159 @@ class _CalculatorHubScreenState extends State<CalculatorHubScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('الحاسبات الزراعية',
             style: TextStyle(color: Colors.white)),
         backgroundColor: const Color(0xFF047857),
+        iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: Directionality(
         textDirection: TextDirection.rtl,
         child: _loading
             ? const Center(child: CircularProgressIndicator())
-            : RefreshIndicator(
-                onRefresh: _loadSections,
-                child: ListView(
-                  padding: const EdgeInsets.all(16),
-                  children: [
-                    // Header
-                    Container(
+            : _error != null
+                ? _buildErrorState()
+                : RefreshIndicator(
+                    onRefresh: _loadSections,
+                    child: ListView(
                       padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFF047857), Color(0xFF10B981)],
-                          begin: Alignment.topRight,
-                          end: Alignment.bottomLeft,
-                        ),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 60,
-                            height: 60,
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.2),
-                              borderRadius: BorderRadius.circular(14),
+                      children: [
+                        // Header
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF047857), Color(0xFF10B981)],
+                              begin: Alignment.topRight,
+                              end: Alignment.bottomLeft,
                             ),
-                            alignment: Alignment.center,
-                            child: const Icon(Icons.calculate,
-                                color: Colors.white, size: 34),
+                            borderRadius: BorderRadius.circular(16),
                           ),
-                          const SizedBox(width: 14),
-                          const Expanded(
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 60,
+                                height: 60,
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.2),
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                alignment: Alignment.center,
+                                child: const Icon(Icons.calculate,
+                                    color: Colors.white, size: 34),
+                              ),
+                              const SizedBox(width: 14),
+                              const Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text('اختر القسم',
+                                        style: TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 20)),
+                                    SizedBox(height: 4),
+                                    Text('برامج زراعية شاملة من الخدمة للحصاد',
+                                        style: TextStyle(
+                                            color: Colors.white70, fontSize: 12)),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        
+                        // Irrigation Calculator Card
+                        Card(
+                          color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+                          child: ListTile(
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) =>
+                                      const IrrigationCalculatorScreen()),
+                            ),
+                            leading: const Icon(Icons.water_drop,
+                                color: Color(0xFF0284C7), size: 30),
+                            title: Text('تصميم شبكات الري',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: isDark ? Colors.white : Colors.black87,
+                                )),
+                            subtitle: Text(
+                                'تنقيط، رش، سطحي، محوري + المضخة وتصدير DXF',
+                                style: TextStyle(
+                                  color: isDark ? Colors.grey[400] : Colors.grey[700],
+                                )),
+                            trailing: Icon(Icons.chevron_left, 
+                              color: isDark ? Colors.white : Colors.black87),
+                          ),
+                        ),
+                        
+                        const SizedBox(height: 20),
+                        Text('الأقسام المتاحة',
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold, 
+                                fontSize: 16,
+                                color: isDark ? Colors.white : Colors.black87)),
+                        const SizedBox(height: 10),
+
+                        // Sections list
+                        if (_sections.isEmpty)
+                          Container(
+                            padding: const EdgeInsets.all(30),
+                            alignment: Alignment.center,
                             child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text('اختر القسم',
-                                    style: TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 20)),
-                                SizedBox(height: 4),
-                                Text('برامج زراعية شاملة من الخدمة للحصاد',
-                                    style: TextStyle(
-                                        color: Colors.white70, fontSize: 12)),
+                                Icon(Icons.inbox,
+                                    size: 60, color: Colors.grey.shade400),
+                                const SizedBox(height: 10),
+                                const Text('لا يوجد أقسام متاحة',
+                                    style: TextStyle(color: Colors.grey)),
                               ],
                             ),
-                          ),
-                        ],
-                      ),
+                          )
+                        else
+                          ..._sections.map((s) => _buildSectionCard(s)),
+                      ],
                     ),
-                    const SizedBox(height: 14),
-                    Card(
-                      child: ListTile(
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) =>
-                                  const IrrigationCalculatorScreen()),
-                        ),
-                        leading: const Icon(Icons.water_drop,
-                            color: Color(0xFF0284C7)),
-                        title: const Text('تصميم شبكات الري',
-                            style: TextStyle(fontWeight: FontWeight.bold)),
-                        subtitle: const Text(
-                            'تنقيط، رش، سطحي، محوري + المضخة وتصدير DXF'),
-                        trailing: const Icon(Icons.chevron_left),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    const Text('الأقسام المتاحة',
-                        style: TextStyle(
-                            fontWeight: FontWeight.bold, fontSize: 16)),
-                    const SizedBox(height: 10),
+                  ),
+      ),
+    );
+  }
 
-                    // Sections list
-                    if (_sections.isEmpty)
-                      Container(
-                        padding: const EdgeInsets.all(30),
-                        alignment: Alignment.center,
-                        child: Column(
-                          children: [
-                            Icon(Icons.inbox,
-                                size: 60, color: Colors.grey.shade400),
-                            const SizedBox(height: 10),
-                            const Text('لا يوجد أقسام متاحة',
-                                style: TextStyle(color: Colors.grey)),
-                          ],
-                        ),
-                      )
-                    else
-                      ..._sections.map((s) => _buildSectionCard(s)),
-                  ],
-                ),
+  Widget _buildErrorState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error_outline, color: Colors.red, size: 60),
+            const SizedBox(height: 16),
+            Text(_error!, textAlign: TextAlign.center, style: const TextStyle(fontSize: 16)),
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              onPressed: _loadSections,
+              icon: const Icon(Icons.refresh),
+              label: const Text('إعادة المحاولة'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF047857),
+                foregroundColor: Colors.white,
               ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildSectionCard(CalculatorSection section) {
+    // استخدام NumberUtils أو SafeParse لو الألوان جاية من Firestore كنصوص غريبة
     final primary = _hexColor(section.primaryColor);
     final secondary = _hexColor(section.secondaryColor, fallback: primary);
 
