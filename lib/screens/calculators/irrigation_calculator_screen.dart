@@ -114,6 +114,7 @@ class _IrrigationCalculatorScreenState
   final Map<String, TextEditingController> _c = {};
   List<_Line> _results = const [];
   String? _dxf;
+  bool _isExporting = false;
 
   TextEditingController _ctrl(String key) => _c.putIfAbsent(
       key, () => TextEditingController(text: _defaults[key] ?? ''));
@@ -502,17 +503,43 @@ class _IrrigationCalculatorScreenState
   Future<void> _exportDxf() async {
     final dxf = _dxf;
     if (dxf == null) return;
+
+    setState(() => _isExporting = true);
+
+    // عرض رسالة تحميل
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Row(
+          children: [
+            SizedBox(
+              width: 20, 
+              height: 20, 
+              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)
+            ),
+            SizedBox(width: 16),
+            Text('جاري إنشاء الملف...'),
+          ],
+        ),
+        duration: Duration(seconds: 5),
+      ),
+    );
+
     try {
       final dir = await getTemporaryDirectory();
       final file = File('${dir.path}/irrigation_layout.dxf');
       await file.writeAsString(dxf);
+      
+      if (mounted) ScaffoldMessenger.of(context).hideCurrentSnackBar();
+
       await SharePlus.instance.share(ShareParams(
         files: [XFile(file.path)],
         subject: 'مخطط الري (DXF) - تطبيق نباتي',
       ));
     } catch (_) {
-      if (!mounted) return;
-      _snack('تعذر إنشاء الملف');
+      if (mounted) ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      if (mounted) _snack('تعذر إنشاء الملف');
+    } finally {
+      if (mounted) setState(() => _isExporting = false);
     }
   }
 
@@ -526,6 +553,7 @@ class _IrrigationCalculatorScreenState
   Widget _field(String key, {String? suffix, String? label}) => TextField(
         controller: _ctrl(key),
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        textInputAction: TextInputAction.next, // يظهر زر Next في الكيبورد
         decoration: _dec(label ?? _labels[key] ?? key, suffix: suffix),
       );
 
@@ -653,9 +681,11 @@ class _IrrigationCalculatorScreenState
             if (_dxf != null) ...[
               const SizedBox(height: 14),
               ElevatedButton.icon(
-                onPressed: _exportDxf,
-                icon: const Icon(Icons.download),
-                label: const Text('تصدير مخطط DXF (لـ RainCAD / AutoCAD)'),
+                onPressed: _isExporting ? null : _exportDxf,
+                icon: _isExporting 
+                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                    : const Icon(Icons.download),
+                label: Text(_isExporting ? 'جاري التصدير...' : 'تصدير مخطط DXF (لـ RainCAD / AutoCAD)'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: _blue,
                   foregroundColor: Colors.white,
@@ -784,6 +814,7 @@ class _IrrigationCalculatorScreenState
               ),
             ),
             if (_results.isNotEmpty) _resultCard(),
+            const SizedBox(height: 100), // مسافة عشان الزر يبان فوق الكيبورد
           ],
         ),
       ),
