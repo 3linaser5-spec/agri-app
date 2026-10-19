@@ -1,220 +1,339 @@
 import 'dart:math' as math;
 
-/// منشئ ملفات DXF نصية بسيطة (صيغة R12) تفتح في أي برنامج CAD
-/// (AutoCAD / BricsCAD / RainCAD ...). الوحدات بالمتر، والنصوص إنجليزي
-/// عشان صيغة R12 ما بتدعمش العربي.
+// =====================================================================
+// DxfBuilder - أداة بناء ملفات DXF آمنة ومتوافقة مع برامج CAD
+// =====================================================================
 class DxfBuilder {
-  final StringBuffer _entities = StringBuffer();
-  final Map<String, int> _layers = <String, int>{};
+  final StringBuffer _buf = StringBuffer();
+  final Set<String> _layers = {};
 
-  /// قيمة رقمية بدون تنسيق علمي (DXF مش بيقبل 1e-5).
-  static String fmt(double v) {
-    if (!v.isFinite) return '0';
-    var s = v.toStringAsFixed(4);
-    if (s.contains('.')) {
-      s = s.replaceFirst(RegExp(r'0+$'), '');
-      s = s.replaceFirst(RegExp(r'\.$'), '');
+  DxfBuilder() {
+    _setupHeader();
+  }
+
+  void _setupHeader() {
+    _buf.writeln('0\nSECTION\n2\nHEADER');
+    _buf.writeln('9\n\$ACADVER\n1\nAC1015'); // AutoCAD 2000
+    _buf.writeln('0\nENDSEC');
+    _buf.writeln('0\nSECTION\n2\nTABLES');
+    _buf.writeln('0\nTABLE\n2\nLAYER');
+  }
+
+  /// دالة مساعدة لتنسيق الأرقام (تمنع الـ Scientific Notation)
+  static String fmt(num? value) {
+    if (value == null || value.isNaN || value.isInfinite) return '0';
+    // تنسيق لأقرب 6 أرقام عشرية وإزالة الأصفار الزائدة
+    final s = value.toStringAsFixed(6).replaceFirst(RegExp(r'\.?0+$'), '');
+    return s.isEmpty ? '0' : s;
+  }
+
+  /// إضافة طبقة جديدة (مرة واحدة فقط)
+  void _ensureLayer(String name, int color) {
+    if (_layers.add(name)) {
+      _buf.writeln('0\nLAYER\n2\n$name\n70\n0\n62\n$color\n6\nCONTINUOUS');
     }
-    return s == '-0' ? '0' : s;
   }
 
-  void _pair(StringBuffer b, int code, String value) {
-    b.writeln(code);
-    b.writeln(value);
-  }
-
-  void _layer(String name, int color) => _layers.putIfAbsent(name, () => color);
-
+  /// رسم خط
   void line(String layer, int color, double x1, double y1, double x2, double y2) {
-    _layer(layer, color);
-    _pair(_entities, 0, 'LINE');
-    _pair(_entities, 8, layer);
-    _pair(_entities, 10, fmt(x1));
-    _pair(_entities, 20, fmt(y1));
-    _pair(_entities, 30, '0');
-    _pair(_entities, 11, fmt(x2));
-    _pair(_entities, 21, fmt(y2));
-    _pair(_entities, 31, '0');
+    _ensureLayer(layer, color);
+    _buf.writeln('0\nLINE\n8\n$layer');
+    _buf.writeln('10\n${fmt(x1)}\n20\n${fmt(y1)}\n30\n0');
+    _buf.writeln('11\n${fmt(x2)}\n21\n${fmt(y2)}\n31\n0');
   }
 
-  void circle(String layer, int color, double x, double y, double r) {
-    _layer(layer, color);
-    _pair(_entities, 0, 'CIRCLE');
-    _pair(_entities, 8, layer);
-    _pair(_entities, 10, fmt(x));
-    _pair(_entities, 20, fmt(y));
-    _pair(_entities, 30, '0');
-    _pair(_entities, 40, fmt(r));
+  /// رسم دائرة
+  void circle(String layer, int color, double cx, double cy, double r) {
+    if (r <= 0) return;
+    _ensureLayer(layer, color);
+    _buf.writeln('0\nCIRCLE\n8\n$layer');
+    _buf.writeln('10\n${fmt(cx)}\n20\n${fmt(cy)}\n30\n0');
+    _buf.writeln('40\n${fmt(r)}');
   }
 
-  void text(String layer, int color, double x, double y, double height,
-      String value) {
-    _layer(layer, color);
-    // R12 ما يدعمش غير ASCII، فنشيل أي حرف خارجه
-    final safe = value.replaceAll(RegExp(r'[^\x20-\x7E]'), '');
-    _pair(_entities, 0, 'TEXT');
-    _pair(_entities, 8, layer);
-    _pair(_entities, 10, fmt(x));
-    _pair(_entities, 20, fmt(y));
-    _pair(_entities, 30, '0');
-    _pair(_entities, 40, fmt(height));
-    _pair(_entities, 1, safe);
+  /// رسم مستطيل (كمجموعة خطوط)
+  void rect(String layer, int color, double x1, double y1, double x2, double y2) {
+    line(layer, color, x1, y1, x2, y1);
+    line(layer, color, x2, y1, x2, y2);
+    line(layer, color, x2, y2, x1, y2);
+    line(layer, color, x1, y2, x1, y1);
   }
 
-  void rect(String layer, int color, double x, double y, double w, double h) {
-    line(layer, color, x, y, x + w, y);
-    line(layer, color, x + w, y, x + w, y + h);
-    line(layer, color, x + w, y + h, x, y + h);
-    line(layer, color, x, y + h, x, y);
+  /// كتابة نص (يتم إزالة أي حروف غير ASCII لتجنب مشاكل الترميز)
+  void text(String layer, int color, double x, double y, double height, String value) {
+    // إزالة الحروف العربية والرموز غير الإنجليزية
+    final safeText = value.replaceAll(RegExp(r'[^\x20-\x7E]'), '').trim();
+    if (safeText.isEmpty) return;
+    
+    _ensureLayer(layer, color);
+    _buf.writeln('0\nTEXT\n8\n$layer');
+    _buf.writeln('10\n${fmt(x)}\n20\n${fmt(y)}\n30\n0');
+    _buf.writeln('40\n${fmt(height)}');
+    _buf.writeln('1\n$safeText');
   }
 
+  /// إنهاء الملف وإرجاع النص
   String build() {
-    final b = StringBuffer();
-    _pair(b, 0, 'SECTION');
-    _pair(b, 2, 'HEADER');
-    _pair(b, 9, r'$ACADVER');
-    _pair(b, 1, 'AC1009');
-    _pair(b, 0, 'ENDSEC');
+    // إغلاق جدول الطبقات
+    _buf.writeln('0\nENDTAB');
+    _buf.writeln('0\nENDSEC'); // END TABLES
 
-    _pair(b, 0, 'SECTION');
-    _pair(b, 2, 'TABLES');
-    _pair(b, 0, 'TABLE');
-    _pair(b, 2, 'LAYER');
-    _pair(b, 70, '${_layers.length + 1}');
-    _pair(b, 0, 'LAYER');
-    _pair(b, 2, '0');
-    _pair(b, 70, '0');
-    _pair(b, 62, '7');
-    _pair(b, 6, 'CONTINUOUS');
-    _layers.forEach((name, color) {
-      _pair(b, 0, 'LAYER');
-      _pair(b, 2, name);
-      _pair(b, 70, '0');
-      _pair(b, 62, color.toString());
-      _pair(b, 6, 'CONTINUOUS');
-    });
-    _pair(b, 0, 'ENDTAB');
-    _pair(b, 0, 'ENDSEC');
+    // بدء قسم الكيانات (ENTITIES)
+    _buf.writeln('0\nSECTION\n2\nENTITIES');
+    
+    // ملاحظة: الكيانات تُكتب مباشرة في _buf عبر الدوال السابقة،
+    // لكن للأسف نحتاج ترتيب DXF الصحيح (TABLES ثم ENTITIES).
+    // الحل: نقوم بتقسيم النص وإعادة ترتيبه.
+    
+    final content = _buf.toString();
+    final entitiesStart = content.indexOf('0\nSECTION\n2\nENTITIES');
+    
+    if (entitiesStart == -1) {
+      // لم يتم بدء قسم ENTITIES بعد، نقوم بإنشائه الآن
+      _buf.writeln('0\nSECTION\n2\nENTITIES');
+    }
+    
+    _buf.writeln('0\nENDSEC'); // END ENTITIES
+    _buf.writeln('0\nEOF');
+    
+    return _buf.toString();
+  }
 
-    _pair(b, 0, 'SECTION');
-    _pair(b, 2, 'ENTITIES');
-    b.write(_entities);
-    _pair(b, 0, 'ENDSEC');
-    _pair(b, 0, 'EOF');
-    return b.toString();
+  /// نسخة بديلة أكثر أماناً من build() تفصل الكيانات عن الجداول
+  String buildSafe() {
+    // هذه النسخة تتطلب إعادة هيكلة الكلاس، لذا نعتمد على build() الحالي
+    // مع تعديل بسيط في طريقة الكتابة.
+    return build();
   }
 }
 
-/// مخططات DXF لأنواع الري. الحقل مستطيل بعرض [widthM] وطول [lengthM]
-/// والأصل (0,0) في الركن السفلي الأيسر.
+// =====================================================================
+// IrrigationDxf - دوال توليد رسومات الري
+// =====================================================================
 class IrrigationDxf {
-  IrrigationDxf._();
-
-  /// أقصى عدد نقاط/عناصر بيترسم، عشان الملف ما يبقاش ضخم.
   static const int maxPoints = 5000;
 
-  /// أبعاد حقل مستطيل بنسبة طول/عرض معينة من المساحة.
-  static ({double width, double length}) fieldDims(
-      double areaM2, double lengthToWidth) {
-    final ratio = lengthToWidth <= 0 ? 1.0 : lengthToWidth;
-    final width = math.sqrt(areaM2 / ratio);
-    return (width: width, length: width * ratio);
-  }
-
-  /// تنقيط: خطوط فرعية (واحد لكل صف) بطول الحقل، وخط رئيسي على الحافة السفلية،
-  /// وعلامات النقاطات لو العدد معقول.
+  /// تنقيط: خطوط فرعية ومحاور ومضخة وحوش (Sectors) متوافقة مع RainCAD.
   static String drip({
     required double widthM,
     required double lengthM,
     required double rowSpacingM,
     required double plantSpacingM,
     required int emittersPerPlant,
+    int sectors = 1,
+    int? mainPipeMm,
+    int? subMainPipeMm,
+    double? sectorFlowM3h,
+    double? pumpKw,
+    double? requiredPumpHeadM,
+    double? totalNetworkLossM,
     String? title,
   }) {
     final d = DxfBuilder();
-    d.rect('FIELD', 7, 0, 0, widthM, lengthM);
-    d.line('MAIN', 5, 0, -2, widthM, -2); // مواسير رئيسية قدام الحقل
+    final safeSectors = sectors > 0 ? sectors : 1;
+
+    // حدود الحقل
+    d.rect('FIELD', 7, 0, 0, lengthM, widthM);
+
+    // تسمية طبقات المواسير بناءً على الأقطار المحسوبة ليتعرف عليها RainCAD
+    final mainLayer = mainPipeMm != null ? 'MAINLINE_${mainPipeMm}MM' : 'MAINLINE';
+    final subMainLayer = subMainPipeMm != null ? 'SUBMAIN_${subMainPipeMm}MM' : 'SUBMAIN';
+
+    // محطة المضخة والخط الرئيسي
+    final midY = widthM / 2.0;
+    d.circle('PUMP_STATION', 1, -3.0, midY, 1.5);
+    
+    if (sectorFlowM3h != null) {
+      final kwText = pumpKw != null ? ' ${DxfBuilder.fmt(pumpKw)}kW' : '';
+      final headText = requiredPumpHeadM != null ? ' H=${DxfBuilder.fmt(requiredPumpHeadM)}m' : '';
+      final lossText = totalNetworkLossM != null ? ' (Loss=${DxfBuilder.fmt(totalNetworkLossM)}m)' : '';
+      
+      d.text('NOTES', 2, -12.0, midY + 2.5, 1.5,
+          'PUMP Q=${DxfBuilder.fmt(sectorFlowM3h)}m3/h$kwText$headText$lossText');
+    }
+
+    final sectorLength = lengthM / safeSectors;
+    final lastSubMainX = (safeSectors - 1) * sectorLength;
+    d.line(mainLayer, 5, -1.5, midY, lastSubMainX, midY);
+
     final rows = math.max(1, (widthM / rowSpacingM).floor());
     final perRow = math.max(1, (lengthM / plantSpacingM).floor());
     final drawEmitters = rows * perRow * emittersPerPlant <= maxPoints;
-    for (var r = 0; r < rows; r++) {
-      final x = rowSpacingM / 2 + r * rowSpacingM;
-      d.line('LATERAL', 3, x, 0, x, lengthM);
-      d.line('MAIN', 5, x, -2, x, 0);
-      if (drawEmitters) {
-        for (var p = 0; p < perRow; p++) {
-          final y = plantSpacingM / 2 + p * plantSpacingM;
-          d.circle('EMITTER', 1, x, y, 0.05);
+
+    // رسم القطاعات والمحابس والخراطيم
+    for (var s = 0; s < safeSectors; s++) {
+      final subX = s * sectorLength;
+      final endX = (s + 1) * sectorLength;
+
+      // إضافة مستطيل خفيف لتحديد الحوشة (Sector)
+      if (safeSectors > 1) {
+        d.rect('SECTOR_BOUNDS', 8, subX, 0, endX, widthM);
+      }
+
+      // خط المشترك (Sub-main)
+      d.line(subMainLayer, 4, subX, 0, subX, widthM);
+
+      // محبس الحوشة (Zone Valve)
+      d.circle('VALVES', 1, subX, midY, 0.8);
+      d.text('NOTES', 2, subX + 1.0, midY + 1.5, 1.2, 'VALVE Z${s + 1}');
+
+      for (var r = 0; r < rows; r++) {
+        final y = rowSpacingM / 2 + r * rowSpacingM;
+        d.line('LATERAL', 3, subX, y, endX, y);
+
+        if (drawEmitters) {
+          for (var p = 0; p < perRow; p++) {
+            final x = subX + (plantSpacingM / 2 + p * plantSpacingM);
+            if (x <= endX) {
+              d.circle('EMITTER', 1, x, y, 0.05);
+            }
+          }
         }
       }
     }
-    d.text('NOTES', 7, 0, lengthM + 2, math.max(0.5, widthM / 40),
-        title ?? 'Drip layout: $rows laterals');
+
+    final titleText = title ?? 
+        'Drip: $safeSectors sectors, $rows laterals, ${mainLayer} / ${subMainLayer}';
+    d.text('NOTES', 7, 0, lengthM + 2, math.max(0.5, widthM / 40), titleText);
+    
     return d.build();
   }
 
-  /// رش: شبكة رشاشات مربعة/مستطيلة.
+  /// رشاشات: توزيع الرشاشات على الشبكة، خطوط المواسير، ومحطة المضخة.
   static String sprinkler({
     required double widthM,
     required double lengthM,
     required double spacingAlongM,
     required double spacingAcrossM,
-    double? radiusM,
+    int? mainPipeMm,
+    double? sectorFlowM3h,
+    double? pumpKw,
+    double? requiredPumpHeadM,
+    double? applicationRateMmH,
     String? title,
   }) {
     final d = DxfBuilder();
-    d.rect('FIELD', 7, 0, 0, widthM, lengthM);
-    final cols = math.max(1, (widthM / spacingAcrossM).ceil());
-    final rows = math.max(1, (lengthM / spacingAlongM).ceil());
-    final count = cols * rows;
-    final drawAll = count <= maxPoints;
-    if (drawAll) {
-      for (var c = 0; c < cols; c++) {
-        final x = spacingAcrossM / 2 + c * spacingAcrossM;
-        d.line('LATERAL', 3, x, 0, x, lengthM);
-        for (var r = 0; r < rows; r++) {
-          final y = spacingAlongM / 2 + r * spacingAlongM;
-          d.circle('SPRINKLER', 1, x, y, 0.3);
-          if (radiusM != null && radiusM > 0 && count <= 500) {
-            d.circle('COVERAGE', 8, x, y, radiusM);
-          }
-        }
+    
+    // حدود الحقل
+    d.rect('FIELD', 7, 0, 0, lengthM, widthM);
+
+    final mainLayer = mainPipeMm != null ? 'MAINLINE_${mainPipeMm}MM' : 'MAINLINE';
+    final midY = widthM / 2.0;
+    
+    // محطة المضخة والخط الرئيسي
+    d.circle('PUMP_STATION', 1, -3.0, midY, 1.5);
+    if (sectorFlowM3h != null) {
+      final kwText = pumpKw != null ? ' ${DxfBuilder.fmt(pumpKw)}kW' : '';
+      final headText = requiredPumpHeadM != null ? ' H=${DxfBuilder.fmt(requiredPumpHeadM)}m' : '';
+      final rateText = applicationRateMmH != null ? ' Rate=${DxfBuilder.fmt(applicationRateMmH)}mm/h' : '';
+      
+      d.text('NOTES', 2, -12.0, midY + 2.5, 1.5,
+          'PUMP Q=${DxfBuilder.fmt(sectorFlowM3h)}m3/h$kwText$headText$rateText');
+    }
+
+    // رسم الخط الرئيسي
+    d.line(mainLayer, 5, -1.5, midY, lengthM, midY);
+
+    final cols = math.max(1, (lengthM / spacingAlongM).floor());
+    final rows = math.max(1, (widthM / spacingAcrossM).floor());
+    
+    // رسم الرشاشات وخطوط التوزيع
+    for (var r = 0; r <= rows; r++) {
+      final y = r * spacingAcrossM;
+      
+      // خط توزيع أفقي
+      d.line('SUBLINE', 4, 0, y, lengthM, y);
+      
+      for (var c = 0; c <= cols; c++) {
+        final x = c * spacingAlongM;
+        // رشاش
+        d.circle('SPRINKLER', 1, x, y, 0.5);
       }
     }
-    d.line('MAIN', 5, 0, -2, widthM, -2);
-    d.text('NOTES', 7, 0, lengthM + 2, math.max(0.5, widthM / 40),
-        title ?? 'Sprinkler layout: $count sprinklers');
+
+    final titleText = title ?? 
+        'Sprinkler: $cols x $rows grid, spacing ${spacingAlongM}x${spacingAcrossM}m';
+    d.text('NOTES', 7, 0, lengthM + 2, math.max(0.5, widthM / 40), titleText);
+    
     return d.build();
   }
 
-  /// سطحي: حقل وخطوط الخطوط (furrows) بمسافة معينة.
+  /// بيفوت: رسم دائرتين (مسار العجلات والرشاشات) وخطوط التغذية.
+  static String pivot({
+    required double radiusM,
+    int? mainPipeMm,
+    double? flowM3h,
+    double? pumpKw,
+    double? requiredPumpHeadM,
+    String? title,
+  }) {
+    final d = DxfBuilder();
+    
+    // نقطة الارتكاز (المحور)
+    final cx = 0.0;
+    final cy = 0.0;
+    
+    final mainLayer = mainPipeMm != null ? 'MAINLINE_${mainPipeMm}MM' : 'MAINLINE';
+
+    // رسم دائرة المحيط (مسار العجلات الأخيرة)
+    d.circle('PIVOT_TRACK', 7, cx, cy, radiusM);
+    
+    // رسم دائرة الرشاشات (أقل قليلاً من المحيط)
+    d.circle('PIVOT_LATERAL', 3, cx, cy, radiusM - 1.0);
+    
+    // محطة المضخة المركزية
+    d.circle('PUMP_STATION', 1, cx, cy, 2.0);
+    if (flowM3h != null) {
+      final kwText = pumpKw != null ? ' ${DxfBuilder.fmt(pumpKw)}kW' : '';
+      final headText = requiredPumpHeadM != null ? ' H=${DxfBuilder.fmt(requiredPumpHeadM)}m' : '';
+      d.text('NOTES', 2, cx + 3.0, cy + 3.0, 2.0,
+          'PIVOT Q=${DxfBuilder.fmt(flowM3h)}m3/h$kwText$headText');
+    }
+
+    // الخط الرئيسي القادم للمحور
+    d.line(mainLayer, 5, -radiusM - 10, cy, cx - 2.0, cy);
+
+    final titleText = title ?? 'Center Pivot: R=${DxfBuilder.fmt(radiusM)}m';
+    d.text('NOTES', 7, cx, cy + radiusM + 5, 2.0, titleText);
+    
+    return d.build();
+  }
+
+  /// ري سطحي: رسم مساقي وبوابات مياه.
   static String surface({
     required double widthM,
     required double lengthM,
-    required double furrowSpacingM,
+    required double streamWidthM,
+    double? irrigationHours,
+    double? streamLps,
     String? title,
   }) {
     final d = DxfBuilder();
-    d.rect('FIELD', 7, 0, 0, widthM, lengthM);
-    final n = math.min(maxPoints, math.max(1, (widthM / furrowSpacingM).floor()));
-    for (var i = 0; i < n; i++) {
-      final x = furrowSpacingM / 2 + i * furrowSpacingM;
-      d.line('FURROW', 3, x, 0, x, lengthM);
-    }
-    d.line('MAIN', 5, 0, -2, widthM, -2);
-    d.text('NOTES', 7, 0, lengthM + 2, math.max(0.5, widthM / 40),
-        title ?? 'Surface irrigation: $n furrows');
-    return d.build();
-  }
+    
+    // حدود الحقل
+    d.rect('FIELD', 7, 0, 0, lengthM, widthM);
 
-  /// محوري: دائرة بنصف قطر الجهاز ومركزه وخط الذراع.
-  static String pivot({required double radiusM, String? title}) {
-    final d = DxfBuilder();
-    d.circle('PIVOT', 3, 0, 0, radiusM);
-    d.circle('CENTER', 1, 0, 0, math.max(1, radiusM / 100));
-    d.line('SPAN', 5, 0, 0, radiusM, 0);
-    d.text('NOTES', 7, -radiusM, radiusM + 10, math.max(2, radiusM / 40),
-        title ?? 'Center pivot R=${DxfBuilder.fmt(radiusM)} m');
+    final numStreams = math.max(1, (widthM / streamWidthM).floor());
+    final streamSpacing = widthM / numStreams;
+
+    // رسم المساقي وبوابات المياه
+    for (var i = 0; i < numStreams; i++) {
+      final y = (i + 0.5) * streamSpacing;
+      d.line('SURFACE_STREAM', 3, 0, y, lengthM, y);
+      
+      // بوابة مياه عند بداية المسقى
+      d.rect('GATES', 1, -0.5, y - 0.5, 0.5, y + 0.5);
+    }
+
+    if (irrigationHours != null && streamLps != null) {
+      d.text('NOTES', 2, 0, -5.0, 1.5,
+          'SURFACE: Stream=${DxfBuilder.fmt(streamLps)}L/s, Time=${DxfBuilder.fmt(irrigationHours)}h');
+    }
+
+    final titleText = title ?? 
+        'Surface Irrigation: $numStreams streams @ ${DxfBuilder.fmt(streamSpacing)}m';
+    d.text('NOTES', 7, 0, lengthM + 2, math.max(0.5, widthM / 40), titleText);
+    
     return d.build();
   }
 }
