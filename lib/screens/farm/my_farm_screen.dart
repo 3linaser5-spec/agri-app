@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../models/my_farm_model.dart';
 import '../../services/my_farm_service.dart';
+import '../../utils/safe_parse.dart'; // ✅ لضمان قراءة النصوص بأمان
 import 'program_details_screen.dart';
 
 class MyFarmScreen extends StatefulWidget {
@@ -12,16 +13,28 @@ class MyFarmScreen extends StatefulWidget {
 }
 
 class _MyFarmScreenState extends State<MyFarmScreen> {
-  // الـ Stream بيتعمل مرة واحدة بدل ما يتعمل مع كل rebuild
-  late final Stream<List<MyFarmProgram>>? _programsStream = _createStream();
+  // إدارة الـ Stream باستخدام متغير عشان نقدر نغيره لو المستخدم اتغير
+  Stream<List<MyFarmProgram>>? _programsStream;
 
-  Stream<List<MyFarmProgram>>? _createStream() {
+  @override
+  void initState() {
+    super.initState();
+    _updateStream();
+  }
+
+  // نتحقق من الـ User كل مرة ونجيب الـ Stream بتاعه
+  void _updateStream() {
     final user = FirebaseAuth.instance.currentUser;
-    return user == null ? null : MyFarmService.getUserPrograms(user.uid);
+    setState(() {
+      _programsStream = user == null 
+          ? null 
+          : MyFarmService.getUserPrograms(user.uid);
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final user = FirebaseAuth.instance.currentUser;
 
     return Scaffold(
@@ -72,10 +85,11 @@ class _MyFarmScreenState extends State<MyFarmScreen> {
                             Icon(Icons.agriculture,
                                 size: 100, color: Colors.grey.shade400),
                             const SizedBox(height: 20),
-                            const Text('مزرعتك فاضية 🌾',
+                            Text('مزرعتك فاضية 🌾',
                                 style: TextStyle(
                                     fontSize: 18,
-                                    fontWeight: FontWeight.bold)),
+                                    fontWeight: FontWeight.bold,
+                                    color: isDark ? Colors.white : Colors.black87)),
                             const SizedBox(height: 8),
                             const Text(
                               'ابدأ بإضافة برنامج زراعي من الحاسبات الزراعية',
@@ -89,49 +103,56 @@ class _MyFarmScreenState extends State<MyFarmScreen> {
                     );
                   }
 
-                  return ListView(
-                    padding: const EdgeInsets.all(16),
-                    children: [
-                      // Header
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFF047857), Color(0xFF10B981)],
-                          ),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.agriculture,
-                                color: Colors.white, size: 40),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('${programs.length} برنامج زراعي',
-                                      style: const TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 16)),
-                                  const SizedBox(height: 4),
-                                  const Text(
-                                    'متابعة المحاصيل والمهام اليومية',
-                                    style: TextStyle(
-                                        color: Colors.white70,
-                                        fontSize: 12),
-                                  ),
-                                ],
-                              ),
+                  return RefreshIndicator(
+                    onRefresh: () async {
+                      // ✅ نستخدم الطريقة عشان نحدث الـ Stream
+                      _updateStream();
+                      await Future.delayed(const Duration(milliseconds: 500));
+                    },
+                    child: ListView(
+                      padding: const EdgeInsets.all(16),
+                      children: [
+                        // Header
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF047857), Color(0xFF10B981)],
                             ),
-                          ],
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.agriculture,
+                                  color: Colors.white, size: 40),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text('${programs.length} برنامج زراعي',
+                                        style: const TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 16)),
+                                    const SizedBox(height: 4),
+                                    const Text(
+                                      'متابعة المحاصيل والمهام اليومية',
+                                      style: TextStyle(
+                                          color: Colors.white70,
+                                          fontSize: 12),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 20),
+                        const SizedBox(height: 20),
 
-                      ...programs.map((p) => _buildProgramCard(context, p)),
-                    ],
+                        ...programs.map((p) => _buildProgramCard(context, p, isDark)),
+                      ],
+                    ),
                   );
                 },
               ),
@@ -139,7 +160,12 @@ class _MyFarmScreenState extends State<MyFarmScreen> {
     );
   }
 
-  Widget _buildProgramCard(BuildContext context, MyFarmProgram program) {
+  Widget _buildProgramCard(BuildContext context, MyFarmProgram program, bool isDark) {
+    // ✅ استخدام SafeParse للتعامل مع أي null من Firestore
+    final templateName = SafeParse.string(program.templateName, 'برنامج زراعي');
+    final templateEmoji = SafeParse.string(program.templateEmoji, '🌱');
+    final governorate = SafeParse.string(program.governorate, 'غير محدد');
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       child: InkWell(
@@ -155,12 +181,16 @@ class _MyFarmScreenState extends State<MyFarmScreen> {
         child: Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: Theme.of(context).cardColor,
+            // ✅ دعم الوضع الليلي
+            color: isDark ? const Color(0xFF1E1E1E) : Theme.of(context).cardColor,
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: Colors.grey.shade200),
+            border: Border.all(
+                color: isDark ? Colors.grey.shade800 : Colors.grey.shade200),
             boxShadow: [
               BoxShadow(
-                color: Colors.grey.shade100,
+                color: isDark 
+                    ? Colors.black.withValues(alpha: 0.3) 
+                    : Colors.grey.shade100,
                 blurRadius: 6,
                 offset: const Offset(0, 2),
               ),
@@ -170,7 +200,6 @@ class _MyFarmScreenState extends State<MyFarmScreen> {
             children: [
               Row(
                 children: [
-                  // Emoji
                   Container(
                     width: 55,
                     height: 55,
@@ -179,7 +208,7 @@ class _MyFarmScreenState extends State<MyFarmScreen> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     alignment: Alignment.center,
-                    child: Text(program.templateEmoji,
+                    child: Text(templateEmoji,
                         style: const TextStyle(fontSize: 30)),
                   ),
                   const SizedBox(width: 12),
@@ -187,16 +216,18 @@ class _MyFarmScreenState extends State<MyFarmScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(program.templateName,
-                            style: const TextStyle(
-                                fontWeight: FontWeight.bold, fontSize: 16)),
+                        Text(templateName,
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold, 
+                              fontSize: 16,
+                              color: isDark ? Colors.white : Colors.black87)),
                         const SizedBox(height: 4),
                         Row(
                           children: [
                             const Icon(Icons.location_on,
                                 size: 12, color: Colors.grey),
                             const SizedBox(width: 3),
-                            Text(program.governorate,
+                            Text(governorate,
                                 style: const TextStyle(
                                     fontSize: 11, color: Colors.grey)),
                           ],
@@ -204,13 +235,11 @@ class _MyFarmScreenState extends State<MyFarmScreen> {
                       ],
                     ),
                   ),
-                  // حالة البرنامج
                   _buildStatusBadge(program),
                 ],
               ),
               const SizedBox(height: 12),
 
-              // معلومات التقدم
               Row(
                 children: [
                   _buildInfoChip(
@@ -232,20 +261,18 @@ class _MyFarmScreenState extends State<MyFarmScreen> {
                 ],
               ),
 
-              // شريط التقدم
               const SizedBox(height: 10),
               ClipRRect(
                 borderRadius: BorderRadius.circular(6),
                 child: LinearProgressIndicator(
                   value: program.progress,
                   minHeight: 8,
-                  backgroundColor: Colors.grey.shade200,
+                  backgroundColor: isDark ? Colors.grey.shade800 : Colors.grey.shade200,
                   color: const Color(0xFF047857),
                 ),
               ),
               const SizedBox(height: 6),
 
-              // المهمة القادمة (غير المنجزة)
               if (program.nextTask != null)
                 Row(
                   children: [
@@ -273,7 +300,6 @@ class _MyFarmScreenState extends State<MyFarmScreen> {
   }
 
   Widget _buildStatusBadge(MyFarmProgram program) {
-    // مكتمل = كل المهام اتعلّمت (محسوبة من البيانات)
     final isActive = !program.isCompleted;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
