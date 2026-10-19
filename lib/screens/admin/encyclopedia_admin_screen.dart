@@ -4,6 +4,7 @@ import '../../services/encyclopedia_service.dart';
 import 'encyclopedia_items_screen.dart';
 import 'encyclopedia_import_screen.dart';
 import '../../utils/color_utils.dart';
+import '../../utils/safe_parse.dart'; // ✅ للتعامل مع أي null
 
 class EncyclopediaAdminScreen extends StatelessWidget {
   const EncyclopediaAdminScreen({super.key});
@@ -26,6 +27,8 @@ class EncyclopediaAdminScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('إدارة الموسوعة',
@@ -33,7 +36,6 @@ class EncyclopediaAdminScreen extends StatelessWidget {
         backgroundColor: const Color(0xFF047857),
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
-          // ✅ زر استيراد JSON
           IconButton(
             icon: const Icon(Icons.cloud_upload, color: Colors.white),
             tooltip: 'استيراد من JSON',
@@ -68,7 +70,15 @@ class EncyclopediaAdminScreen extends StatelessWidget {
               return Center(
                 child: Padding(
                   padding: const EdgeInsets.all(20),
-                  child: Text('حدث خطأ: ${snapshot.error}'),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.error_outline, color: Colors.red, size: 60),
+                      const SizedBox(height: 16),
+                      Text('حدث خطأ: ${snapshot.error}',
+                          textAlign: TextAlign.center),
+                    ],
+                  ),
                 ),
               );
             }
@@ -83,9 +93,11 @@ class EncyclopediaAdminScreen extends StatelessWidget {
                     Icon(Icons.menu_book,
                         size: 100, color: Colors.grey.shade400),
                     const SizedBox(height: 16),
-                    const Text('لا توجد أقسام بعد',
+                    Text('لا توجد أقسام بعد',
                         style: TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.bold)),
+                            fontSize: 18, 
+                            fontWeight: FontWeight.bold,
+                            color: isDark ? Colors.white : Colors.black87)),
                     const SizedBox(height: 8),
                     const Text('دوس "قسم جديد" أو "استيراد JSON"',
                         style: TextStyle(fontSize: 13, color: Colors.grey)),
@@ -100,8 +112,14 @@ class EncyclopediaAdminScreen extends StatelessWidget {
               itemBuilder: (context, index) {
                 final section = sections[index];
                 final color = _hexToColor(section.color);
+                
+                // ✅ استخدام SafeParse
+                final name = SafeParse.string(section.name, 'بدون اسم');
+                final emoji = SafeParse.string(section.emoji, '📚');
+                final description = SafeParse.string(section.description, '');
 
                 return Card(
+                  color: isDark ? const Color(0xFF1E1E1E) : null, // ✅ دعم الوضع الليلي
                   margin: const EdgeInsets.only(bottom: 12),
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14)),
@@ -128,7 +146,7 @@ class EncyclopediaAdminScreen extends StatelessWidget {
                               borderRadius: BorderRadius.circular(12),
                             ),
                             alignment: Alignment.center,
-                            child: Text(section.emoji,
+                            child: Text(emoji,
                                 style: const TextStyle(fontSize: 28)),
                           ),
                           const SizedBox(width: 12),
@@ -138,10 +156,11 @@ class EncyclopediaAdminScreen extends StatelessWidget {
                               children: [
                                 Row(
                                   children: [
-                                    Text(section.name,
-                                        style: const TextStyle(
+                                    Text(name,
+                                        style: TextStyle(
                                             fontWeight: FontWeight.bold,
-                                            fontSize: 15)),
+                                            fontSize: 15,
+                                            color: isDark ? Colors.white : Colors.black87)),
                                     const SizedBox(width: 6),
                                     Container(
                                       padding: const EdgeInsets.symmetric(
@@ -160,11 +179,10 @@ class EncyclopediaAdminScreen extends StatelessWidget {
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
-                                  section.description.isEmpty
-                                      ? 'بدون وصف'
-                                      : section.description,
-                                  style: const TextStyle(
-                                      fontSize: 11, color: Colors.grey),
+                                  description.isEmpty ? 'بدون وصف' : description,
+                                  style: TextStyle(
+                                      fontSize: 11, 
+                                      color: isDark ? Colors.grey[400] : Colors.grey),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
@@ -218,243 +236,260 @@ class EncyclopediaAdminScreen extends StatelessWidget {
 
     showDialog(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDialogState) => Directionality(
-          textDirection: TextDirection.rtl,
-          child: AlertDialog(
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16)),
-            title: Text(isEdit ? 'تعديل قسم' : 'إضافة قسم جديد',
-                style: const TextStyle(fontWeight: FontWeight.bold)),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // الاسم
-                  TextField(
-                    controller: nameCtrl,
-                    decoration: InputDecoration(
-                      labelText: 'اسم القسم',
-                      hintText: 'مثال: أمراض النبات',
-                      prefixIcon: const Icon(Icons.label),
-                      border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12)),
+      builder: (ctx) {
+        final isDark = Theme.of(ctx).brightness == Brightness.dark;
+        
+        return StatefulBuilder(
+          builder: (context, setDialogState) => Directionality(
+            textDirection: TextDirection.rtl,
+            child: AlertDialog(
+              backgroundColor: isDark ? const Color(0xFF1E1E1E) : null, // ✅ دعم الوضع الليلي
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
+              title: Text(isEdit ? 'تعديل قسم' : 'إضافة قسم جديد',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white : Colors.black87,
+                  )),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // الاسم - ✅ إضافة setDialogState عشان المعاينة تتحدث
+                    TextField(
+                      controller: nameCtrl,
+                      onChanged: (v) => setDialogState(() {}),
+                      decoration: InputDecoration(
+                        labelText: 'اسم القسم',
+                        hintText: 'مثال: أمراض النبات',
+                        prefixIcon: const Icon(Icons.label),
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        filled: true,
+                        fillColor: isDark ? const Color(0xFF2C2C2C) : null,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 14),
+                    const SizedBox(height: 14),
 
-                  // الوصف
-                  TextField(
-                    controller: descCtrl,
-                    maxLines: 2,
-                    decoration: InputDecoration(
-                      labelText: 'الوصف (اختياري)',
-                      hintText: 'مثال: كل أمراض النباتات الشائعة',
-                      prefixIcon: const Icon(Icons.description),
-                      border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12)),
+                    // الوصف
+                    TextField(
+                      controller: descCtrl,
+                      maxLines: 2,
+                      decoration: InputDecoration(
+                        labelText: 'الوصف (اختياري)',
+                        hintText: 'مثال: كل أمراض النباتات الشائعة',
+                        prefixIcon: const Icon(Icons.description),
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        filled: true,
+                        fillColor: isDark ? const Color(0xFF2C2C2C) : null,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
+                    const SizedBox(height: 16),
 
-                  // اختيار الإيموجي
-                  const Text('الإيموجي:',
-                      style: TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 14)),
-                  const SizedBox(height: 8),
-                  Container(
-                    height: 55,
-                    child: ListView.builder(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: emojis.length,
-                      itemBuilder: (context, i) {
-                        final e = emojis[i];
-                        final isSelected = e == emoji;
+                    // اختيار الإيموجي
+                    Text('الإيموجي:',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, 
+                            fontSize: 14,
+                            color: isDark ? Colors.white : Colors.black87)),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      height: 55,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: emojis.length,
+                        itemBuilder: (context, i) {
+                          final e = emojis[i];
+                          final isSelected = e == emoji;
+                          return GestureDetector(
+                            onTap: () =>
+                                setDialogState(() => emoji = e),
+                            child: Container(
+                              width: 45,
+                              height: 45,
+                              margin: const EdgeInsets.only(left: 6),
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? _hexToColor(color).withValues(alpha: 0.2)
+                                    : (isDark ? Colors.grey.shade800 : Colors.grey.shade100),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: isSelected
+                                      ? _hexToColor(color)
+                                      : Colors.transparent,
+                                  width: 2,
+                                ),
+                              ),
+                              alignment: Alignment.center,
+                              child: Text(e,
+                                  style: const TextStyle(fontSize: 22)),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // اختيار اللون
+                    Text('اللون:',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, 
+                            fontSize: 14,
+                            color: isDark ? Colors.white : Colors.black87)),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: availableColors.map((c) {
+                        final isSelected = c == color;
                         return GestureDetector(
                           onTap: () =>
-                              setDialogState(() => emoji = e),
+                              setDialogState(() => color = c),
                           child: Container(
-                            width: 45,
-                            height: 45,
-                            margin: const EdgeInsets.only(left: 6),
+                            width: 38,
+                            height: 38,
                             decoration: BoxDecoration(
-                              color: isSelected
-                                  ? _hexToColor(color).withValues(alpha: 0.2)
-                                  : Colors.grey.shade100,
-                              borderRadius: BorderRadius.circular(10),
+                              color: _hexToColor(c),
+                              shape: BoxShape.circle,
                               border: Border.all(
                                 color: isSelected
-                                    ? _hexToColor(color)
+                                    ? (isDark ? Colors.white : Colors.black)
                                     : Colors.transparent,
-                                width: 2,
+                                width: 3,
                               ),
                             ),
-                            alignment: Alignment.center,
-                            child: Text(e,
-                                style: const TextStyle(fontSize: 22)),
+                            child: isSelected
+                                ? const Icon(Icons.check,
+                                    color: Colors.white, size: 20)
+                                : null,
                           ),
                         );
-                      },
+                      }).toList(),
                     ),
-                  ),
-                  const SizedBox(height: 16),
 
-                  // اختيار اللون
-                  const Text('اللون:',
-                      style: TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 14)),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: availableColors.map((c) {
-                      final isSelected = c == color;
-                      return GestureDetector(
-                        onTap: () =>
-                            setDialogState(() => color = c),
-                        child: Container(
-                          width: 38,
-                          height: 38,
-                          decoration: BoxDecoration(
-                            color: _hexToColor(c),
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: isSelected
-                                  ? Colors.black
-                                  : Colors.transparent,
-                              width: 3,
+                    const SizedBox(height: 16),
+
+                    // معاينة
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: _hexToColor(color).withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 45,
+                            height: 45,
+                            decoration: BoxDecoration(
+                              color: _hexToColor(color).withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            alignment: Alignment.center,
+                            child: Text(emoji,
+                                style: const TextStyle(fontSize: 24)),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              nameCtrl.text.isEmpty
+                                  ? 'اسم القسم'
+                                  : nameCtrl.text,
+                              style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 15,
+                                  color: _hexToColor(color)),
                             ),
                           ),
-                          child: isSelected
-                              ? const Icon(Icons.check,
-                                  color: Colors.white, size: 20)
-                              : null,
-                        ),
-                      );
-                    }).toList(),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // معاينة
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: _hexToColor(color).withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(12),
+                        ],
+                      ),
                     ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 45,
-                          height: 45,
-                          decoration: BoxDecoration(
-                            color: _hexToColor(color).withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          alignment: Alignment.center,
-                          child: Text(emoji,
-                              style: const TextStyle(fontSize: 24)),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            nameCtrl.text.isEmpty
-                                ? 'اسم القسم'
-                                : nameCtrl.text,
-                            style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 15,
-                                color: _hexToColor(color)),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: saving ? null : () => Navigator.pop(ctx),
-                child: const Text('إلغاء'),
-              ),
-              ElevatedButton(
-                onPressed: saving
-                    ? null
-                    : () async {
-                        if (nameCtrl.text.trim().isEmpty) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                                content:
-                                    Text('⚠️ الرجاء إدخال اسم القسم')),
-                          );
-                          return;
-                        }
-
-                        setDialogState(() => saving = true);
-
-                        bool ok;
-                        if (isEdit) {
-                          ok = await EncyclopediaService.updateSection(
-                            existing.id,
-                            {
-                              'name': nameCtrl.text.trim(),
-                              'emoji': emoji,
-                              'color': color,
-                              'description': descCtrl.text.trim(),
-                            },
-                          );
-                        } else {
-                          final id = await EncyclopediaService.addSection(
-                            name: nameCtrl.text.trim(),
-                            emoji: emoji,
-                            color: color,
-                            description: descCtrl.text.trim(),
-                          );
-                          ok = id != null;
-                        }
-
-                        if (!context.mounted) return;
-                        setDialogState(() => saving = false);
-
-                        if (ok) {
-                          Navigator.pop(ctx);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(isEdit
-                                  ? '✅ تم تعديل القسم'
-                                  : '✅ تم إضافة القسم'),
-                              backgroundColor: const Color(0xFF047857),
-                            ),
-                          );
-                        } else {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('❌ فشل الحفظ'),
-                              backgroundColor: Colors.red,
-                            ),
-                          );
-                        }
-                      },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF047857),
-                  foregroundColor: Colors.white,
+                  ],
                 ),
-                child: saving
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                            color: Colors.white, strokeWidth: 2),
-                      )
-                    : Text(isEdit ? 'حفظ التعديل' : 'إضافة'),
               ),
-            ],
+              actions: [
+                TextButton(
+                  onPressed: saving ? null : () => Navigator.pop(ctx),
+                  child: const Text('إلغاء'),
+                ),
+                ElevatedButton(
+                  onPressed: saving
+                      ? null
+                      : () async {
+                          if (nameCtrl.text.trim().isEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                  content:
+                                      Text('⚠️ الرجاء إدخال اسم القسم')),
+                            );
+                            return;
+                          }
+
+                          setDialogState(() => saving = true);
+
+                          bool ok;
+                          if (isEdit) {
+                            ok = await EncyclopediaService.updateSection(
+                              existing.id,
+                              {
+                                'name': nameCtrl.text.trim(),
+                                'emoji': emoji,
+                                'color': color,
+                                'description': descCtrl.text.trim(),
+                              },
+                            );
+                          } else {
+                            final id = await EncyclopediaService.addSection(
+                              name: nameCtrl.text.trim(),
+                              emoji: emoji,
+                              color: color,
+                              description: descCtrl.text.trim(),
+                            );
+                            ok = id != null;
+                          }
+
+                          if (!ctx.mounted) return;
+                          setDialogState(() => saving = false);
+
+                          if (ok) {
+                            Navigator.pop(ctx);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(isEdit
+                                    ? '✅ تم تعديل القسم'
+                                    : '✅ تم إضافة القسم'),
+                                backgroundColor: const Color(0xFF047857),
+                              ),
+                            );
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('❌ فشل الحفظ'),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
+                        },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF047857),
+                    foregroundColor: Colors.white,
+                  ),
+                  child: saving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                              color: Colors.white, strokeWidth: 2),
+                        )
+                      : Text(isEdit ? 'حفظ التعديل' : 'إضافة'),
+                ),
+              ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
@@ -489,15 +524,42 @@ class EncyclopediaAdminScreen extends StatelessWidget {
       ),
     );
 
-    if (confirm == true) {
-      final ok = await EncyclopediaService.deleteSection(section.id);
-      if (context.mounted) {
+    if (confirm == true && context.mounted) {
+      // ✅ إظهار مؤشر تحميل
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(child: CircularProgressIndicator()),
+      );
+
+      try {
+        final ok = await EncyclopediaService.deleteSection(section.id);
+        
+        if (!context.mounted) return;
+        Navigator.of(context, rootNavigator: true).pop(); // إخفاء التحميل
+
+        if (ok) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✅ تم حذف القسم بنجاح'),
+              backgroundColor: Color(0xFF047857),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('❌ فشل حذف القسم'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      } catch (e) {
+        if (!context.mounted) return;
+        Navigator.of(context, rootNavigator: true).pop();
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(ok
-                ? '✅ تم حذف القسم وكل عناصره'
-                : '❌ فشل الحذف'),
-            backgroundColor: ok ? const Color(0xFF047857) : Colors.red,
+          const SnackBar(
+            content: Text('حدث خطأ أثناء الحذف'),
+            backgroundColor: Colors.red,
           ),
         );
       }
