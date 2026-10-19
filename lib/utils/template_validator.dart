@@ -19,7 +19,13 @@ class TemplateValidator {
 
   static String? _optionValue(dynamic v) {
     if (_isNonEmptyString(v)) return (v as String).trim();
-    if (_isNum(v)) return (v as num).toString();
+    if (_isNum(v)) {
+      final numVal = v as num;
+      // التأكد من أن الرقم محدود قبل التحويل لنص (حماية إضافية)
+      if (numVal.toDouble().isFinite) {
+        return numVal.toString();
+      }
+    }
     return null;
   }
 
@@ -34,12 +40,18 @@ class TemplateValidator {
       if (t[key] != null && t[key] is! String) err('"$key" لازم يكون نص');
     }
 
-    // المتغيرات المسموحة في المعادلات: ids الحقول + area
+    // المتغيرات المسموحة في المعادلات: ids الحقول الصالحة فقط + area
     final knownVars = <String>{'area'};
     final rawFields = t['fields'];
     if (rawFields is List) {
       for (final f in rawFields) {
-        if (f is Map && f['id'] is String) knownVars.add(f['id'] as String);
+        if (f is Map && _isNonEmptyString(f['id'])) {
+          final id = f['id'] as String;
+          // نضيف الـ id فقط لو كان صالحاً (يطابق شروط التسمية)
+          if (id == id.trim() && _idPattern.hasMatch(id)) {
+            knownVars.add(id);
+          }
+        }
       }
     }
 
@@ -75,9 +87,18 @@ class TemplateValidator {
           if (type != null && !_fieldTypes.contains(type)) {
             err('$at: نوع غير معروف "$type" (المسموح: ${_fieldTypes.join("، ")})');
           }
+          
           for (final k in const ['min', 'max', 'default']) {
             if (f[k] != null && !_isNum(f[k])) err('$at: "$k" لازم يكون رقم');
           }
+
+          // التحقق الخاص بالسلايدر: لازم يكون ليه حدود
+          if (type == 'slider') {
+            if (!_isNum(f['min']) || !_isNum(f['max'])) {
+              err('$at: السلايدر لازم يكون ليه "min" و"max"');
+            }
+          }
+
           final min = f['min'];
           final max = f['max'];
           final defaultValue = f['default'];
