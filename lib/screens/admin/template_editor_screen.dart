@@ -16,7 +16,7 @@ String _fmtNum(dynamic v) {
 class TemplateEditorScreen extends StatefulWidget {
   final String sectionId;
   final String sectionName;
-  final String? templateId; // لو تعديل قالب موجود
+  final String? templateId;
 
   const TemplateEditorScreen({
     super.key,
@@ -64,7 +64,6 @@ class _TemplateEditorScreenState extends State<TemplateEditorScreen>
       _costDistribution[k] = TextEditingController();
     }
     if (_isEdit) {
-      // قبل أول build عشان المحرر الفاضي ما يظهرش لحظة قبل التحميل
       _loading = true;
       _loadExisting();
     }
@@ -88,58 +87,67 @@ class _TemplateEditorScreenState extends State<TemplateEditorScreen>
 
   // ───────────────────── تحميل قالب للتعديل ─────────────────────
   Future<void> _loadExisting() async {
-    final t = await CalculatorService.getTemplate(widget.templateId!);
-    if (!mounted) return;
+    try {
+      final t = await CalculatorService.getTemplate(widget.templateId!);
+      if (!mounted) return;
 
-    if (t == null) {
+      if (t == null) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('تعذر تحميل القالب (ممكن يكون اتحذف)'),
+          backgroundColor: Colors.red,
+        ));
+        Navigator.pop(context);
+        return;
+      }
+
+      setState(() {
+        _nameCtrl.text = t.name;
+        _emojiCtrl.text = t.emoji;
+        _descCtrl.text = t.description;
+        _areaUnitCtrl.text = t.areaUnit;
+        _areaLabelCtrl.text = t.areaUnitLabel;
+
+        _fields
+          ..clear()
+          ..addAll(t.fields.map((f) => f.toMap()));
+        _tasks
+          ..clear()
+          ..addAll(t.tasks.map((k) => k.toMap()));
+        _materials
+          ..clear()
+          ..addAll(t.materials.map((m) => m.toMap()));
+
+        final fin = t.financial;
+        _expectedYieldCtrl.text = fin.expectedYieldPerUnit == 0
+            ? ''
+            : _fmtNum(fin.expectedYieldPerUnit);
+        _yieldUnitCtrl.text = fin.yieldUnit;
+        _expectedPriceCtrl.text = fin.expectedPricePerYieldUnit == 0
+            ? ''
+            : _fmtNum(fin.expectedPricePerYieldUnit);
+        _yieldFormulaCtrl.text = fin.yieldFormula ?? '';
+
+        for (final c in _costDistribution.values) {
+          c.clear();
+        }
+        fin.costDistribution.forEach((k, v) {
+          final ctrl =
+              _costDistribution.putIfAbsent(k, TextEditingController.new);
+          ctrl.text = _fmtNum(v);
+        });
+
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('تعذر تحميل القالب (ممكن يكون اتحذف)'),
+        content: Text('حدث خطأ أثناء تحميل القالب'),
         backgroundColor: Colors.red,
       ));
       Navigator.pop(context);
-      return;
     }
-
-    setState(() {
-      _nameCtrl.text = t.name;
-      _emojiCtrl.text = t.emoji;
-      _descCtrl.text = t.description;
-      _areaUnitCtrl.text = t.areaUnit;
-      _areaLabelCtrl.text = t.areaUnitLabel;
-
-      _fields
-        ..clear()
-        ..addAll(t.fields.map((f) => f.toMap()));
-      _tasks
-        ..clear()
-        ..addAll(t.tasks.map((k) => k.toMap()));
-      _materials
-        ..clear()
-        ..addAll(t.materials.map((m) => m.toMap()));
-
-      final fin = t.financial;
-      _expectedYieldCtrl.text = fin.expectedYieldPerUnit == 0
-          ? ''
-          : _fmtNum(fin.expectedYieldPerUnit);
-      _yieldUnitCtrl.text = fin.yieldUnit;
-      _expectedPriceCtrl.text = fin.expectedPricePerYieldUnit == 0
-          ? ''
-          : _fmtNum(fin.expectedPricePerYieldUnit);
-      _yieldFormulaCtrl.text = fin.yieldFormula ?? '';
-
-      for (final c in _costDistribution.values) {
-        c.clear();
-      }
-      fin.costDistribution.forEach((k, v) {
-        final ctrl = _costDistribution.putIfAbsent(k, TextEditingController.new);
-        ctrl.text = _fmtNum(v);
-      });
-
-      _loading = false;
-    });
   }
 
-  // أسماء المتغيرات المسموحة في المعادلات
   Set<String> get _knownVars => {
         'area',
         for (final f in _fields)
@@ -147,28 +155,33 @@ class _TemplateEditorScreenState extends State<TemplateEditorScreen>
       };
 
   void _snack(String msg, {bool error = true}) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar(); // ✅ منع تراكم الرسائل
+    messenger.showSnackBar(SnackBar(
       content: Text(msg),
       backgroundColor: error ? Colors.red : _green,
     ));
   }
 
+  /// ✅ نروح للتاب الصحيح حسب نوع الخطأ
+  void _goToTab(int index) {
+    _tabController.animateTo(index);
+  }
+
   // ───────────────────── الحفظ ─────────────────────
   Future<void> _save() async {
-    // الحقول بتتبني lazily داخل التابات، فالتحقق بيتم على الـ controllers مباشرة
     if (_nameCtrl.text.trim().isEmpty || _descCtrl.text.trim().isEmpty) {
-      _tabController.animateTo(0);
+      _goToTab(0);
       _snack('ادخل اسم المحصول ووصفه (تاب الأساسيات)');
       return;
     }
 
-    // نسب التكاليف: القيم الصفرية تتشال، ولو فيه نسب لازم مجموعها 100
     final dist = <String, double>{};
     for (final e in _costDistribution.entries) {
       final v = NumberUtils.tryParseDouble(e.value.text);
       if (e.value.text.trim().isNotEmpty &&
           (v == null || !v.isFinite || v < 0 || v > 100)) {
-        _tabController.animateTo(0);
+        _goToTab(0);
         _snack('نسبة "${e.key}" لازم تكون رقمًا بين 0 و100');
         return;
       }
@@ -176,7 +189,7 @@ class _TemplateEditorScreenState extends State<TemplateEditorScreen>
     }
     final distSum = dist.values.fold<double>(0, (a, b) => a + b);
     if (dist.isNotEmpty && (distSum - 100).abs() > 0.5) {
-      _tabController.animateTo(0);
+      _goToTab(0);
       _snack('مجموع نسب التكاليف لازم يساوي 100% (الحالي ${_fmtNum(distSum)}%)');
       return;
     }
@@ -184,24 +197,29 @@ class _TemplateEditorScreenState extends State<TemplateEditorScreen>
     final yieldText = _expectedYieldCtrl.text.trim();
     final expectedYield = NumberUtils.tryParseDouble(yieldText);
     if (yieldText.isNotEmpty &&
-        (expectedYield == null || !expectedYield.isFinite || expectedYield < 0)) {
-      _tabController.animateTo(0);
+        (expectedYield == null ||
+            !expectedYield.isFinite ||
+            expectedYield < 0)) {
+      _goToTab(0);
       _snack('الإنتاج المتوقع لازم يكون رقمًا 0 أو أكبر');
       return;
     }
     final priceText = _expectedPriceCtrl.text.trim();
     final expectedPrice = NumberUtils.tryParseDouble(priceText);
     if (priceText.isNotEmpty &&
-        (expectedPrice == null || !expectedPrice.isFinite || expectedPrice < 0)) {
-      _tabController.animateTo(0);
-      _snack('سعر البيع لازم يكون رقمًا 0 أو أكبر، ولا يمكن تحويله لصفر');
+        (expectedPrice == null ||
+            !expectedPrice.isFinite ||
+            expectedPrice < 0)) {
+      _goToTab(0);
+      _snack('سعر البيع لازم يكون رقمًا 0 أو أكبر');
       return;
     }
     final yieldFormula = _yieldFormulaCtrl.text.trim();
 
     final data = <String, dynamic>{
       'name': _nameCtrl.text.trim(),
-      'emoji': _emojiCtrl.text.trim().isEmpty ? '🌱' : _emojiCtrl.text.trim(),
+      'emoji':
+          _emojiCtrl.text.trim().isEmpty ? '🌱' : _emojiCtrl.text.trim(),
       'description': _descCtrl.text.trim(),
       'area_unit':
           _areaUnitCtrl.text.trim().isEmpty ? 'فدان' : _areaUnitCtrl.text.trim(),
@@ -213,17 +231,18 @@ class _TemplateEditorScreenState extends State<TemplateEditorScreen>
       'materials': _materials,
       'financial': <String, dynamic>{
         'expected_yield': expectedYield ?? 0,
-        'yield_unit':
-            _yieldUnitCtrl.text.trim().isEmpty ? 'طن' : _yieldUnitCtrl.text.trim(),
+        'yield_unit': _yieldUnitCtrl.text.trim().isEmpty
+            ? 'طن'
+            : _yieldUnitCtrl.text.trim(),
         'expected_price': expectedPrice ?? 0,
         'cost_distribution': dist,
         if (yieldFormula.isNotEmpty) 'yield_formula': yieldFormula,
       },
     };
 
-    // نفس فحص الاستيراد: نرفض أي حاجة هتبوّظ القالب عند القراءة
     final problems = TemplateValidator.validate(data);
     if (problems.isNotEmpty) {
+      if (!mounted) return;
       await showDialog<void>(
         context: context,
         builder: (ctx) => AlertDialog(
@@ -243,9 +262,9 @@ class _TemplateEditorScreenState extends State<TemplateEditorScreen>
       return;
     }
 
-    // تنبيه (مش خطأ): قالب فيه حقول بدون حقل مساحة = الكميات هتتحسب لوحدة واحدة
-    final hasArea =
-        _fields.any((f) => (f['id']?.toString().toLowerCase() ?? '').contains('area'));
+    // تنبيه (مش خطأ): قالب فيه حقول بدون حقل مساحة
+    final hasArea = _fields.any((f) =>
+        (f['id']?.toString().toLowerCase() ?? '').contains('area'));
     if (_fields.isNotEmpty && !hasArea) {
       final proceed = await showDialog<bool>(
         context: context,
@@ -266,7 +285,7 @@ class _TemplateEditorScreenState extends State<TemplateEditorScreen>
       );
       if (!mounted) return;
       if (proceed != true) {
-        _tabController.animateTo(1);
+        _goToTab(1); // ✅ نروح لتاب الحقول
         return;
       }
     }
@@ -328,7 +347,14 @@ class _TemplateEditorScreenState extends State<TemplateEditorScreen>
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.save, color: Colors.white),
+            icon: _saving
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                        color: Colors.white, strokeWidth: 2),
+                  )
+                : const Icon(Icons.save, color: Colors.white),
             onPressed: (_saving || _loading) ? null : _save,
             tooltip: 'حفظ القالب',
           ),
@@ -524,7 +550,8 @@ class _TemplateEditorScreenState extends State<TemplateEditorScreen>
           ...List.generate(_fields.length, (i) {
             final f = _fields[i];
             final isDropdown = f['type'] == 'dropdown';
-            final optionsCount = (f['options'] is List) ? (f['options'] as List).length : 0;
+            final optionsCount =
+                (f['options'] is List) ? (f['options'] as List).length : 0;
             return Card(
               margin: const EdgeInsets.only(bottom: 10),
               child: ListTile(
@@ -694,7 +721,6 @@ class _FieldDialog extends StatefulWidget {
 
 class _FieldDialogState extends State<_FieldDialog> {
   static final _idRegex = RegExp(r'^[A-Za-z_][A-Za-z0-9_]*$');
-  // مفاتيح بيستخدمها النموذج نفسه
   static const _reserved = {'governorate', 'climate_zone'};
 
   final _formKey = GlobalKey<FormState>();
@@ -727,8 +753,6 @@ class _FieldDialogState extends State<_FieldDialog> {
     _max = TextEditingController(text: _fmtNum(i['max']));
     _default = TextEditingController(text: _fmtNum(i['default']));
     final t = i['type']?.toString() ?? 'number';
-    // slider بيتعرض كحقل رقم في النموذج، لكن لازم نحافظ على نوعه لو كان
-    // موجود في قالب قديم (قبل كده كان بيتحوّل لـ number بدون ما حد يلاحظ)
     _type = const ['number', 'text', 'dropdown', 'slider'].contains(t)
         ? t
         : 'number';
@@ -747,7 +771,6 @@ class _FieldDialogState extends State<_FieldDialog> {
     super.dispose();
   }
 
-  // كل سطر: "القيمة|الاسم الظاهر" أو "الاسم" فقط (القيمة = الاسم)
   List<Map<String, String>> _parseOptions() {
     final result = <Map<String, String>>[];
     for (final raw in _options.text.split('\n')) {
@@ -773,7 +796,6 @@ class _FieldDialogState extends State<_FieldDialog> {
 
   void _submit() {
     if (!_formKey.currentState!.validate()) return;
-    // نبدأ من الحقل الأصلي عشان أي مفاتيح تانية (زي hint) ما تتمسحش عند التعديل
     final map = <String, dynamic>{
       if (widget.initial != null) ...widget.initial!,
       'id': _id.text.trim(),
@@ -782,7 +804,6 @@ class _FieldDialogState extends State<_FieldDialog> {
       'unit': _unit.text.trim().isEmpty ? null : _unit.text.trim(),
       'required': _required,
     };
-    // نشيل المفاتيح اللي ما تنفعش مع النوع الحالي
     if (_type == 'dropdown') {
       map['options'] = _parseOptions();
     } else {
@@ -792,7 +813,6 @@ class _FieldDialogState extends State<_FieldDialog> {
       final mn = NumberUtils.tryParseDouble(_min.text);
       final mx = NumberUtils.tryParseDouble(_max.text);
       final df = NumberUtils.tryParseDouble(_default.text);
-      // لو المستخدم مسح القيمة لازم تتشال، مش تفضل القيمة القديمة
       if (mn != null) {
         map['min'] = mn;
       } else {
@@ -819,9 +839,12 @@ class _FieldDialogState extends State<_FieldDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Directionality(
       textDirection: TextDirection.rtl,
       child: AlertDialog(
+        backgroundColor: isDark ? const Color(0xFF1E1E1E) : null,
         title: Text(widget.initial == null ? 'إضافة حقل جديد' : 'تعديل الحقل'),
         content: SingleChildScrollView(
           child: Form(
@@ -839,12 +862,16 @@ class _FieldDialogState extends State<_FieldDialog> {
                     final raw = v ?? '';
                     final id = raw.trim();
                     if (id.isEmpty) return 'ادخل الـ ID';
-                    if (raw != id) return 'الـ ID لا يقبل فراغات في بدايته أو نهايته';
+                    if (raw != id) {
+                      return 'الـ ID لا يقبل فراغات في بدايته أو نهايته';
+                    }
                     if (!_idRegex.hasMatch(id)) {
                       return 'حروف إنجليزية وأرقام و _ فقط، ويبدأ بحرف';
                     }
                     if (_reserved.contains(id)) return 'الـ ID ده محجوز للنظام';
-                    if (widget.takenIds.contains(id)) return 'الـ ID مستخدم قبل كده';
+                    if (widget.takenIds.contains(id)) {
+                      return 'الـ ID مستخدم قبل كده';
+                    }
                     return null;
                   },
                 ),
@@ -867,7 +894,6 @@ class _FieldDialogState extends State<_FieldDialog> {
                     const DropdownMenuItem(value: 'text', child: Text('نص')),
                     const DropdownMenuItem(
                         value: 'dropdown', child: Text('قائمة منسدلة')),
-                    // يظهر فقط لو الحقل الأصلي slider (عشان ما يتحوّلش بالغلط)
                     if (widget.initial?['type'] == 'slider')
                       const DropdownMenuItem(
                           value: 'slider', child: Text('شريط تمرير')),
@@ -882,7 +908,8 @@ class _FieldDialogState extends State<_FieldDialog> {
                     decoration: const InputDecoration(
                       labelText: 'الخيارات (كل خيار في سطر)',
                       hintText: 'طينية\nرملية\ncalcareous|جيرية',
-                      helperText: 'الصيغة: القيمة|الاسم الظاهر، أو الاسم فقط',
+                      helperText:
+                          'الصيغة: القيمة|الاسم الظاهر، أو الاسم فقط',
                       helperMaxLines: 2,
                     ),
                     validator: (v) {
@@ -925,8 +952,9 @@ class _FieldDialogState extends State<_FieldDialog> {
                       Expanded(
                         child: TextFormField(
                           controller: _min,
-                          keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true),
+                          keyboardType:
+                              const TextInputType.numberWithOptions(
+                                  decimal: true),
                           decoration:
                               const InputDecoration(labelText: 'أقل قيمة'),
                           validator: _optionalNumber,
@@ -936,14 +964,16 @@ class _FieldDialogState extends State<_FieldDialog> {
                       Expanded(
                         child: TextFormField(
                           controller: _max,
-                          keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true),
+                          keyboardType:
+                              const TextInputType.numberWithOptions(
+                                  decimal: true),
                           decoration:
                               const InputDecoration(labelText: 'أكبر قيمة'),
                           validator: (v) {
                             final e = _optionalNumber(v);
                             if (e != null) return e;
-                            final mn = NumberUtils.tryParseDouble(_min.text);
+                            final mn =
+                                NumberUtils.tryParseDouble(_min.text);
                             final mx = NumberUtils.tryParseDouble(v);
                             if (mn != null && mx != null && mx < mn) {
                               return 'أقل من الحد الأدنى';
@@ -957,8 +987,8 @@ class _FieldDialogState extends State<_FieldDialog> {
                   const SizedBox(height: 10),
                   TextFormField(
                     controller: _default,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true),
                     decoration: const InputDecoration(
                         labelText: 'القيمة الافتراضية (اختياري)'),
                     validator: _optionalNumber,
@@ -1026,9 +1056,9 @@ class _TaskDialogState extends State<_TaskDialog> {
     _title = TextEditingController(text: i['title']?.toString() ?? '');
     _desc = TextEditingController(text: i['description']?.toString() ?? '');
     _day = TextEditingController(
-        text: i['day_from_start'] == null ? '0' : _fmtNum(i['day_from_start']));
+        text:
+            i['day_from_start'] == null ? '0' : _fmtNum(i['day_from_start']));
     final cat = i['category']?.toString() ?? '';
-    // لو التصنيف القديم مش من القائمة (قالب مستورد مثلاً) نضيفه بدل ما الـ dropdown يرمي خطأ
     _categories = [..._base, if (cat.isNotEmpty && !_base.contains(cat)) cat];
     _category = cat.isNotEmpty ? cat : 'ري';
   }
@@ -1053,9 +1083,12 @@ class _TaskDialogState extends State<_TaskDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Directionality(
       textDirection: TextDirection.rtl,
       child: AlertDialog(
+        backgroundColor: isDark ? const Color(0xFF1E1E1E) : null, // ✅ Dark Mode
         title: Text(widget.initial == null ? 'إضافة مهمة' : 'تعديل المهمة'),
         content: SingleChildScrollView(
           child: Form(
@@ -1198,10 +1231,13 @@ class _MaterialDialogState extends State<_MaterialDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final vars = (widget.knownVars.toList()..sort()).join('، ');
+    
     return Directionality(
       textDirection: TextDirection.rtl,
       child: AlertDialog(
+        backgroundColor: isDark ? const Color(0xFF1E1E1E) : null, // ✅ Dark Mode
         title: Text(widget.initial == null ? 'إضافة مادة' : 'تعديل المادة'),
         content: SingleChildScrollView(
           child: Form(
@@ -1233,10 +1269,11 @@ class _MaterialDialogState extends State<_MaterialDialog> {
                     Expanded(
                       child: TextFormField(
                         controller: _qty,
-                        keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true),
-                        decoration:
-                            const InputDecoration(labelText: 'الكمية / وحدة'),
+                        keyboardType:
+                            const TextInputType.numberWithOptions(
+                                decimal: true),
+                        decoration: const InputDecoration(
+                            labelText: 'الكمية / وحدة'),
                         validator: _nonNegative,
                       ),
                     ),
@@ -1244,7 +1281,8 @@ class _MaterialDialogState extends State<_MaterialDialog> {
                     Expanded(
                       child: TextFormField(
                         controller: _unit,
-                        decoration: const InputDecoration(labelText: 'الوحدة'),
+                        decoration:
+                            const InputDecoration(labelText: 'الوحدة'),
                       ),
                     ),
                   ],
@@ -1252,8 +1290,8 @@ class _MaterialDialogState extends State<_MaterialDialog> {
                 const SizedBox(height: 10),
                 TextFormField(
                   controller: _price,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true),
                   decoration: const InputDecoration(
                       labelText: 'السعر التقديري للوحدة'),
                   validator: _nonNegative,
