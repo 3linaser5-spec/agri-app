@@ -28,6 +28,7 @@ class _DynamicFormScreenState extends State<DynamicFormScreen> {
   String? _selectedGovernorate;
   String? _selectedZone;
   bool _loadingGov = true;
+  bool _isSubmitting = false; // ✅ حماية من الضغط المتكرر
 
   @override
   void initState() {
@@ -36,8 +37,6 @@ class _DynamicFormScreenState extends State<DynamicFormScreen> {
 
     for (var field in widget.template.fields) {
       if (field.type == 'dropdown') {
-        // القيمة الافتراضية للقائمة لازم تكون String وموجودة ضمن الخيارات،
-        // وإلا DropdownButtonFormField<String> بيرمي خطأ في النوع
         final options = _usableDropdownOptions(field);
         if (options.isNotEmpty) {
           final d = field.defaultValue?.toString();
@@ -50,9 +49,17 @@ class _DynamicFormScreenState extends State<DynamicFormScreen> {
         _values[field.id] = field.defaultValue;
       }
     }
-    if (widget.template.fields.isEmpty) {
+    
+    // ✅ إضافة حقل المساحة لو مش موجود في القالب (لأنه أساسي للحسابات)
+    final hasAreaField = widget.template.fields.any((f) => f.id.toLowerCase() == 'area');
+    if (!hasAreaField) {
       _values['area'] = 1.0;
     }
+  }
+
+  // ✅ التحقق من وجود حقل المساحة
+  bool get _needsAreaField {
+    return !widget.template.fields.any((f) => f.id.toLowerCase() == 'area');
   }
 
   Future<void> _loadSavedGovernorate() async {
@@ -87,7 +94,9 @@ class _DynamicFormScreenState extends State<DynamicFormScreen> {
     return options;
   }
 
-  void _submit() {
+  Future<void> _submit() async {
+    if (_isSubmitting) return; // منع الضغط المتكرر
+
     if (!_formKey.currentState!.validate()) return;
     if (_selectedGovernorate == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -99,24 +108,37 @@ class _DynamicFormScreenState extends State<DynamicFormScreen> {
       return;
     }
 
+    setState(() => _isSubmitting = true);
+
     _values['governorate'] = _selectedGovernorate;
     _values['climate_zone'] = _selectedZone;
 
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => CalculatorResultScreen(
-          template: widget.template,
-          inputValues: Map<String, dynamic>.from(_values),
-          primaryColor: widget.primaryColor,
-          sectionName: widget.sectionName,
+    // في حالة لو المساحة لسه متسجلة
+    if (_needsAreaField && _values['area'] == null) {
+      _values['area'] = 1.0;
+    }
+
+    if (mounted) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => CalculatorResultScreen(
+            template: widget.template,
+            inputValues: Map<String, dynamic>.from(_values),
+            primaryColor: widget.primaryColor,
+            sectionName: widget.sectionName,
+          ),
         ),
-      ),
-    );
+      );
+    }
+    
+    if (mounted) setState(() => _isSubmitting = false);
   }
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
       appBar: AppBar(
         title: Text('${widget.template.emoji} ${widget.template.name}',
@@ -133,10 +155,11 @@ class _DynamicFormScreenState extends State<DynamicFormScreen> {
                 child: ListView(
                   padding: const EdgeInsets.all(16),
                   children: [
+                    // Header
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: widget.primaryColor.withValues(alpha: 0.1),
+                        color: widget.primaryColor.withValues(alpha: isDark ? 0.2 : 0.1),
                         borderRadius: BorderRadius.circular(14),
                       ),
                       child: Row(
@@ -155,8 +178,9 @@ class _DynamicFormScreenState extends State<DynamicFormScreen> {
                                         color: widget.primaryColor)),
                                 const SizedBox(height: 4),
                                 Text(widget.template.description,
-                                    style: const TextStyle(
-                                        fontSize: 12, color: Colors.grey)),
+                                    style: TextStyle(
+                                        fontSize: 12, 
+                                        color: isDark ? Colors.grey[400] : Colors.grey)),
                               ],
                             ),
                           ),
@@ -166,29 +190,39 @@ class _DynamicFormScreenState extends State<DynamicFormScreen> {
 
                     const SizedBox(height: 20),
 
-                    _buildGovernorateSelector(),
+                    _buildGovernorateSelector(isDark),
 
-                    if (_selectedZone != null) _buildZoneInfo(),
+                    if (_selectedZone != null) _buildZoneInfo(isDark),
 
                     const SizedBox(height: 20),
 
-                    const Text('أدخل بياناتك:',
+                    Text('أدخل بياناتك:',
                         style: TextStyle(
-                            fontWeight: FontWeight.bold, fontSize: 15)),
+                            fontWeight: FontWeight.bold, 
+                            fontSize: 15,
+                            color: isDark ? Colors.white : Colors.black87)),
                     const SizedBox(height: 12),
 
-                    ...widget.template.fields.map((f) => _buildField(f)),
+                    ...widget.template.fields.map((f) => _buildField(f, isDark)),
 
-                    if (widget.template.fields.isEmpty)
-                      _buildDefaultAreaField(),
+                    // ✅ إضافة حقل المساحة لو مش موجود في القالب
+                    if (_needsAreaField) _buildDefaultAreaField(isDark),
 
                     const SizedBox(height: 30),
 
                     ElevatedButton.icon(
-                      onPressed: _submit,
-                      icon: const Icon(Icons.calculate),
-                      label: const Text('احسب برنامجي',
-                          style: TextStyle(
+                      onPressed: _isSubmitting ? null : _submit,
+                      icon: _isSubmitting
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                  color: Colors.white, strokeWidth: 2),
+                            )
+                          : const Icon(Icons.calculate),
+                      label: Text(
+                          _isSubmitting ? 'جاري التجهيز...' : 'احسب برنامجي',
+                          style: const TextStyle(
                               fontSize: 16, fontWeight: FontWeight.bold)),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: widget.primaryColor,
@@ -198,6 +232,7 @@ class _DynamicFormScreenState extends State<DynamicFormScreen> {
                             borderRadius: BorderRadius.circular(12)),
                       ),
                     ),
+                    const SizedBox(height: 30),
                   ],
                 ),
               ),
@@ -205,7 +240,7 @@ class _DynamicFormScreenState extends State<DynamicFormScreen> {
     );
   }
 
-  Widget _buildGovernorateSelector() {
+  Widget _buildGovernorateSelector(bool isDark) {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -225,9 +260,11 @@ class _DynamicFormScreenState extends State<DynamicFormScreen> {
             children: [
               Icon(Icons.location_on, color: widget.primaryColor, size: 22),
               const SizedBox(width: 8),
-              const Text('المحافظة',
+              Text('المحافظة',
                   style: TextStyle(
-                      fontWeight: FontWeight.bold, fontSize: 15)),
+                      fontWeight: FontWeight.bold, 
+                      fontSize: 15,
+                      color: isDark ? Colors.white : Colors.black87)),
               const SizedBox(width: 6),
               const Text('*',
                   style: TextStyle(
@@ -242,34 +279,34 @@ class _DynamicFormScreenState extends State<DynamicFormScreen> {
               onTap: _showGovernoratePicker,
               borderRadius: BorderRadius.circular(10),
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 14),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.grey.shade300),
+                  border: Border.all(color: isDark ? Colors.grey[700]! : Colors.grey.shade300),
                 ),
-                child: const Row(
+                child: Row(
                   children: [
-                    Icon(Icons.search, color: Colors.grey, size: 20),
-                    SizedBox(width: 8),
-                    Text('اضغط لاختيار المحافظة...',
+                    const Icon(Icons.search, color: Colors.grey, size: 20),
+                    const SizedBox(width: 8),
+                    const Text('اضغط لاختيار المحافظة...',
                         style: TextStyle(color: Colors.grey)),
-                    Spacer(),
-                    Icon(Icons.arrow_drop_down, color: Colors.grey),
+                    const Spacer(),
+                    const Icon(Icons.arrow_drop_down, color: Colors.grey),
                   ],
                 ),
               ),
             )
           else
             Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 12, vertical: 12),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
                 borderRadius: BorderRadius.circular(10),
-                border:
-                    Border.all(color: widget.primaryColor.withValues(alpha: 0.4)),
+                border: Border.all(
+                    color: widget.primaryColor.withValues(alpha: 0.4)),
               ),
               child: Row(
                 children: [
@@ -277,8 +314,10 @@ class _DynamicFormScreenState extends State<DynamicFormScreen> {
                       color: Colors.green, size: 20),
                   const SizedBox(width: 8),
                   Text(_selectedGovernorate!,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 14)),
+                      style: TextStyle(
+                          fontWeight: FontWeight.bold, 
+                          fontSize: 14,
+                          color: isDark ? Colors.white : Colors.black87)),
                   const Spacer(),
                   InkWell(
                     onTap: _showGovernoratePicker,
@@ -296,7 +335,7 @@ class _DynamicFormScreenState extends State<DynamicFormScreen> {
     );
   }
 
-  Widget _buildZoneInfo() {
+  Widget _buildZoneInfo(bool isDark) {
     final zone = EgyptData.getZoneDetails(_selectedZone!);
     if (zone == null) return const SizedBox.shrink();
 
@@ -304,9 +343,10 @@ class _DynamicFormScreenState extends State<DynamicFormScreen> {
       margin: const EdgeInsets.only(top: 12),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.amber.shade50,
+        color: isDark ? Colors.amber.shade900.withValues(alpha: 0.3) : Colors.amber.shade50,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.amber.shade200),
+        border: Border.all(
+            color: isDark ? Colors.amber.shade700 : Colors.amber.shade200),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -320,36 +360,44 @@ class _DynamicFormScreenState extends State<DynamicFormScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text('المنطقة: ${zone.name}',
-                        style: const TextStyle(
-                            fontWeight: FontWeight.bold, fontSize: 14)),
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, 
+                            fontSize: 14,
+                            color: isDark ? Colors.white : Colors.black87)),
                     const SizedBox(height: 2),
                     Text(zone.description,
-                        style: const TextStyle(
-                            fontSize: 11, color: Colors.black54)),
+                        style: TextStyle(
+                            fontSize: 11, 
+                            color: isDark ? Colors.grey[400] : Colors.black54)),
                   ],
                 ),
               ),
             ],
           ),
           const SizedBox(height: 10),
-          const Divider(height: 1),
+          Divider(height: 1, color: isDark ? Colors.grey[800] : null),
           const SizedBox(height: 8),
-          const Text('ملاحظات الزراعة في منطقتك:',
+          Text('ملاحظات الزراعة في منطقتك:',
               style: TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 12,
-                  color: Colors.black87)),
+                  color: isDark ? Colors.white : Colors.black87)),
           const SizedBox(height: 6),
           ...zone.plantingNotes.map((note) => Padding(
                 padding: const EdgeInsets.only(bottom: 4),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('• ', style: TextStyle(fontSize: 12)),
+                    Text('• ', 
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isDark ? Colors.grey[400] : Colors.black87)),
                     Expanded(
                       child: Text(note,
-                          style: const TextStyle(
-                              fontSize: 11, height: 1.5)),
+                          style: TextStyle(
+                              fontSize: 11, 
+                              height: 1.5,
+                              color: isDark ? Colors.grey[300] : Colors.black87)),
                     ),
                   ],
                 ),
@@ -368,7 +416,7 @@ class _DynamicFormScreenState extends State<DynamicFormScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (context) => StatefulBuilder(
+      builder: (bottomSheetContext) => StatefulBuilder(
         builder: (context, setSheetState) => Directionality(
           textDirection: TextDirection.rtl,
           child: DraggableScrollableSheet(
@@ -459,7 +507,9 @@ class _DynamicFormScreenState extends State<DynamicFormScreen> {
                                         .getZoneByGovernorate(tempSelected!);
                                   });
                                   await _saveGovernorate(tempSelected!);
-                                  if (context.mounted) Navigator.pop(context);
+                                  if (mounted) {
+                                    Navigator.of(bottomSheetContext).pop();
+                                  }
                                 },
                           icon: const Icon(Icons.check),
                           label: const Text('تأكيد'),
@@ -483,11 +533,11 @@ class _DynamicFormScreenState extends State<DynamicFormScreen> {
     );
   }
 
-  Widget _buildDefaultAreaField() {
+  Widget _buildDefaultAreaField(bool isDark) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: TextFormField(
-        initialValue: '1',
+        initialValue: _values['area']?.toString() ?? '1',
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
         decoration: InputDecoration(
           labelText: 'المساحة (${widget.template.areaUnit})',
@@ -495,6 +545,7 @@ class _DynamicFormScreenState extends State<DynamicFormScreen> {
           border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12)),
           filled: true,
+          fillColor: isDark ? const Color(0xFF1E1E1E) : null,
         ),
         validator: (v) {
           if (v == null || v.trim().isEmpty) return 'ادخل المساحة';
@@ -507,20 +558,20 @@ class _DynamicFormScreenState extends State<DynamicFormScreen> {
     );
   }
 
-  Widget _buildField(FormFieldConfig field) {
+  Widget _buildField(FormFieldConfig field, bool isDark) {
     switch (field.type) {
       case 'number':
       case 'slider':
-        return _buildNumberField(field);
+        return _buildNumberField(field, isDark);
       case 'dropdown':
-        return _buildDropdownField(field);
+        return _buildDropdownField(field, isDark);
       case 'text':
       default:
-        return _buildTextField(field);
+        return _buildTextField(field, isDark);
     }
   }
 
-  Widget _buildNumberField(FormFieldConfig field) {
+  Widget _buildNumberField(FormFieldConfig field, bool isDark) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: TextFormField(
@@ -534,6 +585,7 @@ class _DynamicFormScreenState extends State<DynamicFormScreen> {
           border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12)),
           filled: true,
+          fillColor: isDark ? const Color(0xFF1E1E1E) : null,
         ),
         validator: (v) {
           if (field.required && (v == null || v.trim().isEmpty)) {
@@ -558,8 +610,6 @@ class _DynamicFormScreenState extends State<DynamicFormScreen> {
           return null;
         },
         onChanged: (v) {
-          // حقل فاضي أو غير صالح = نشيل القيمة بدل ما نخزّن 0
-          // (0 في حقل المساحة كان بيصفّر كل الكميات والتكاليف)
           final n = NumberUtils.tryParseDouble(v);
           if (n == null) {
             _values.remove(field.id);
@@ -571,10 +621,9 @@ class _DynamicFormScreenState extends State<DynamicFormScreen> {
     );
   }
 
-  Widget _buildDropdownField(FormFieldConfig field) {
+  Widget _buildDropdownField(FormFieldConfig field, bool isDark) {
     final options = _usableDropdownOptions(field);
     if (options.isEmpty) {
-      // قالب بدون خيارات: كان بيرمي StateError عند field.options.first
       return Padding(
         padding: const EdgeInsets.only(bottom: 16),
         child: FormField<String>(
@@ -585,6 +634,7 @@ class _DynamicFormScreenState extends State<DynamicFormScreen> {
               border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12)),
               filled: true,
+              fillColor: isDark ? const Color(0xFF1E1E1E) : null,
               errorText: state.errorText,
             ),
             child: const Text('لا توجد خيارات متاحة لهذا الحقل'),
@@ -597,6 +647,8 @@ class _DynamicFormScreenState extends State<DynamicFormScreen> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: DropdownButtonFormField<String>(
+        // ✅ استخدام key عشان نجبر الـ Dropdown يتبني من جديد
+        key: ValueKey(current),
         initialValue: current,
         decoration: InputDecoration(
           labelText: field.label,
@@ -604,6 +656,7 @@ class _DynamicFormScreenState extends State<DynamicFormScreen> {
           border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12)),
           filled: true,
+          fillColor: isDark ? const Color(0xFF1E1E1E) : null,
         ),
         items: options
             .map((o) => DropdownMenuItem(
@@ -618,7 +671,7 @@ class _DynamicFormScreenState extends State<DynamicFormScreen> {
     );
   }
 
-  Widget _buildTextField(FormFieldConfig field) {
+  Widget _buildTextField(FormFieldConfig field, bool isDark) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: TextFormField(
@@ -629,6 +682,7 @@ class _DynamicFormScreenState extends State<DynamicFormScreen> {
           border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12)),
           filled: true,
+          fillColor: isDark ? const Color(0xFF1E1E1E) : null,
         ),
         validator: (v) => field.required && (v == null || v.trim().isEmpty)
             ? 'ادخل ${field.label}'
