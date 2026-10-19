@@ -18,9 +18,11 @@ class IrrigationCalc {
     16, 20, 25, 32, 40, 50, 63, 75, 90, 110, 125, 160, 200, 250, 315,
   ];
 
+  /// التحقق من أن القيمة موجبة ومحدودة (ليست NaN ولا Infinity)
   static bool _pos(double v) => v.isFinite && v > 0;
 
   static double areaToM2(double value, AreaUnit unit) {
+    if (!_pos(value)) return 0;
     switch (unit) {
       case AreaUnit.feddan:
         return value * feddanM2;
@@ -48,8 +50,10 @@ class IrrigationCalc {
     if (!_pos(areaM2) || !_pos(etcMmDay) || !_pos(intervalDays)) return null;
     if (!_pos(efficiency) || efficiency > 1) return null;
     if (intervalDays < 1) return null;
+    
     final grossDaily = etcMmDay / efficiency;
     final perIrrigation = grossDaily * intervalDays;
+    
     return WaterNeed(
       grossDailyMm: grossDaily,
       grossPerIrrigationMm: perIrrigation,
@@ -62,7 +66,7 @@ class IrrigationCalc {
 
   /// سرعة المياه في الأنبوب (م/ث).
   static double velocity(double flowM3h, double diameterMm) {
-    if (flowM3h <= 0 || diameterMm <= 0) return 0;
+    if (!_pos(flowM3h) || !_pos(diameterMm)) return 0;
     final d = diameterMm / 1000;
     return (flowM3h / 3600) / (math.pi * d * d / 4);
   }
@@ -74,7 +78,9 @@ class IrrigationCalc {
     required double lengthM,
     double c = 140,
   }) {
-    if (flowM3h <= 0 || diameterMm <= 0 || lengthM <= 0 || c <= 0) return 0;
+    if (!_pos(flowM3h) || !_pos(diameterMm) || !_pos(lengthM) || !_pos(c)) {
+      return 0;
+    }
     final q = flowM3h / 3600;
     final d = diameterMm / 1000;
     final num top = 10.67 * lengthM * math.pow(q, 1.852);
@@ -98,16 +104,36 @@ class IrrigationCalc {
     double? maxLossM,
     double c = 140,
   }) {
-    PipeChoice? last;
+    // حماية لو التدفق أو الطول مش صالحين
+    if (!_pos(flowM3h) || !_pos(lengthM)) {
+      return const PipeChoice(
+        diameterMm: 0,
+        velocityMs: 0,
+        lossM: 0,
+        ok: false,
+      );
+    }
+
     for (final d in standardDiametersMm) {
       final v = velocity(flowM3h, d);
       final loss = hazenWilliamsLoss(
           flowM3h: flowM3h, diameterMm: d, lengthM: lengthM, c: c);
       final ok = v <= maxVelocityMs && (maxLossM == null || loss <= maxLossM);
-      last = PipeChoice(diameterMm: d, velocityMs: v, lossM: loss, ok: ok);
-      if (ok) return last;
+      
+      if (ok) {
+        return PipeChoice(diameterMm: d, velocityMs: v, lossM: loss, ok: true);
+      }
     }
-    return last!;
+    
+    // لو مفيش قطر حقق الشروط، نرجع أكبر قطر مع ok = false
+    final largest = standardDiametersMm.last;
+    return PipeChoice(
+      diameterMm: largest,
+      velocityMs: velocity(flowM3h, largest),
+      lossM: hazenWilliamsLoss(
+          flowM3h: flowM3h, diameterMm: largest, lengthM: lengthM, c: c),
+      ok: false,
+    );
   }
 
   // ───────────────────── الري بالتنقيط ─────────────────────
@@ -153,7 +179,10 @@ class IrrigationCalc {
     final runtime = litersPerPlant / (emittersPerPlant * emitterLph);
     final totalFlow = totalEmitters * emitterLph / 1000;
 
-    final emittersPerLateral = lateralLengthM / plantSpacingM * emittersPerPlant;
+    // حماية من القسمة على صفر أو قيم غير منطقية
+    final emittersPerLateralRaw = lateralLengthM / plantSpacingM * emittersPerPlant;
+    final emittersPerLateral = math.max(1, emittersPerLateralRaw.round());
+
     final lateralFlow = emittersPerLateral * emitterLph / 1000;
     final lateralLoss = hazenWilliamsLoss(
           flowM3h: lateralFlow,
@@ -161,7 +190,8 @@ class IrrigationCalc {
           lengthM: lateralLengthM,
           c: 150,
         ) *
-        christiansenF(emittersPerLateral.round());
+        christiansenF(emittersPerLateral);
+        
     // التباين المسموح 20% من ضغط التشغيل، نصيب الخط الفرعي منه 55%
     final allowedLoss = 0.2 * operatingHeadM * 0.55;
     final endFlowPct =
@@ -222,6 +252,7 @@ class IrrigationCalc {
     final runtime = need.grossPerIrrigationMm / rate;
     final count = (areaM2 / cell).ceil();
     final totalFlow = count * sprinklerM3h;
+    
     return SprinklerResult(
       need: need,
       applicationRateMmH: rate,
@@ -253,8 +284,10 @@ class IrrigationCalc {
       intervalDays: intervalDays,
     );
     if (need == null) return null;
+    
     final flowM3h = streamLps * 3.6;
     final hours = need.perIrrigationVolumeM3 / flowM3h;
+    
     return SurfaceResult(
       need: need,
       flowM3h: flowM3h,
@@ -273,6 +306,7 @@ class IrrigationCalc {
     required double hoursPerRotation,
   }) {
     if (!_pos(radiusM) || !_pos(hoursPerRotation)) return null;
+    
     final area = math.pi * radiusM * radiusM;
     final need = waterNeed(
       areaM2: area,
@@ -281,7 +315,9 @@ class IrrigationCalc {
       intervalDays: intervalDays,
     );
     if (need == null) return null;
+    
     final flowM3h = need.perIrrigationVolumeM3 / hoursPerRotation;
+    
     return PivotResult(
       need: need,
       areaM2: area,
@@ -318,13 +354,16 @@ class IrrigationCalc {
         equipmentLossM < 0) {
       return null;
     }
+    
     final head = staticLiftM +
         operatingHeadM +
         frictionLossM * (1 + minorLossPct / 100) +
         equipmentLossM;
+        
     final hydraulicKw = flowM3h * head / 367.2;
     final shaftKw = hydraulicKw / pumpEfficiency;
     final inputKw = shaftKw / motorEfficiency;
+    
     return PumpResult(
       totalHeadM: head,
       hydraulicKw: hydraulicKw,
@@ -336,11 +375,14 @@ class IrrigationCalc {
   }
 }
 
+// ───────────────────── Data Classes ─────────────────────
+
 class WaterNeed {
   final double grossDailyMm;
   final double grossPerIrrigationMm;
   final double dailyVolumeM3;
   final double perIrrigationVolumeM3;
+  
   const WaterNeed({
     required this.grossDailyMm,
     required this.grossPerIrrigationMm,
@@ -354,6 +396,7 @@ class PipeChoice {
   final double velocityMs;
   final double lossM;
   final bool ok;
+  
   const PipeChoice({
     required this.diameterMm,
     required this.velocityMs,
@@ -378,6 +421,7 @@ class DripResult {
   final bool lateralOk;
   final double endEmitterFlowPct;
   final double lateralTotalLengthM;
+  
   const DripResult({
     required this.need,
     required this.plants,
@@ -407,6 +451,7 @@ class SprinklerResult {
   final double totalFlowM3h;
   final double sectorFlowM3h;
   final bool infiltrationOk;
+  
   const SprinklerResult({
     required this.need,
     required this.applicationRateMmH,
@@ -425,6 +470,7 @@ class SurfaceResult {
   final double flowM3h;
   final double irrigationHours;
   final bool ok;
+  
   const SurfaceResult({
     required this.need,
     required this.flowM3h,
@@ -440,6 +486,7 @@ class PivotResult {
   final double flowLps;
   final double endTowerSpeedMh;
   final bool fitsInterval;
+  
   const PivotResult({
     required this.need,
     required this.areaM2,
@@ -457,6 +504,7 @@ class PumpResult {
   final double motorInputKw;
   final double recommendedMotorKw;
   final double recommendedMotorHp;
+  
   const PumpResult({
     required this.totalHeadM,
     required this.hydraulicKw,
