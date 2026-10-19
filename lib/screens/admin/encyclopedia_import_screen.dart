@@ -65,6 +65,17 @@ class _EncyclopediaImportScreenState
     return u != null && (u.scheme == 'http' || u.scheme == 'https') && u.host.isNotEmpty;
   }
 
+  /// ✅ تطبيع JSON: تحويل علامات التنصيص الغريبة للعلامات العادية
+  String _normalizeJson(String input) {
+    // بعض لوحات المفاتيح العربية تكتب " ذكي أو " أو ʼ
+    return input
+        .replaceAll('"', '"')  // علامة تنصيص مزدوجة يسرى
+        .replaceAll('"', '"')  // علامة تنصيص مزدوجة يمنى
+        .replaceAll(''', "'")   // علامة اقتباس مفردة يسرى
+        .replaceAll(''', "'")   // علامة اقتباس مفردة يمنى
+        .replaceAll('ʼ', "'");  // علامة اقتباس معدلة
+  }
+
   /// يتحقق من كل الأقسام والعناصر ويطبّعها. أي خطأ بيتضاف لـ [errors].
   List<Map<String, dynamic>> _validate(List<dynamic> raw, List<String> errors) {
     final result = <Map<String, dynamic>>[];
@@ -131,7 +142,6 @@ class _EncyclopediaImportScreenState
             }
           }
 
-          // نفس قاعدة محرر العنصر: لازم محتوى أساسي أو فقرة واحدة على الأقل
           final mainContent = it['content']?.toString() ?? '';
           if (mainContent.trim().isEmpty && inner.isEmpty) {
             errors.add('$itLabel: لازم محتوى أساسي أو فقرة واحدة على الأقل');
@@ -180,13 +190,16 @@ class _EncyclopediaImportScreenState
       return;
     }
 
+    // ✅ تطبيع النص قبل التحليل
+    final normalizedText = _normalizeJson(jsonText);
+
     setState(() {
       _loading = true;
       _resultMessage = null;
     });
 
     try {
-      final dynamic parsed = json.decode(jsonText);
+      final dynamic parsed = json.decode(normalizedText);
 
       // ثلاث صيغ مدعومة: {sections:[...]} أو [..] أو قسم واحد {name:..}
       List<dynamic> raw;
@@ -241,6 +254,8 @@ class _EncyclopediaImportScreenState
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('استيراد JSON - الموسوعة',
@@ -272,14 +287,18 @@ class _EncyclopediaImportScreenState
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: Colors.blue.shade50,
+                // ✅ دعم الوضع الليلي
+                color: isDark 
+                    ? Colors.blue.shade900.withValues(alpha: 0.3) 
+                    : Colors.blue.shade50,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Icon(Icons.info_outline,
-                      color: Colors.blue.shade700, size: 24),
+                      color: isDark ? Colors.blue.shade300 : Colors.blue.shade700, 
+                      size: 24),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
@@ -289,7 +308,7 @@ class _EncyclopediaImportScreenState
                       '• عناصر القسم ممكن تحتوي على sections داخلية',
                       style: TextStyle(
                           fontSize: 12,
-                          color: Colors.blue.shade700,
+                          color: isDark ? Colors.blue.shade300 : Colors.blue.shade700,
                           height: 1.6),
                     ),
                   ),
@@ -302,8 +321,11 @@ class _EncyclopediaImportScreenState
             TextField(
               controller: _jsonCtrl,
               maxLines: 18,
-              style: const TextStyle(
-                  fontFamily: 'monospace', fontSize: 11, height: 1.4),
+              style: TextStyle(
+                  fontFamily: 'monospace', 
+                  fontSize: 11, 
+                  height: 1.4,
+                  color: isDark ? Colors.white : null),
               decoration: InputDecoration(
                 hintText: '{\n'
                     '  "sections": [\n'
@@ -326,11 +348,13 @@ class _EncyclopediaImportScreenState
                     '    }\n'
                     '  ]\n'
                     '}',
-                hintStyle: TextStyle(color: Colors.grey.shade400),
+                hintStyle: TextStyle(
+                  color: isDark ? Colors.grey.shade600 : Colors.grey.shade400),
                 border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12)),
                 filled: true,
-                fillColor: Colors.grey.shade50,
+                // ✅ دعم الوضع الليلي
+                fillColor: isDark ? const Color(0xFF1E1E1E) : Colors.grey.shade50,
               ),
             ),
             const SizedBox(height: 16),
@@ -340,14 +364,19 @@ class _EncyclopediaImportScreenState
               Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
+                  // ✅ دعم الوضع الليلي
                   color: _isSuccess
-                      ? Colors.green.shade50
-                      : Colors.red.shade50,
+                      ? (isDark 
+                          ? Colors.green.shade900.withValues(alpha: 0.3) 
+                          : Colors.green.shade50)
+                      : (isDark 
+                          ? Colors.red.shade900.withValues(alpha: 0.3) 
+                          : Colors.red.shade50),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
                     color: _isSuccess
-                        ? Colors.green.shade200
-                        : Colors.red.shade200,
+                        ? (isDark ? Colors.green.shade700 : Colors.green.shade200)
+                        : (isDark ? Colors.red.shade700 : Colors.red.shade200),
                   ),
                 ),
                 child: Row(
@@ -355,7 +384,9 @@ class _EncyclopediaImportScreenState
                   children: [
                     Icon(
                       _isSuccess ? Icons.check_circle : Icons.error_outline,
-                      color: _isSuccess ? Colors.green : Colors.red,
+                      color: _isSuccess 
+                          ? (isDark ? Colors.green.shade300 : Colors.green) 
+                          : (isDark ? Colors.red.shade300 : Colors.red),
                       size: 24,
                     ),
                     const SizedBox(width: 10),
@@ -365,8 +396,8 @@ class _EncyclopediaImportScreenState
                         style: TextStyle(
                           fontSize: 12,
                           color: _isSuccess
-                              ? Colors.green.shade800
-                              : Colors.red.shade800,
+                              ? (isDark ? Colors.green.shade200 : Colors.green.shade800)
+                              : (isDark ? Colors.red.shade200 : Colors.red.shade800),
                           height: 1.6,
                         ),
                       ),
@@ -406,6 +437,7 @@ class _EncyclopediaImportScreenState
 
             // ✅ مثال
             Card(
+              color: isDark ? const Color(0xFF1E1E1E) : null, // ✅ دعم الوضع الليلي
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12)),
               child: Padding(
@@ -427,10 +459,13 @@ class _EncyclopediaImportScreenState
                     Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
+                        // ✅ دعم الوضع الليلي
+                        color: isDark 
+                            ? Colors.grey.shade900 
+                            : Colors.grey.shade100,
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: const Text(
+                      child: Text(
                         '[\n'
                         '  {\n'
                         '    "name": "أمراض النبات",\n'
@@ -443,7 +478,9 @@ class _EncyclopediaImportScreenState
                         style: TextStyle(
                             fontFamily: 'monospace',
                             fontSize: 10,
-                            height: 1.5),
+                            height: 1.5,
+                            // ✅ دعم الوضع الليلي
+                            color: isDark ? Colors.grey.shade300 : null),
                       ),
                     ),
                   ],
