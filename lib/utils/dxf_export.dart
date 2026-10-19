@@ -81,15 +81,10 @@ class DxfBuilder {
     // بدء قسم الكيانات (ENTITIES)
     _buf.writeln('0\nSECTION\n2\nENTITIES');
     
-    // ملاحظة: الكيانات تُكتب مباشرة في _buf عبر الدوال السابقة،
-    // لكن للأسف نحتاج ترتيب DXF الصحيح (TABLES ثم ENTITIES).
-    // الحل: نقوم بتقسيم النص وإعادة ترتيبه.
-    
     final content = _buf.toString();
     final entitiesStart = content.indexOf('0\nSECTION\n2\nENTITIES');
     
     if (entitiesStart == -1) {
-      // لم يتم بدء قسم ENTITIES بعد، نقوم بإنشائه الآن
       _buf.writeln('0\nSECTION\n2\nENTITIES');
     }
     
@@ -98,13 +93,6 @@ class DxfBuilder {
     
     return _buf.toString();
   }
-
-  /// نسخة بديلة أكثر أماناً من build() تفصل الكيانات عن الجداول
-  String buildSafe() {
-    // هذه النسخة تتطلب إعادة هيكلة الكلاس، لذا نعتمد على build() الحالي
-    // مع تعديل بسيط في طريقة الكتابة.
-    return build();
-  }
 }
 
 // =====================================================================
@@ -112,6 +100,14 @@ class DxfBuilder {
 // =====================================================================
 class IrrigationDxf {
   static const int maxPoints = 5000;
+
+  /// ✅ دالة جديدة لحساب أبعاد الحقل (الطول والعرض) من المساحة ونسبة الطول/العرض
+  static ({double width, double length}) fieldDims(double areaM2, double aspectRatio) {
+    final safeAspect = aspectRatio > 0 ? aspectRatio : 1.0;
+    final width = math.sqrt(areaM2 / safeAspect);
+    final length = width * safeAspect;
+    return (width: width, length: length);
+  }
 
   /// تنقيط: خطوط فرعية ومحاور ومضخة وحوش (Sectors) متوافقة مع RainCAD.
   static String drip({
@@ -300,10 +296,11 @@ class IrrigationDxf {
   }
 
   /// ري سطحي: رسم مساقي وبوابات مياه.
+  /// ✅ تم تعديل اسم الباراميتر لـ furrowSpacingM ليتوافق مع الشاشة
   static String surface({
     required double widthM,
     required double lengthM,
-    required double streamWidthM,
+    required double furrowSpacingM,
     double? irrigationHours,
     double? streamLps,
     String? title,
@@ -313,7 +310,7 @@ class IrrigationDxf {
     // حدود الحقل
     d.rect('FIELD', 7, 0, 0, lengthM, widthM);
 
-    final numStreams = math.max(1, (widthM / streamWidthM).floor());
+    final numStreams = math.max(1, (widthM / furrowSpacingM).floor());
     final streamSpacing = widthM / numStreams;
 
     // رسم المساقي وبوابات المياه
