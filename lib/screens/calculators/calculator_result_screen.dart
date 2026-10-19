@@ -6,6 +6,7 @@ import '../../services/my_farm_service.dart';
 import '../../services/pdf_service.dart';
 import '../../services/notification_service.dart';
 import '../../utils/calc_engine.dart';
+import '../../utils/safe_parse.dart'; // ✅ لضمان سلامة الأرقام
 
 class CalculatorResultScreen extends StatefulWidget {
   final CalculatorTemplate template;
@@ -31,8 +32,6 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
   bool _saved = false;
 
   // المدخلات + القيم الافتراضية للحقول الرقمية اللي المستخدم سابها فاضية.
-  // دي اللي بتتحسب بيها المعادلات وبتتحفظ في البرنامج، فالنتيجة بعد الحفظ
-  // تفضل زي ما شافها المستخدم.
   late final Map<String, dynamic> _inputValues;
 
   // المهام مرتبة مرة واحدة (كانت بتتنسخ وتترتب مع كل عنصر بيترسم)
@@ -45,7 +44,8 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
     for (final f in widget.template.fields) {
       final isNumeric = f.type == 'number' || f.type == 'slider';
       if (isNumeric && merged[f.id] == null && f.defaultValue != null) {
-        merged[f.id] = f.defaultValue;
+        // ✅ استخدام SafeParse لضمان تحويل القيمة لرقم بأمان
+        merged[f.id] = SafeParse.decimal(f.defaultValue);
       }
     }
     _inputValues = merged;
@@ -207,8 +207,6 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
         _saved = true;
       });
 
-      // نقول الحقيقة: لو ما اتجدولش ولا تذكير (صلاحية الإشعارات مرفوضة أو كل
-      // المواعيد فاتت) ما نقولش إن التذكيرات اتفعلت.
       final remindersOk = scheduledCount > 0;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -232,6 +230,8 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return DefaultTabController(
       length: 3,
       child: Scaffold(
@@ -293,9 +293,9 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
               Expanded(
                 child: TabBarView(
                   children: [
-                    _buildTimelineTab(),
-                    _buildMaterialsTab(),
-                    _buildFinancialTab(),
+                    _buildTimelineTab(isDark),
+                    _buildMaterialsTab(isDark),
+                    _buildFinancialTab(isDark),
                   ],
                 ),
               ),
@@ -303,10 +303,11 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    // ✅ دعم الوضع الليلي
+                    color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.05),
+                        color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.05),
                         blurRadius: 10,
                         offset: const Offset(0, -2),
                       ),
@@ -346,7 +347,7 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
   }
 
   // ============ تاب 1: الجدول الزمني ============
-  Widget _buildTimelineTab() {
+  Widget _buildTimelineTab(bool isDark) {
     if (_sortedTasks.isEmpty) {
       return _buildEmptyState(
           Icons.timeline, 'لا يوجد جدول زمني', 'لم يتم إضافة مهام لهذا المحصول');
@@ -383,7 +384,7 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
                       width: 2,
                       color: index == _sortedTasks.length - 1
                           ? Colors.transparent
-                          : Colors.grey.shade300,
+                          : (isDark ? Colors.grey.shade700 : Colors.grey.shade300),
                     ),
                   ),
                 ],
@@ -394,9 +395,11 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
                   margin: const EdgeInsets.only(bottom: 16),
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color: Theme.of(context).cardColor,
+                    color: isDark ? const Color(0xFF1E1E1E) : Theme.of(context).cardColor,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.grey.shade200),
+                    border: Border.all(
+                      color: isDark ? Colors.grey.shade800 : Colors.grey.shade200,
+                    ),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -424,13 +427,16 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
                       ),
                       const SizedBox(height: 8),
                       Text(task.title,
-                          style: const TextStyle(
-                              fontWeight: FontWeight.bold, fontSize: 14)),
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold, 
+                              fontSize: 14,
+                              color: isDark ? Colors.white : Colors.black87)),
                       if (task.description.isNotEmpty) ...[
                         const SizedBox(height: 6),
                         Text(task.description,
-                            style: const TextStyle(
-                                fontSize: 12, color: Colors.grey)),
+                            style: TextStyle(
+                                fontSize: 12, 
+                                color: isDark ? Colors.grey[400] : Colors.grey)),
                       ],
                     ],
                   ),
@@ -461,7 +467,7 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
   }
 
   // ============ تاب 2: المشتريات ============
-  Widget _buildMaterialsTab() {
+  Widget _buildMaterialsTab(bool isDark) {
     if (widget.template.materials.isEmpty) {
       return _buildEmptyState(Icons.shopping_cart, 'لا يوجد مشتريات',
           'لم يتم إضافة مواد لهذا المحصول');
@@ -478,7 +484,7 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: widget.primaryColor.withValues(alpha: 0.1),
+            color: widget.primaryColor.withValues(alpha: isDark ? 0.2 : 0.1),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Row(
@@ -502,6 +508,7 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
         const SizedBox(height: 16),
         ...grouped.entries.map((entry) {
           return Card(
+            color: isDark ? const Color(0xFF1E1E1E) : null, // ✅ دعم الوضع الليلي
             margin: const EdgeInsets.only(bottom: 12),
             shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12)),
@@ -516,11 +523,13 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
                           color: widget.primaryColor, size: 20),
                       const SizedBox(width: 8),
                       Text(entry.key,
-                          style: const TextStyle(
-                              fontWeight: FontWeight.bold, fontSize: 15)),
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold, 
+                              fontSize: 15,
+                              color: isDark ? Colors.white : Colors.black87)),
                     ],
                   ),
-                  const Divider(height: 16),
+                  Divider(height: 16, color: isDark ? Colors.grey[800] : null),
                   ...entry.value.map((m) {
                     final totalQty = _materialQty(m);
                     final totalCost = totalQty * m.estimatedPricePerUnit;
@@ -533,9 +542,10 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(m.name,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                         fontWeight: FontWeight.w600,
-                                        fontSize: 13)),
+                                        fontSize: 13,
+                                        color: isDark ? Colors.grey[300] : Colors.black87)),
                                 const SizedBox(height: 2),
                                 Text(
                                   '${totalQty.toStringAsFixed(2)} ${m.unit} • ${totalCost.toStringAsFixed(0)} ج.م',
@@ -605,14 +615,18 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
   }
 
   // ============ تاب 3: التحليل المالي ============
-  Widget _buildFinancialTab() {
+  Widget _buildFinancialTab(bool isDark) {
     final financial = widget.template.financial;
 
     final totalYield = _totalYield;
     final totalRevenue = totalYield * financial.expectedPricePerYieldUnit;
     final netProfit = totalRevenue - _totalMaterialsCost;
-    final roi =
-        _totalMaterialsCost > 0 ? (netProfit / _totalMaterialsCost) * 100 : 0.0;
+    
+    // ✅ حماية من القسمة على صفر
+    final roi = _totalMaterialsCost > 0 
+        ? (netProfit / _totalMaterialsCost) * 100 
+        : 0.0;
+    final hasCost = _totalMaterialsCost > 0;
 
     if (financial.expectedYieldPerUnit == 0 &&
         financial.expectedPricePerYieldUnit == 0 &&
@@ -633,6 +647,7 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
                 value:
                     '${totalYield.toStringAsFixed(1)} ${financial.yieldUnit}',
                 color: Colors.green,
+                isDark: isDark,
               ),
             ),
             const SizedBox(width: 10),
@@ -642,12 +657,14 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
                 label: 'الإيراد المتوقع',
                 value: '${totalRevenue.toStringAsFixed(0)} ج.م',
                 color: Colors.blue,
+                isDark: isDark,
               ),
             ),
           ],
         ),
         const SizedBox(height: 12),
         Card(
+          color: isDark ? const Color(0xFF1E1E1E) : null, // ✅ دعم الوضع الليلي
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
           child: Padding(
@@ -656,66 +673,78 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
               children: [
                 _buildRow('إجمالي تكلفة المشتريات',
                     '${_totalMaterialsCost.toStringAsFixed(0)} ج.م',
-                    color: Colors.red),
-                const Divider(height: 20),
+                    color: Colors.red, isDark: isDark),
+                Divider(height: 20, color: isDark ? Colors.grey[800] : null),
                 _buildRow('صافي الربح المتوقع',
                     '${netProfit.toStringAsFixed(0)} ج.م',
                     color: netProfit > 0 ? Colors.green : Colors.red,
-                    isBold: true),
-                const Divider(height: 20),
-                _buildRow('نسبة العائد (ROI)', '${roi.toStringAsFixed(1)}%',
-                    color: roi > 0 ? Colors.green : Colors.red),
+                    isBold: true, isDark: isDark),
+                Divider(height: 20, color: isDark ? Colors.grey[800] : null),
+                _buildRow(
+                    'نسبة العائد (ROI)', 
+                    hasCost ? '${roi.toStringAsFixed(1)}%' : 'غير محدد', // ✅ حماية
+                    color: roi > 0 ? Colors.green : Colors.red,
+                    isDark: isDark),
               ],
             ),
           ),
         ),
         const SizedBox(height: 16),
         if (financial.costDistribution.isNotEmpty) ...[
-          const Text('📊 توزيع التكاليف',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+          Text('📊 توزيع التكاليف',
+              style: TextStyle(
+                fontWeight: FontWeight.bold, 
+                fontSize: 15,
+                color: isDark ? Colors.white : Colors.black87)), // ✅ دعم الوضع الليلي
           const SizedBox(height: 12),
           Card(
+            color: isDark ? const Color(0xFF1E1E1E) : null, // ✅ دعم الوضع الليلي
             shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(14)),
             child: Padding(
               padding: const EdgeInsets.all(16),
-              child: Column(
-                children: financial.costDistribution.entries.map((e) {
-                  final total = financial.costDistribution.values
-                      .fold<double>(0, (a, b) => a + b);
-                  final ratio = total > 0 ? e.value / total : 0.0;
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(e.key,
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.w500,
-                                    fontSize: 13)),
-                            Text('${e.value.toStringAsFixed(0)}%',
-                                style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 13,
-                                    color: widget.primaryColor)),
-                          ],
-                        ),
-                        const SizedBox(height: 6),
-                        LinearProgressIndicator(
-                          value: ratio,
-                          minHeight: 8,
-                          backgroundColor: Colors.grey.shade200,
-                          color: widget.primaryColor,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                      ],
-                    ),
-                  );
-                }).toList(),
-              ),
+              child: Builder(builder: (context) {
+                // ✅ حساب الإجمالي مرة واحدة قبل اللوب (تحسين الأداء)
+                final total = financial.costDistribution.values
+                    .fold<double>(0, (a, b) => a + b);
+                
+                return Column(
+                  children: financial.costDistribution.entries.map((e) {
+                    final ratio = total > 0 ? e.value / total : 0.0;
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(e.key,
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.w500,
+                                      fontSize: 13,
+                                      color: isDark ? Colors.grey[300] : Colors.black87)),
+                              Text('${e.value.toStringAsFixed(0)}%',
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                      color: widget.primaryColor)),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          LinearProgressIndicator(
+                            value: ratio,
+                            minHeight: 8,
+                            backgroundColor: isDark ? Colors.grey[800] : Colors.grey.shade200,
+                            color: widget.primaryColor,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                );
+              }),
             ),
           ),
         ],
@@ -724,19 +753,20 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
   }
 
   Widget _buildRow(String label, String value,
-      {Color? color, bool isBold = false}) {
+      {Color? color, bool isBold = false, bool isDark = false}) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(label,
             style: TextStyle(
                 fontWeight: isBold ? FontWeight.bold : FontWeight.w500,
-                fontSize: 14)),
+                fontSize: 14,
+                color: isDark ? Colors.grey[300] : Colors.black87)),
         Text(value,
             style: TextStyle(
                 fontWeight: FontWeight.bold,
                 fontSize: isBold ? 16 : 14,
-                color: color ?? Colors.black87)),
+                color: color ?? (isDark ? Colors.white : Colors.black87))),
       ],
     );
   }
@@ -746,8 +776,10 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
     required String label,
     required String value,
     required Color color,
+    required bool isDark,
   }) {
     return Card(
+      color: isDark ? const Color(0xFF1E1E1E) : null, // ✅ دعم الوضع الليلي
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       child: Padding(
         padding: const EdgeInsets.all(14),
