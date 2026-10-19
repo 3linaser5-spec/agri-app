@@ -119,26 +119,30 @@ class TemplateValidator {
             if (options is! List || options.isEmpty) {
               err('$at: القائمة المنسدلة محتاجة "options" (قائمة غير فاضية)');
             } else {
+              final values = <String>{};
+              final labels = <String>{};
+              
+              // لفة واحدة للتحقق من الصحة والتكرار معاً (تحسين الأداء)
               for (var j = 0; j < options.length; j++) {
                 final o = options[j];
+                
+                // التحقق الأساسي
                 if (o is! Map ||
                     _optionValue(o['value']) == null ||
                     !_isNonEmptyString(o['label'])) {
                   err('$at: الخيار ${j + 1} لازم فيه "value" و"label"');
+                  continue; 
                 }
-              }
-              final values = <String>{};
-              final labels = <String>{};
-              for (final o in options.whereType<Map>()) {
-                final value = o['value'];
-                final label = o['label'];
-                final normalizedValue = _optionValue(value);
-                if (normalizedValue != null && !values.add(normalizedValue)) {
+                
+                // التحقق من التكرار
+                final normalizedValue = _optionValue(o['value'])!;
+                if (!values.add(normalizedValue)) {
                   err('$at: قيمة خيار مكررة "$normalizedValue"');
                 }
-                if (_isNonEmptyString(label) &&
-                    !labels.add((label as String).trim())) {
-                  err('$at: اسم خيار مكرر "${label.trim()}"');
+                
+                final label = (o['label'] as String).trim();
+                if (!labels.add(label)) {
+                  err('$at: اسم خيار مكرر "$label"');
                 }
               }
             }
