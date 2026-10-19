@@ -21,6 +21,21 @@ class EncyclopediaItemEditorScreen extends StatefulWidget {
       _EncyclopediaItemEditorScreenState();
 }
 
+/// ✅ كلاس داخلي لبيانات الفقرة (أنضف وأسرع من Map)
+class _SectionData {
+  final TextEditingController titleCtrl;
+  final TextEditingController contentCtrl;
+
+  _SectionData({String title = '', String content = ''})
+      : titleCtrl = TextEditingController(text: title),
+        contentCtrl = TextEditingController(text: content);
+
+  void dispose() {
+    titleCtrl.dispose();
+    contentCtrl.dispose();
+  }
+}
+
 class _EncyclopediaItemEditorScreenState
     extends State<EncyclopediaItemEditorScreen> {
   final _formKey = GlobalKey<FormState>();
@@ -32,8 +47,7 @@ class _EncyclopediaItemEditorScreenState
   String _selectedIcon = 'eco';
   bool _saving = false;
 
-  // قائمة الفقرات (title + content)
-  final List<Map<String, TextEditingController>> _sections = [];
+  final List<_SectionData> _sections = [];
 
   bool get isEdit => widget.existingItem != null;
 
@@ -49,16 +63,14 @@ class _EncyclopediaItemEditorScreenState
     _imageCtrl = TextEditingController(text: existing?.imageUrl ?? '');
     _selectedIcon = existing?.icon ?? 'eco';
 
-    // تحميل الفقرات الموجودة
     if (existing != null && existing.sections.isNotEmpty) {
       for (var sec in existing.sections) {
-        _sections.add({
-          'title': TextEditingController(text: sec['title'] ?? ''),
-          'content': TextEditingController(text: sec['content'] ?? ''),
-        });
+        _sections.add(_SectionData(
+          title: sec['title'] ?? '',
+          content: sec['content'] ?? '',
+        ));
       }
     } else {
-      // فقرة افتراضية
       _addSection();
     }
   }
@@ -70,31 +82,21 @@ class _EncyclopediaItemEditorScreenState
     _contentCtrl.dispose();
     _imageCtrl.dispose();
     for (var s in _sections) {
-      s['title']?.dispose();
-      s['content']?.dispose();
+      s.dispose();
     }
     super.dispose();
   }
 
   void _addSection() {
-    setState(() {
-      _sections.add({
-        'title': TextEditingController(),
-        'content': TextEditingController(),
-      });
-    });
+    setState(() => _sections.add(_SectionData()));
   }
 
   void _removeSection(int index) {
     final removed = _sections[index];
-    setState(() {
-      _sections.removeAt(index);
-    });
-    // الـ controllers بتتخلص منها بعد ما الإطار يترسم من غير الفقرة دي،
-    // وإلا الـ TextField لسه ممكن يستخدمها وهي متخلص منها
+    setState(() => _sections.removeAt(index));
+    // نأخر التنظيف لحد ما الإطار يترسم من غير الفقرة
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      removed['title']?.dispose();
-      removed['content']?.dispose();
+      removed.dispose();
     });
   }
 
@@ -104,15 +106,14 @@ class _EncyclopediaItemEditorScreenState
     // نفلتر الفقرات الفاضية
     final validSections = _sections
         .where((s) =>
-            (s['title']?.text.trim().isNotEmpty ?? false) ||
-            (s['content']?.text.trim().isNotEmpty ?? false))
+            s.titleCtrl.text.trim().isNotEmpty ||
+            s.contentCtrl.text.trim().isNotEmpty)
         .map((s) => {
-              'title': s['title']?.text.trim() ?? '',
-              'content': s['content']?.text.trim() ?? '',
+              'title': s.titleCtrl.text.trim(),
+              'content': s.contentCtrl.text.trim(),
             })
         .toList();
 
-    // العنصر لازم يكون له محتوى: وصف رئيسي أو فقرة واحدة على الأقل
     if (validSections.isEmpty && _contentCtrl.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -157,6 +158,7 @@ class _EncyclopediaItemEditorScreenState
     setState(() => _saving = false);
 
     if (ok) {
+      // ✅ نجيب الـ messenger قبل الـ pop
       final messenger = ScaffoldMessenger.of(context);
       Navigator.pop(context);
       messenger.showSnackBar(
@@ -175,8 +177,30 @@ class _EncyclopediaItemEditorScreenState
     }
   }
 
+  /// ✅ تحقق أفضل من رابط الصورة (يشمل امتداد الملف)
+  String? _validateImageUrl(String? v) {
+    final t = v?.trim() ?? '';
+    if (t.isEmpty) return null;
+    
+    final u = Uri.tryParse(t);
+    if (u == null || (u.scheme != 'http' && u.scheme != 'https') || u.host.isEmpty) {
+      return 'الرابط لازم يبدأ بـ http أو https';
+    }
+    
+    // التحقق من امتداد الصورة
+    final path = u.path.toLowerCase();
+    final validExtensions = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp'];
+    if (!validExtensions.any((ext) => path.endsWith(ext))) {
+      return 'الرابط لازم ينتهي بامتداد صورة (.jpg, .png, ...)';
+    }
+    
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -209,10 +233,8 @@ class _EncyclopediaItemEditorScreenState
             children: [
               // ============ معلومات أساسية ============
               _buildSectionHeader('📌 المعلومات الأساسية'),
-
               const SizedBox(height: 12),
 
-              // عنوان العنصر
               TextFormField(
                 controller: _titleCtrl,
                 decoration: InputDecoration(
@@ -221,6 +243,8 @@ class _EncyclopediaItemEditorScreenState
                   prefixIcon: const Icon(Icons.title),
                   border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12)),
+                  filled: true,
+                  fillColor: isDark ? const Color(0xFF1E1E1E) : null,
                 ),
                 validator: (v) {
                   if (v == null || v.trim().isEmpty) {
@@ -232,7 +256,6 @@ class _EncyclopediaItemEditorScreenState
 
               const SizedBox(height: 12),
 
-              // التصنيف الفرعي
               TextFormField(
                 controller: _subtitleCtrl,
                 decoration: InputDecoration(
@@ -241,39 +264,36 @@ class _EncyclopediaItemEditorScreenState
                   prefixIcon: const Icon(Icons.category),
                   border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12)),
+                  filled: true,
+                  fillColor: isDark ? const Color(0xFF1E1E1E) : null,
                 ),
               ),
 
               const SizedBox(height: 12),
 
-              // رابط صورة (اختياري)
               TextFormField(
                 controller: _imageCtrl,
                 keyboardType: TextInputType.url,
                 decoration: InputDecoration(
                   labelText: 'رابط صورة (اختياري)',
-                  hintText: 'https://...',
+                  hintText: 'https://example.com/image.jpg',
                   prefixIcon: const Icon(Icons.image),
                   border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12)),
+                  filled: true,
+                  fillColor: isDark ? const Color(0xFF1E1E1E) : null,
                 ),
-                validator: (v) {
-                  final t = v?.trim() ?? '';
-                  if (t.isEmpty) return null;
-                  final u = Uri.tryParse(t);
-                  final ok = u != null &&
-                      (u.scheme == 'http' || u.scheme == 'https') &&
-                      u.host.isNotEmpty;
-                  return ok ? null : 'الرابط لازم يبدأ بـ http أو https';
-                },
+                validator: _validateImageUrl,
               ),
 
               const SizedBox(height: 16),
 
               // اختيار الأيقونة
-              const Text('الأيقونة:',
+              Text('الأيقونة:',
                   style: TextStyle(
-                      fontWeight: FontWeight.bold, fontSize: 14)),
+                      fontWeight: FontWeight.bold, 
+                      fontSize: 14,
+                      color: isDark ? Colors.white : Colors.black87)),
               const SizedBox(height: 8),
               SizedBox(
                 height: 60,
@@ -297,7 +317,7 @@ class _EncyclopediaItemEditorScreenState
                         decoration: BoxDecoration(
                           color: isSelected
                               ? widget.sectionColor.withValues(alpha: 0.2)
-                              : Colors.grey.shade100,
+                              : (isDark ? Colors.grey.shade800 : Colors.grey.shade100),
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(
                             color: isSelected
@@ -319,19 +339,22 @@ class _EncyclopediaItemEditorScreenState
 
               // ============ الوصف الرئيسي ============
               _buildSectionHeader('📝 الوصف الرئيسي (اختياري)'),
-
               const SizedBox(height: 12),
 
               TextFormField(
                 controller: _contentCtrl,
                 maxLines: 5,
+                style: TextStyle(color: isDark ? Colors.white : null),
                 decoration: InputDecoration(
                   hintText:
                       'اكتب وصف عام مختصر للعنصر (مثال: مرض فطري يصيب الأوراق...)',
+                  hintStyle: TextStyle(
+                    color: isDark ? Colors.grey[500] : null,
+                  ),
                   border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12)),
                   filled: true,
-                  fillColor: Colors.grey.shade50,
+                  fillColor: isDark ? const Color(0xFF1E1E1E) : Colors.grey.shade50,
                 ),
               ),
 
@@ -340,9 +363,7 @@ class _EncyclopediaItemEditorScreenState
               // ============ الفقرات التفصيلية ============
               Row(
                 children: [
-                  Expanded(
-                    child: _buildSectionHeader('📋 الفقرات التفصيلية'),
-                  ),
+                  Expanded(child: _buildSectionHeader('📋 الفقرات التفصيلية')),
                   ElevatedButton.icon(
                     onPressed: _addSection,
                     icon: const Icon(Icons.add, size: 18),
@@ -362,7 +383,7 @@ class _EncyclopediaItemEditorScreenState
 
               // الفقرات
               ...List.generate(_sections.length, (i) {
-                return _buildSectionCard(i);
+                return _buildSectionCard(i, isDark);
               }),
 
               const SizedBox(height: 40),
@@ -402,7 +423,6 @@ class _EncyclopediaItemEditorScreenState
     );
   }
 
-  // ============ Header Widget ============
   Widget _buildSectionHeader(String title) {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
@@ -424,16 +444,19 @@ class _EncyclopediaItemEditorScreenState
     );
   }
 
-  // ============ بطاقة فقرة ============
-  Widget _buildSectionCard(int index) {
+  Widget _buildSectionCard(int index, bool isDark) {
+    final section = _sections[index];
+    
     return Container(
-      key: ObjectKey(_sections[index]),
+      key: ObjectKey(section),
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.grey.shade50,
+        // ✅ دعم الوضع الليلي
+        color: isDark ? const Color(0xFF1E1E1E) : Colors.grey.shade50,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200),
+        border: Border.all(
+            color: isDark ? Colors.grey.shade800 : Colors.grey.shade200),
       ),
       child: Column(
         children: [
@@ -456,8 +479,10 @@ class _EncyclopediaItemEditorScreenState
               const SizedBox(width: 8),
               Expanded(
                 child: Text('فقرة ${index + 1}',
-                    style: const TextStyle(
-                        fontWeight: FontWeight.bold, fontSize: 13)),
+                    style: TextStyle(
+                        fontWeight: FontWeight.bold, 
+                        fontSize: 13,
+                        color: isDark ? Colors.white : Colors.black87)),
               ),
               IconButton(
                 icon: const Icon(Icons.delete,
@@ -471,28 +496,30 @@ class _EncyclopediaItemEditorScreenState
           ),
           const SizedBox(height: 10),
           TextField(
-            controller: _sections[index]['title'],
+            controller: section.titleCtrl,
+            style: TextStyle(color: isDark ? Colors.white : null),
             decoration: InputDecoration(
               labelText: 'عنوان الفقرة',
               hintText: 'مثال: الأعراض / العلاج / الوقاية',
               border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10)),
               filled: true,
-              fillColor: Colors.white,
+              fillColor: isDark ? const Color(0xFF2C2C2C) : Colors.white,
               isDense: true,
             ),
           ),
           const SizedBox(height: 10),
           TextField(
-            controller: _sections[index]['content'],
+            controller: section.contentCtrl,
             maxLines: 4,
+            style: TextStyle(color: isDark ? Colors.white : null),
             decoration: InputDecoration(
               labelText: 'محتوى الفقرة',
               hintText: 'اكتب المحتوى هنا...',
               border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10)),
               filled: true,
-              fillColor: Colors.white,
+              fillColor: isDark ? const Color(0xFF2C2C2C) : Colors.white,
             ),
           ),
         ],
