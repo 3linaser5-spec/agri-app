@@ -16,7 +16,6 @@ class ProgramDetailsScreen extends StatefulWidget {
 
 class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
   late MyFarmProgram _program;
-  // مهام لسه بيتحفظ تعليمها (نمنع الضغط المتكرر على نفس المهمة)
   final Set<int> _busyTasks = {};
 
   @override
@@ -25,8 +24,6 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
     _program = widget.program;
   }
 
-  // ✅ تعليم مهمة كمنجزة / إلغاء التعليم
-  // تحديث متفائل: الواجهة تتغير فورًا، ولو الحفظ فشل بنرجّع التغيير ده بس.
   Future<void> _toggleTask(int index, bool done) async {
     if (_busyTasks.contains(index)) return;
 
@@ -55,7 +52,6 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
     setState(() {
       _busyTasks.remove(index);
       if (!ok) {
-        // نرجّع تعليم المهمة دي بس (ممكن المستخدم علّم مهام تانية في الأثناء)
         final current = {..._program.doneTasks};
         if (done) {
           current.remove(index);
@@ -85,7 +81,6 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
     }
   }
 
-  // ✅ تحميل PDF — مع Loading Dialog
   Future<void> _downloadPdf() async {
     showDialog(
       context: context,
@@ -139,7 +134,6 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
     }
   }
 
-  // ✅ حذف البرنامج + إلغاء الإشعارات
   Future<void> _deleteProgram() async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -161,12 +155,22 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
     );
 
     if (confirm == true) {
-      // نحذف من Firestore الأول؛ لو الحذف فشل ما نلغيش التذكيرات
-      // (كان بيلغيها وبعدين البرنامج يفضل موجود بدون تذكيرات).
-      final ok = await MyFarmService.deleteProgram(_program.id);
       if (!mounted) return;
+      
+      // عرض مؤشر تحميل بسيط
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(child: CircularProgressIndicator()),
+      );
 
+      final ok = await MyFarmService.deleteProgram(_program.id);
+      
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop(); // إخفاء مؤشر التحميل
+      
       if (!ok) {
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('⚠️ تعذر حذف البرنامج، تأكد من الاتصال وحاول مرة أخرى'),
@@ -185,8 +189,8 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
       } catch (e) {
         debugPrint("⚠️ فشل إلغاء الإشعارات: $e");
       }
+      
       if (!mounted) return;
-
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('✅ تم حذف البرنامج وإلغاء تذكيراتـه'),
@@ -199,6 +203,8 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return DefaultTabController(
       length: 2,
       child: Scaffold(
@@ -235,7 +241,7 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
             children: [
               Container(
                 padding: const EdgeInsets.all(16),
-                color: const Color(0xFF047857).withValues(alpha: 0.1),
+                color: const Color(0xFF047857).withValues(alpha: isDark ? 0.2 : 0.1),
                 child: Column(
                   children: [
                     Row(
@@ -243,10 +249,11 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
                         const Icon(Icons.location_on,
                             color: Color(0xFF047857), size: 18),
                         const SizedBox(width: 6),
-                        Text('المحافظة: ${_program.governorate}',
-                            style: const TextStyle(
+                        Text('المحافظة: ${SafeParse.string(_program.governorate, "غير محدد")}',
+                            style: TextStyle(
                                 fontWeight: FontWeight.bold,
-                                fontSize: 13)),
+                                fontSize: 13,
+                                color: isDark ? Colors.white : Colors.black87)),
                         const Spacer(),
                         Container(
                           padding: const EdgeInsets.symmetric(
@@ -271,7 +278,7 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
                       child: LinearProgressIndicator(
                         value: _program.progress,
                         minHeight: 8,
-                        backgroundColor: Colors.grey.shade200,
+                        backgroundColor: isDark ? Colors.grey.shade800 : Colors.grey.shade200,
                         color: const Color(0xFF047857),
                       ),
                     ),
@@ -292,8 +299,8 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
               Expanded(
                 child: TabBarView(
                   children: [
-                    _buildTasksTab(),
-                    _buildMaterialsTab(),
+                    _buildTasksTab(isDark),
+                    _buildMaterialsTab(isDark),
                   ],
                 ),
               ),
@@ -305,12 +312,11 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
   }
 
   // ============ تاب المهام ============
-  Widget _buildTasksTab() {
+  Widget _buildTasksTab(bool isDark) {
     if (_program.tasks.isEmpty) {
       return const Center(child: Text('لا يوجد مهام'));
     }
 
-    // نرتب بالأيام لكن بنحتفظ بفهرس المهمة الأصلي (هو اللي بيتخزّن كإنجاز)
     final order = List<int>.generate(_program.tasks.length, (i) => i);
     order.sort((a, b) => SafeParse.integer(_program.tasks[a]['day_from_start'])
         .compareTo(SafeParse.integer(_program.tasks[b]['day_from_start'])));
@@ -323,11 +329,15 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
         final task = _program.tasks[taskIndex];
         final day = SafeParse.integer(task['day_from_start']);
         final category = SafeParse.string(task['category']);
+        final title = SafeParse.string(task['title']);
+        final description = SafeParse.string(task['description']);
+        
         final color = _getCategoryColor(category);
         final isDone = _program.isTaskDone(taskIndex);
         final status = _getTaskStatus(day, isDone);
 
         return Card(
+          color: isDark ? const Color(0xFF1E1E1E) : null, // ✅ دعم الوضع الليلي
           margin: const EdgeInsets.only(bottom: 10),
           shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12)),
@@ -354,17 +364,20 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(task['title']?.toString() ?? '',
+                      Text(title,
                           style: TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 14,
-                              color: isDone ? Colors.grey : null,
+                              color: isDone 
+                                  ? Colors.grey 
+                                  : (isDark ? Colors.white : Colors.black87),
                               decoration:
                                   isDone ? TextDecoration.lineThrough : null)),
                       const SizedBox(height: 4),
-                      Text(task['description']?.toString() ?? '',
-                          style: const TextStyle(
-                              fontSize: 11, color: Colors.grey),
+                      Text(description,
+                          style: TextStyle(
+                              fontSize: 11, 
+                              color: isDark ? Colors.grey[400] : Colors.grey),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis),
                       const SizedBox(height: 6),
@@ -402,7 +415,6 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
                     ],
                   ),
                 ),
-                // علامة الإنجاز
                 Checkbox(
                   value: isDone,
                   activeColor: const Color(0xFF047857),
@@ -426,7 +438,6 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
     if (day == today) {
       return _TaskStatus('اليوم', Colors.orange);
     } else if (day < today) {
-      // قبل كده كانت "انتهت" بلون أخضر حتى لو المهمة ما اتعملتش
       return _TaskStatus('متأخرة', Colors.red);
     } else {
       return _TaskStatus('قادمة', Colors.blue);
@@ -451,12 +462,11 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
   }
 
   // ============ تاب المشتريات ============
-  Widget _buildMaterialsTab() {
+  Widget _buildMaterialsTab(bool isDark) {
     if (_program.materials.isEmpty) {
       return const Center(child: Text('لا يوجد مشتريات'));
     }
 
-    // نفس دوال شاشة النتيجة بالظبط، فالكميات ما بتتغيرش بعد الحفظ
     final inputs = _program.inputValues;
     final totalAll =
         CalcEngine.materialsTotalCost(_program.materials, inputs);
@@ -465,29 +475,40 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
       padding: const EdgeInsets.all(16),
       children: [
         ..._program.materials.map((m) {
-        final qty = CalcEngine.materialQuantity(m, inputs);
-        final totalCost = CalcEngine.materialCost(m, inputs);
-        final unit = m['unit']?.toString() ?? '';
+          final qty = CalcEngine.materialQuantity(m, inputs);
+          final totalCost = CalcEngine.materialCost(m, inputs);
+          
+          // ✅ استخدام SafeParse عشان ما يظهرش "null"
+          final unit = SafeParse.string(m['unit']);
+          final name = SafeParse.string(m['name'], 'بدون اسم');
+          final category = SafeParse.string(m['category'], 'غير محدد');
 
-        return Card(
-          margin: const EdgeInsets.only(bottom: 10),
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12)),
-          child: ListTile(
-            leading: const Icon(Icons.shopping_bag,
-                color: Color(0xFF047857)),
-            title: Text(m['name']?.toString() ?? '',
-                style: const TextStyle(fontWeight: FontWeight.bold)),
-            subtitle: Text(
-              '${m['category']} • ${qty.toStringAsFixed(2)} $unit',
-              style: const TextStyle(fontSize: 11),
-            ),
-            trailing: Text('${totalCost.toStringAsFixed(0)} ج.م',
-                style: const TextStyle(
+          return Card(
+            color: isDark ? const Color(0xFF1E1E1E) : null, // ✅ دعم الوضع الليلي
+            margin: const EdgeInsets.only(bottom: 10),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12)),
+            child: ListTile(
+              leading: const Icon(Icons.shopping_bag,
+                  color: Color(0xFF047857)),
+              title: Text(name,
+                  style: TextStyle(
                     fontWeight: FontWeight.bold,
-                    color: Color(0xFF047857))),
-          ),
-        );
+                    color: isDark ? Colors.white : Colors.black87,
+                  )),
+              subtitle: Text(
+                '$category • ${qty.toStringAsFixed(2)} $unit',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: isDark ? Colors.grey[400] : Colors.grey,
+                ),
+              ),
+              trailing: Text('${totalCost.toStringAsFixed(0)} ج.م',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF047857))),
+            ),
+          );
         }),
         const SizedBox(height: 4),
         Container(
