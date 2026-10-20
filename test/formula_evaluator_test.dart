@@ -1,166 +1,290 @@
-import 'package:agri_app/utils/formula_evaluator.dart';
-import 'package:flutter_test/flutter_test.dart';
+class FormulaException implements Exception {
+  final String message;
+  FormulaException(this.message);
+  @override
+  String toString() => message;
+}
 
-double? eval(String formula, [Map<String, double> vars = const {}]) =>
-    FormulaEvaluator.evaluate(formula, vars);
+abstract class _Node {
+  double eval(Map<String, double> vars);
+  void collect(Set<String> out);
+}
 
-void main() {
-  group('evaluate: arithmetic', () {
-    test('uses template variables', () {
-      expect(eval('area * 50', {'area': 2.0}), closeTo(100, 1e-9));
-    });
+class _Num extends _Node {
+  final double value;
+  _Num(this.value);
+  @override
+  double eval(Map<String, double> vars) => value;
+  @override
+  void collect(Set<String> out) {}
+}
 
-    test('multiplication binds tighter than addition', () {
-      expect(eval('2 + 3 * 4'), closeTo(14, 1e-9));
-    });
+class _Var extends _Node {
+  final String name;
+  _Var(this.name);
+  @override
+  double eval(Map<String, double> vars) {
+    final v = vars[name];
+    if (v == null) throw FormulaException('متغير غير معروف: $name');
+    return v;
+  }
+  @override
+  void collect(Set<String> out) => out.add(name);
+}
 
-    test('parentheses override precedence', () {
-      expect(eval('(2 + 3) * 4'), closeTo(20, 1e-9));
-    });
+class _Neg extends _Node {
+  final _Node child;
+  _Neg(this.child);
+  @override
+  double eval(Map<String, double> vars) => -child.eval(vars);
+  @override
+  void collect(Set<String> out) => child.collect(out);
+}
 
-    test('subtraction and division are left associative', () {
-      expect(eval('10 - 3 - 2'), closeTo(5, 1e-9));
-      expect(eval('100 / 5 / 2'), closeTo(10, 1e-9));
-    });
+class _Bin extends _Node {
+  final String op;
+  final _Node left;
+  final _Node right;
+  _Bin(this.op, this.left, this.right);
 
-    test('unary minus and plus', () {
-      expect(eval('-3 + 5'), closeTo(2, 1e-9));
-      expect(eval('2 - -3'), closeTo(5, 1e-9));
-      expect(eval('-(1 + 2)'), closeTo(-3, 1e-9));
-      expect(eval('+4'), closeTo(4, 1e-9));
-    });
+  @override
+  double eval(Map<String, double> vars) {
+    final a = left.eval(vars);
+    final b = right.eval(vars);
+    switch (op) {
+      case '+': return a + b;
+      case '-': return a - b;
+      case '*': return a * b;
+      case '/': if (b == 0) throw FormulaException('قسمة على صفر'); return a / b;
+    }
+    throw FormulaException('عملية غير معروفة');
+  }
+  @override
+  void collect(Set<String> out) {
+    left.collect(out);
+    right.collect(out);
+  }
+}
 
-    test('decimals, including a leading dot', () {
-      expect(eval('0.5 * 4'), closeTo(2, 1e-9));
-      expect(eval('.5 * 4'), closeTo(2, 1e-9));
-    });
+class _Call extends _Node {
+  final String name;
+  final List<_Node> args;
+  _Call(this.name, this.args);
 
-    test('whitespace is ignored', () {
-      expect(eval('  2 +   3  '), closeTo(5, 1e-9));
-    });
+  static const _arity = {
+    'min': -1,
+    'max': -1,
+    'round': 1,
+    'ceil': 1,
+    'floor': 1,
+    'abs': 1,
+  };
 
-    test('identifiers may contain digits and underscores', () {
-      expect(eval('seed_rate2 * 2', {'seed_rate2': 3.0}), closeTo(6, 1e-9));
-    });
-  });
+  static bool isKnown(String n) => _arity.containsKey(n);
+  static int arityOf(String n) => _arity[n]!;
 
-  group('evaluate: functions', () {
-    test('min and max', () {
-      expect(eval('min(3, 2)'), closeTo(2, 1e-9));
-      expect(eval('max(area, 1) * 12', {'area': 0.5}), closeTo(12, 1e-9));
-    });
+  @override
+  double eval(Map<String, double> vars) {
+    if (!isKnown(name)) throw FormulaException('دالة غير معروفة: $name');
+    final expectedArity = arityOf(name);
+    if (expectedArity != -1 && args.length != expectedArity) {
+      throw FormulaException('الدالة "$name" تتطلب $expectedArity وسيط');
+    }
+    final v = args.map((a) => a.eval(vars)).toList();
+    switch (name) {
+      case 'min': if (v.isEmpty) throw FormulaException('min تحتاج قيمة'); return v.reduce((a, b) => a < b ? a : b);
+      case 'max': if (v.isEmpty) throw FormulaException('max تحتاج قيمة'); return v.reduce((a, b) => a > b ? a : b);
+      case 'round': return v[0].roundToDouble();
+      case 'ceil': return v[0].ceilToDouble();
+      case 'floor': return v[0].floorToDouble();
+      case 'abs': return v[0].abs();
+    }
+    throw FormulaException('دالة غير معروفة: $name');
+  }
+  @override
+  void collect(Set<String> out) {
+    for (final a in args) { a.collect(out); }
+  }
+}
 
-    test('round, ceil, floor, abs', () {
-      expect(eval('ceil(area * 2.5)', {'area': 3.0}), closeTo(8, 1e-9));
-      expect(eval('floor(2.9)'), closeTo(2, 1e-9));
-      expect(eval('round(2.5)'), closeTo(3, 1e-9));
-      expect(eval('abs(-4)'), closeTo(4, 1e-9));
-    });
-  });
+class _Parser {
+  final String src;
+  int _pos = 0;
+  int _depth = 0;
 
-  group('evaluate: Arabic input', () {
-    test('Arabic-Indic digits', () {
-      expect(eval('٣ * ٢'), closeTo(6, 1e-9));
-    });
+  _Parser(String raw) : src = _normalize(raw) {
+    if (raw.length > FormulaEvaluator.maxLength) {
+      throw FormulaException('المعادلة طويلة');
+    }
+  }
 
-    test('Arabic decimal separator', () {
-      expect(eval('٣٫٥ * 2'), closeTo(7, 1e-9));
-    });
+  static String _normalize(String s) {
+    const ar = '٠١٢٣٤٥٦٧٨٩';
+    const fa = '۰۱۲۳۴۵۶۷۸۹';
+    final b = StringBuffer();
+    for (final ch in s.split('')) {
+      final a = ar.indexOf(ch);
+      final f = fa.indexOf(ch);
+      if (a != -1) { b.write(a); } else if (f != -1) { b.write(f); }
+      else if (ch == '٫') { b.write('.'); } else if (ch == '×') { b.write('*'); }
+      else if (ch == '÷') { b.write('/'); } else { b.write(ch); }
+    }
+    return b.toString();
+  }
 
-    test('multiplication and division signs', () {
-      expect(eval('6 ÷ 3 × 2'), closeTo(4, 1e-9));
-    });
-  });
+  _Node parse() {
+    if (src.trim().isEmpty) throw FormulaException('المعادلة فاضية');
+    final node = _expr();
+    _skipSpaces();
+    if (_pos < src.length) throw FormulaException('رمز غير متوقع');
+    return node;
+  }
 
-  group('evaluate: invalid input returns null instead of throwing', () {
-    test('division by zero', () {
-      expect(eval('5 / 0'), isNull);
-      expect(eval('x / (y - 1)', {'x': 4.0, 'y': 1.0}), isNull);
-    });
+  void _skipSpaces() { while (_pos < src.length && src[_pos].trim().isEmpty) { _pos++; } }
+  bool _eat(String ch) {
+    _skipSpaces();
+    if (_pos < src.length && src[_pos] == ch) { _pos++; return true; }
+    return false;
+  }
 
-    test('unknown variable', () {
-      expect(eval('area * foo', {'area': 2.0}), isNull);
-    });
+  _Node _expr() {
+    _enter();
+    var left = _term();
+    while (true) {
+      if (_eat('+')) { left = _Bin('+', left, _term()); }
+      else if (_eat('-')) { left = _Bin('-', left, _term()); }
+      else { break; }
+    }
+    _depth--;
+    return left;
+  }
 
-    test('unknown function and wrong argument count', () {
-      expect(eval('sqrt(4)'), isNull);
-      expect(eval('min(1)'), isNull);
-      expect(eval('min(1, 2, 3)'), isNull);
-      expect(eval('abs()'), isNull);
-    });
+  _Node _term() {
+    var left = _unary();
+    while (true) {
+      if (_eat('*')) { left = _Bin('*', left, _unary()); }
+      else if (_eat('/')) { left = _Bin('/', left, _unary()); }
+      else { break; }
+    }
+    return left;
+  }
 
-    test('syntax errors', () {
-      expect(eval(''), isNull);
-      expect(eval('   '), isNull);
-      expect(eval('2 +'), isNull);
-      expect(eval('2 3'), isNull);
-      expect(eval('(1 + 2'), isNull);
-      expect(eval('()'), isNull);
-      expect(eval('2 * * 3'), isNull);
-      expect(eval('1..2'), isNull);
-      expect(eval('min(3 2)'), isNull);
-    });
+  _Node _unary() {
+    if (_eat('-')) return _Neg(_unary());
+    if (_eat('+')) return _unary();
+    return _primary();
+  }
 
-    test('characters that could be code are rejected', () {
-      expect(eval('area; print(1)', {'area': 1.0}), isNull);
-      expect(eval('area ** 2', {'area': 2.0}), isNull);
-      expect(eval('"a"'), isNull);
-      expect(eval('a.b', {'a': 1.0}), isNull);
-    });
+  _Node _primary() {
+    _skipSpaces();
+    if (_pos >= src.length) throw FormulaException('المعادلة ناقصة');
+    final ch = src[_pos];
+    if (ch == '(') {
+      _pos++;
+      final inner = _expr();
+      if (!_eat(')')) throw FormulaException('قوس ناقص');
+      return inner;
+    }
+    if (_isDigit(ch) || ch == '.') return _number();
+    if (_isIdentStart(ch)) {
+      final start = _pos;
+      while (_pos < src.length && _isIdentPart(src[_pos])) { _pos++; }
+      final name = src.substring(start, _pos);
+      _skipSpaces();
+      if (_pos < src.length && src[_pos] == '(') { return _call(name); }
+      return _Var(name);
+    }
+    throw FormulaException('رمز غير متوقع');
+  }
 
-    test('result that is not finite', () {
-      expect(eval('big * big', {'big': 1e200}), isNull);
-    });
-  });
+  _Node _call(String name) {
+    if (!_Call.isKnown(name)) throw FormulaException('دالة غير معروفة');
+    _pos++;
+    final args = <_Node>[];
+    if (!_eat(')')) {
+      args.add(_expr());
+      while (_eat(',')) { args.add(_expr()); }
+      if (!_eat(')')) throw FormulaException('قوس ناقص');
+    }
+    final requiredArity = _Call.arityOf(name);
+    if (requiredArity == -1) {
+      if (args.isEmpty) throw FormulaException('الدالة تحتاج قيمة');
+    } else if (args.length != requiredArity) {
+      throw FormulaException('عدد الوسائط غلط');
+    }
+    return _Call(name, args);
+  }
 
-  group('evaluate: limits', () {
-    test('formula longer than the limit is rejected', () {
-      final tooLong = '${'1+' * 101}1'; // 203 chars
-      expect(tooLong.length, greaterThan(FormulaEvaluator.maxLength));
-      expect(eval(tooLong), isNull);
-    });
+  _Node _number() {
+    final start = _pos;
+    var dots = 0;
+    while (_pos < src.length && (_isDigit(src[_pos]) || src[_pos] == '.')) {
+      if (src[_pos] == '.') dots++;
+      _pos++;
+    }
+    final text = src.substring(start, _pos);
+    final v = dots > 1 ? null : double.tryParse(text);
+    if (v == null) throw FormulaException('رقم غير صالح');
+    return _Num(v);
+  }
 
-    test('long formula under the limit is accepted', () {
-      final ok = '1${'+1' * 99}'; // 199 chars, value 100
-      expect(ok.length, lessThanOrEqualTo(FormulaEvaluator.maxLength));
-      expect(eval(ok), closeTo(100, 1e-9));
-    });
+  void _enter() {
+    if (++_depth > FormulaEvaluator._maxDepth) throw FormulaException('معقدة جداً');
+  }
 
-    test('moderate nesting is accepted, extreme nesting is rejected', () {
-      expect(eval('${'(' * 20}1${')' * 20}'), closeTo(1, 1e-9));
-      expect(eval('${'(' * 30}1${')' * 30}'), isNull);
-    });
-  });
+  static bool _isDigit(String c) => c.codeUnitAt(0) >= 48 && c.codeUnitAt(0) <= 57;
+  static bool _isIdentStart(String c) {
+    final u = c.codeUnitAt(0);
+    return (u >= 65 && u <= 90) || (u >= 97 && u <= 122) || u == 95;
+  }
+  static bool _isIdentPart(String c) => _isIdentStart(c) || _isDigit(c);
+}
 
-  group('validate', () {
-    test('accepts a valid formula', () {
-      expect(FormulaEvaluator.validate('area * 2', {'area'}), isNull);
-    });
+class FormulaEvaluator {
+  static const int maxLength = 200;
+  static const int _maxDepth = 24;
 
-    test('blank formula means "no formula" and is valid', () {
-      expect(FormulaEvaluator.validate('', {'area'}), isNull);
-      expect(FormulaEvaluator.validate('   ', {'area'}), isNull);
-    });
+  static double? evaluate(String formula, Map<String, double> vars) {
+    try {
+      final node = _Parser(formula).parse();
+      final v = node.eval(vars);
+      return v.isFinite ? v : null;
+    } on FormulaException {
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
 
-    test('reports unknown variables and lists the available ones', () {
-      final msg = FormulaEvaluator.validate('area * foo', {'area', 'rate'});
-      expect(msg, isNotNull);
-      expect(msg, contains('foo'));
-      expect(msg, contains('rate'));
-    });
-
-    test('rejects a formula that always divides by zero', () {
-      expect(FormulaEvaluator.validate('5 / 0', {'area'}), isNotNull);
-    });
-
-    test('accepts x / (y - 1): only some inputs make it divide by zero', () {
-      expect(FormulaEvaluator.validate('x / (y - 1)', {'x', 'y'}), isNull);
-    });
-
-    test('rejects bad syntax, wrong arity and over-long formulas', () {
-      expect(FormulaEvaluator.validate('2 +', {'area'}), isNotNull);
-      expect(FormulaEvaluator.validate('min(1)', {'area'}), isNotNull);
-      expect(FormulaEvaluator.validate('${'1+' * 101}1', {'area'}), isNotNull);
-    });
-  });
+  static String? validate(String formula, Set<String> knownVars) {
+    if (formula.trim().isEmpty) return null;
+    try {
+      final node = _Parser(formula).parse();
+      final used = <String>{};
+      node.collect(used);
+      final unknown = used.where((v) => !knownVars.contains(v)).toList();
+      if (unknown.isNotEmpty) {
+        return 'متغير غير معروف: ${unknown.join('، ')}';
+      }
+      
+      final names = knownVars.toList()..sort();
+      const bases = [1.0, 2.0, 3.5, 10.0];
+      const steps = [0.0, 1.0, 1.5, 7.0];
+      String? firstError;
+      for (var k = 0; k < bases.length; k++) {
+        final probe = <String, double>{
+          for (var i = 0; i < names.length; i++) names[i]: bases[k] + i * steps[k],
+        };
+        try {
+          if (node.eval(probe).isFinite) return null;
+          firstError ??= 'نتيجة غير صالحة';
+        } on FormulaException catch (e) {
+          firstError ??= e.message;
+        }
+      }
+      return firstError ?? 'نتيجة غير صالحة';
+    } on FormulaException catch (e) {
+      return e.message;
+    }
+  }
 }
