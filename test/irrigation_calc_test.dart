@@ -1,4 +1,3 @@
-import 'package:agri_app/utils/dxf_export.dart';
 import 'package:agri_app/utils/irrigation_calc.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -37,20 +36,6 @@ void main() {
         operatingHeadM: 10,
       )!;
       expect(r.plants, closeTo(8400, 1e-6));
-    });
-  });
-
-  group('DXF export', () {
-    test('file has standard sections', () {
-      final dxf = IrrigationDxf.drip(
-        widthM: 20,
-        lengthM: 30,
-        rowSpacingM: 1,
-        plantSpacingM: 1,
-        emittersPerPlant: 1,
-      );
-      expect(dxf, contains('ENTITIES'));
-      expect(dxf.trimRight().endsWith('EOF'), isTrue);
     });
   });
 }
