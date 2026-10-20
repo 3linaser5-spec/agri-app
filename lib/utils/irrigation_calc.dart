@@ -1,516 +1,327 @@
-import 'dart:math' as math;
+import 'package:agri_app/utils/dxf_export.dart';
+import 'package:agri_app/utils/irrigation_calc.dart';
+import 'package:agri_app/utils/formula_evaluator.dart'; // ✅ مهم جداً
+import 'package:flutter_test/flutter_test.dart';
 
-/// وحدات المساحة المدعومة في حاسبة الري.
-enum AreaUnit { feddan, hectare, squareMeter }
+void main() {
+  // ==========================================
+  // FormulaEvaluator Tests
+  // ==========================================
+  group('FormulaEvaluator', () {
+    test('evaluate valid expression', () {
+      final vars = {'area': 2.0, 'x': 3.0};
+      expect(FormulaEvaluator.evaluate('area * x', vars), 6.0);
+      expect(FormulaEvaluator.evaluate('(area + x) / 2', vars), 2.5);
+      expect(FormulaEvaluator.evaluate('max(area, x)', vars), 3.0);
+      expect(FormulaEvaluator.evaluate('min(area, x)', vars), 2.0);
+      expect(FormulaEvaluator.evaluate('round(2.7)', vars), 3.0);
+      expect(FormulaEvaluator.evaluate('ceil(2.1)', vars), 3.0);
+      expect(FormulaEvaluator.evaluate('floor(2.9)', vars), 2.0);
+      expect(FormulaEvaluator.evaluate('abs(-5)', vars), 5.0);
+    });
 
-/// حسابات هيدروليكية لتصميم شبكات الري (تنقيط، رش، سطحي، محوري).
-///
-/// كل الدوال هنا نقية (بدون واجهة ولا قاعدة بيانات) وبترجع null لو
-/// المدخلات غير صالحة، عشان تتختبر بسهولة وما تكسرش التطبيق.
-class IrrigationCalc {
-  IrrigationCalc._();
+    test('evaluate invalid input returns null', () {
+      final vars = {'area': 2.0};
+      expect(FormulaEvaluator.evaluate('area + ', vars), isNull);
+      expect(FormulaEvaluator.evaluate('unknown_var', vars), isNull);
+      expect(FormulaEvaluator.evaluate('area / 0', vars), isNull);
+      expect(FormulaEvaluator.evaluate('', vars), isNull);
+    });
 
-  static const double feddanM2 = 4200;
-  static const double hectareM2 = 10000;
+    test('validate accepts good syntax', () {
+      final known = {'area', 'x'};
+      expect(FormulaEvaluator.validate('area * 2', known), isNull);
+      expect(FormulaEvaluator.validate('max(area, x)', known), isNull);
+    });
 
-  /// الأقطار التجارية الشائعة (مم) - بتتعامل معاها كقطر داخلي تقريبي.
-  static const List<double> standardDiametersMm = <double>[
-    16, 20, 25, 32, 40, 50, 63, 75, 90, 110, 125, 160, 200, 250, 315,
-  ];
+    test('validate rejects bad syntax, wrong arity and over-long formulas', () {
+      final known = {'area'};
+      expect(FormulaEvaluator.validate('area +', known), isNotNull);
+      expect(FormulaEvaluator.validate('unknown_var', known), isNotNull);
+      // max تحتاج على الأقل وسيطين
+      expect(FormulaEvaluator.validate('max(area)', known), isNotNull);
+      // معادلة طويلة جداً
+      final longFormula = 'area + ' * 100 + 'area';
+      expect(FormulaEvaluator.validate(longFormula, known), isNotNull);
+    });
+  });
 
-  /// التحقق من أن القيمة موجبة ومحدودة (ليست NaN ولا Infinity)
-  static bool _pos(double v) => v.isFinite && v > 0;
+  // ==========================================
+  // IrrigationCalc Tests
+  // ==========================================
+  group('area and water need', () {
+    test('unit conversion', () {
+      expect(IrrigationCalc.areaToM2(2, AreaUnit.feddan), 8400);
+      expect(IrrigationCalc.areaToM2(1, AreaUnit.hectare), 10000);
+      expect(IrrigationCalc.areaToM2(50, AreaUnit.squareMeter), 50);
+    });
 
-  static double areaToM2(double value, AreaUnit unit) {
-    if (!_pos(value)) return 0;
-    switch (unit) {
-      case AreaUnit.feddan:
-        return value * feddanM2;
-      case AreaUnit.hectare:
-        return value * hectareM2;
-      case AreaUnit.squareMeter:
-        return value;
-    }
-  }
+    test('etc = eto x kc', () {
+      expect(IrrigationCalc.etc(5, 0.8), closeTo(4, 1e-9));
+      expect(IrrigationCalc.etc(0, 0.8), isNull);
+    });
 
-  // ───────────────────── احتياج المياه ─────────────────────
+    test('gross depth and volumes', () {
+      final n = IrrigationCalc.waterNeed(
+        areaM2: 4200,
+        etcMmDay: 5,
+        efficiency: 0.9,
+        intervalDays: 2,
+      )!;
+      expect(n.grossDailyMm, closeTo(5 / 0.9, 1e-9));
+      expect(n.grossPerIrrigationMm, closeTo(10 / 0.9, 1e-9));
+      expect(n.dailyVolumeM3, closeTo(5 / 0.9 * 4.2, 1e-9));
+      expect(n.perIrrigationVolumeM3, closeTo(10 / 0.9 * 4.2, 1e-9));
+    });
 
-  /// ETc = ETo × Kc (مم/يوم).
-  static double? etc(double eto, double kc) {
-    if (!_pos(eto) || !_pos(kc)) return null;
-    return eto * kc;
-  }
+    test('invalid input returns null', () {
+      expect(IrrigationCalc.waterNeed(areaM2: 0, etcMmDay: 5, efficiency: 0.9, intervalDays: 1), isNull);
+      expect(IrrigationCalc.waterNeed(areaM2: -10, etcMmDay: 5, efficiency: 0.9, intervalDays: 1), isNull);
+      expect(IrrigationCalc.waterNeed(areaM2: 100, etcMmDay: 5, efficiency: 1.5, intervalDays: 1), isNull);
+      expect(IrrigationCalc.waterNeed(areaM2: 100, etcMmDay: 5, efficiency: 0.9, intervalDays: 0.5), isNull);
+    });
+  });
 
-  static WaterNeed? waterNeed({
-    required double areaM2,
-    required double etcMmDay,
-    required double efficiency,
-    required double intervalDays,
-  }) {
-    if (!_pos(areaM2) || !_pos(etcMmDay) || !_pos(intervalDays)) return null;
-    if (!_pos(efficiency) || efficiency > 1) return null;
-    if (intervalDays < 1) return null;
-    
-    final grossDaily = etcMmDay / efficiency;
-    final perIrrigation = grossDaily * intervalDays;
-    
-    return WaterNeed(
-      grossDailyMm: grossDaily,
-      grossPerIrrigationMm: perIrrigation,
-      dailyVolumeM3: grossDaily * areaM2 / 1000,
-      perIrrigationVolumeM3: perIrrigation * areaM2 / 1000,
-    );
-  }
+  group('pipes', () {
+    test('velocity: 36 m3/h in 100 mm is about 1.27 m/s', () {
+      expect(IrrigationCalc.velocity(36, 100), closeTo(1.273, 0.01));
+    });
 
-  // ───────────────────── الأنابيب ─────────────────────
+    test('hazen-williams matches the hand calculation', () {
+      final hf = IrrigationCalc.hazenWilliamsLoss(
+          flowM3h: 10, diameterMm: 50, lengthM: 100, c: 140);
+      expect(hf, closeTo(4.5, 0.3));
+    });
 
-  /// سرعة المياه في الأنبوب (م/ث).
-  static double velocity(double flowM3h, double diameterMm) {
-    if (!_pos(flowM3h) || !_pos(diameterMm)) return 0;
-    final d = diameterMm / 1000;
-    return (flowM3h / 3600) / (math.pi * d * d / 4);
-  }
+    test('loss grows with flow and falls with diameter', () {
+      double loss(double q, double d) => IrrigationCalc.hazenWilliamsLoss(
+          flowM3h: q, diameterMm: d, lengthM: 100);
+      expect(loss(20, 63), greaterThan(loss(10, 63)));
+      expect(loss(10, 50), greaterThan(loss(10, 63)));
+    });
 
-  /// فاقد الضغط بمعادلة هازن-ويليامز (متر ماء).
-  static double hazenWilliamsLoss({
-    required double flowM3h,
-    required double diameterMm,
-    required double lengthM,
-    double c = 140,
-  }) {
-    if (!_pos(flowM3h) || !_pos(diameterMm) || !_pos(lengthM) || !_pos(c)) {
-      return 0;
-    }
-    final q = flowM3h / 3600;
-    final d = diameterMm / 1000;
-    final num top = 10.67 * lengthM * math.pow(q, 1.852);
-    final num bottom = math.pow(c, 1.852) * math.pow(d, 4.87);
-    return (top / bottom).toDouble();
-  }
+    test('christiansen factor', () {
+      expect(IrrigationCalc.christiansenF(1), 1);
+      final f = IrrigationCalc.christiansenF(100);
+      expect(f, greaterThan(0.34));
+      expect(f, lessThan(0.40));
+    });
 
-  /// معامل كريستيانسن للأنابيب ذات المخارج المتعددة.
-  static double christiansenF(int outlets) {
-    if (outlets <= 1) return 1;
-    const m = 1.852;
-    final n = outlets.toDouble();
-    return 1 / (m + 1) + 1 / (2 * n) + math.sqrt(m - 1) / (6 * n * n);
-  }
+    test('pickDiameter respects the velocity limit', () {
+      final c = IrrigationCalc.pickDiameter(flowM3h: 36, lengthM: 100);
+      expect(c.ok, isTrue);
+      expect(c.velocityMs, lessThanOrEqualTo(1.5));
+    });
 
-  /// أصغر قطر تجاري يحقق حد السرعة (وحد الفاقد لو اتحدد).
-  static PipeChoice pickDiameter({
-    required double flowM3h,
-    required double lengthM,
-    double maxVelocityMs = 1.5,
-    double? maxLossM,
-    double c = 140,
-  }) {
-    // حماية لو التدفق أو الطول مش صالحين
-    if (!_pos(flowM3h) || !_pos(lengthM)) {
-      return const PipeChoice(
-        diameterMm: 0,
-        velocityMs: 0,
-        lossM: 0,
-        ok: false,
+    test('pickDiameter flags an impossible flow', () {
+      final c = IrrigationCalc.pickDiameter(flowM3h: 100000, lengthM: 100);
+      expect(c.ok, isFalse);
+      expect(c.diameterMm, IrrigationCalc.standardDiametersMm.last);
+    });
+  });
+
+  group('drip', () {
+    DripResult? run({int sectors = 1, double hours = 12}) =>
+        IrrigationCalc.drip(
+          areaM2: 4200,
+          rowSpacingM: 1,
+          plantSpacingM: 0.5,
+          emittersPerPlant: 1,
+          emitterLph: 4,
+          etcMmDay: 5,
+          efficiency: 0.9,
+          intervalDays: 1,
+          availableHours: hours,
+          sectors: sectors,
+          lateralLengthM: 50,
+          lateralDiameterMm: 16,
+          operatingHeadM: 10,
+        );
+
+    test('plants, emitters and flow', () {
+      final r = run()!;
+      expect(r.plants, closeTo(8400, 1e-6));
+      expect(r.totalEmitters, closeTo(8400, 1e-6));
+      expect(r.totalFlowM3h, closeTo(8400 * 4 / 1000, 1e-9));
+      expect(r.litersPerPlantPerIrrigation, closeTo(5 / 0.9 * 0.5, 1e-9));
+      expect(r.runtimeHoursPerSector, closeTo(5 / 0.9 * 0.5 / 4, 1e-9));
+      expect(r.lateralTotalLengthM, closeTo(4200, 1e-9));
+    });
+
+    test('sectors divide the flow and are checked against the hours', () {
+      final r = run(sectors: 4)!;
+      expect(r.sectorFlowM3h, closeTo(8400 * 4 / 1000 / 4, 1e-9));
+      expect(r.sectorsOk, isTrue);
+      expect(r.maxSectors, greaterThanOrEqualTo(4));
+      final tight = run(sectors: 20, hours: 1)!;
+      expect(tight.sectorsOk, isFalse);
+    });
+
+    test('lateral loss and end flow are consistent', () {
+      final r = run()!;
+      expect(r.lateralLossM, greaterThan(0));
+      expect(r.endEmitterFlowPct, lessThanOrEqualTo(100));
+      expect(r.lateralOk, r.lateralLossM <= r.allowedLateralLossM);
+    });
+
+    test('invalid input returns null', () {
+      expect(
+          IrrigationCalc.drip(
+            areaM2: 4200,
+            rowSpacingM: 0,
+            plantSpacingM: 0.5,
+            emittersPerPlant: 1,
+            emitterLph: 4,
+            etcMmDay: 5,
+            efficiency: 0.9,
+            intervalDays: 1,
+            availableHours: 12,
+            sectors: 1,
+            lateralLengthM: 50,
+            lateralDiameterMm: 16,
+            operatingHeadM: 10,
+          ),
+          isNull);
+    });
+  });
+
+  group('sprinkler', () {
+    test('application rate, count and runtime', () {
+      final r = IrrigationCalc.sprinkler(
+        areaM2: 10000,
+        sprinklerM3h: 1.2,
+        spacingAlongM: 12,
+        spacingAcrossM: 12,
+        etcMmDay: 6,
+        efficiency: 0.75,
+        intervalDays: 3,
+        availableHours: 12,
+        sectors: 2,
+        infiltrationMmH: 15,
+      )!;
+      expect(r.applicationRateMmH, closeTo(1200 / 144, 1e-9));
+      expect(r.sprinklers, (10000 / 144).ceil());
+      expect(r.runtimeHoursPerSector,
+          closeTo(6 / 0.75 * 3 / (1200 / 144), 1e-9));
+      expect(r.totalFlowM3h, closeTo(r.sprinklers * 1.2, 1e-9));
+      expect(r.sectorFlowM3h, closeTo(r.totalFlowM3h / 2, 1e-9));
+      expect(r.infiltrationOk, isTrue);
+    });
+
+    test('rate above infiltration is flagged', () {
+      final r = IrrigationCalc.sprinkler(
+        areaM2: 10000,
+        sprinklerM3h: 1.2,
+        spacingAlongM: 12,
+        spacingAcrossM: 12,
+        etcMmDay: 6,
+        efficiency: 0.75,
+        intervalDays: 3,
+        availableHours: 12,
+        sectors: 2,
+        infiltrationMmH: 5,
+      )!;
+      expect(r.infiltrationOk, isFalse);
+    });
+  });
+
+  group('surface and pivot', () {
+    test('surface irrigation time', () {
+      final r = IrrigationCalc.surface(
+        areaM2: 4200,
+        etcMmDay: 5,
+        efficiency: 0.6,
+        intervalDays: 7,
+        streamLps: 20,
+        availableHours: 24,
+      )!;
+      final volume = 5 / 0.6 * 7 * 4.2;
+      expect(r.irrigationHours, closeTo(volume / (20 * 3.6), 1e-9));
+      expect(r.ok, r.irrigationHours <= 24);
+    });
+
+    test('pivot area, flow and speed', () {
+      final r = IrrigationCalc.pivot(
+        radiusM: 400,
+        etcMmDay: 6,
+        efficiency: 0.85,
+        intervalDays: 2,
+        hoursPerRotation: 40,
+      )!;
+      expect(r.areaM2, closeTo(3.14159265 * 400 * 400, 1));
+      expect(r.flowLps, closeTo(r.flowM3h / 3.6, 1e-9));
+      expect(r.endTowerSpeedMh, closeTo(2 * 3.14159265 * 400 / 40, 1e-3));
+      expect(r.fitsInterval, isTrue);
+      final slow = IrrigationCalc.pivot(
+        radiusM: 400,
+        etcMmDay: 6,
+        efficiency: 0.85,
+        intervalDays: 1,
+        hoursPerRotation: 40,
+      )!;
+      expect(slow.fitsInterval, isFalse);
+    });
+  });
+
+  group('pump', () {
+    test('head and power', () {
+      final p = IrrigationCalc.pump(
+        flowM3h: 36.72,
+        staticLiftM: 20,
+        operatingHeadM: 30,
+        frictionLossM: 10,
+        minorLossPct: 10,
+        equipmentLossM: 5,
+        pumpEfficiency: 0.65,
+        motorEfficiency: 0.9,
+      )!;
+      expect(p.totalHeadM, closeTo(20 + 30 + 11 + 5, 1e-9));
+      expect(p.hydraulicKw, closeTo(36.72 * 66 / 367.2, 1e-9));
+      expect(p.shaftKw, closeTo(p.hydraulicKw / 0.65, 1e-9));
+      expect(p.motorInputKw, closeTo(p.shaftKw / 0.9, 1e-9));
+      expect(p.recommendedMotorKw, closeTo(p.shaftKw * 1.15, 1e-9));
+    });
+
+    test('invalid efficiency returns null', () {
+      expect(
+          IrrigationCalc.pump(
+            flowM3h: 10,
+            staticLiftM: 0,
+            operatingHeadM: 10,
+            frictionLossM: 0,
+            minorLossPct: 0,
+            equipmentLossM: 0,
+            pumpEfficiency: 1.2,
+            motorEfficiency: 0.9,
+          ),
+          isNull);
+    });
+  });
+
+  group('DXF export', () {
+    test('number formatting never uses scientific notation', () {
+      expect(DxfBuilder.fmt(1e-7), '0');
+      expect(DxfBuilder.fmt(12.5), '12.5');
+      expect(DxfBuilder.fmt(3), '3');
+      expect(DxfBuilder.fmt(double.nan), '0');
+    });
+
+    test('file has the standard sections and ends with EOF', () {
+      final dxf = IrrigationDxf.drip(
+        widthM: 20,
+        lengthM: 30,
+        rowSpacingM: 1,
+        plantSpacingM: 1,
+        emittersPerPlant: 1,
       );
-    }
+      expect(dxf, contains('ENTITIES'));
+      expect(dxf, contains('TABLES'));
+      expect(dxf.trimRight().endsWith('EOF'), isTrue);
+    });
 
-    for (final d in standardDiametersMm) {
-      final v = velocity(flowM3h, d);
-      final loss = hazenWilliamsLoss(
-          flowM3h: flowM3h, diameterMm: d, lengthM: lengthM, c: c);
-      final ok = v <= maxVelocityMs && (maxLossM == null || loss <= maxLossM);
-      
-      if (ok) {
-        return PipeChoice(diameterMm: d, velocityMs: v, lossM: loss, ok: true);
-      }
-    }
-    
-    // لو مفيش قطر حقق الشروط، نرجع أكبر قطر مع ok = false
-    final largest = standardDiametersMm.last;
-    return PipeChoice(
-      diameterMm: largest,
-      velocityMs: velocity(flowM3h, largest),
-      lossM: hazenWilliamsLoss(
-          flowM3h: flowM3h, diameterMm: largest, lengthM: lengthM, c: c),
-      ok: false,
-    );
-  }
-
-  // ───────────────────── الري بالتنقيط ─────────────────────
-
-  static DripResult? drip({
-    required double areaM2,
-    required double rowSpacingM,
-    required double plantSpacingM,
-    required int emittersPerPlant,
-    required double emitterLph,
-    required double etcMmDay,
-    required double efficiency,
-    required double intervalDays,
-    required double availableHours,
-    required int sectors,
-    required double lateralLengthM,
-    required double lateralDiameterMm,
-    required double operatingHeadM,
-  }) {
-    if (!_pos(rowSpacingM) ||
-        !_pos(plantSpacingM) ||
-        !_pos(emitterLph) ||
-        !_pos(availableHours) ||
-        !_pos(lateralLengthM) ||
-        !_pos(lateralDiameterMm) ||
-        !_pos(operatingHeadM) ||
-        emittersPerPlant < 1 ||
-        sectors < 1) {
-      return null;
-    }
-    final need = waterNeed(
-      areaM2: areaM2,
-      etcMmDay: etcMmDay,
-      efficiency: efficiency,
-      intervalDays: intervalDays,
-    );
-    if (need == null) return null;
-
-    final plants = areaM2 / (rowSpacingM * plantSpacingM);
-    final totalEmitters = plants * emittersPerPlant;
-    final litersPerPlant =
-        need.grossPerIrrigationMm * rowSpacingM * plantSpacingM;
-    final runtime = litersPerPlant / (emittersPerPlant * emitterLph);
-    final totalFlow = totalEmitters * emitterLph / 1000;
-
-    // حماية من القسمة على صفر أو قيم غير منطقية
-    final emittersPerLateralRaw = lateralLengthM / plantSpacingM * emittersPerPlant;
-    final emittersPerLateral = math.max(1, emittersPerLateralRaw.round());
-
-    final lateralFlow = emittersPerLateral * emitterLph / 1000;
-    final lateralLoss = hazenWilliamsLoss(
-          flowM3h: lateralFlow,
-          diameterMm: lateralDiameterMm,
-          lengthM: lateralLengthM,
-          c: 150,
-        ) *
-        christiansenF(emittersPerLateral);
-        
-    // التباين المسموح 20% من ضغط التشغيل، نصيب الخط الفرعي منه 55%
-    final allowedLoss = 0.2 * operatingHeadM * 0.55;
-    final endFlowPct =
-        math.sqrt(math.max(0, operatingHeadM - lateralLoss) / operatingHeadM) *
-            100;
-
-    return DripResult(
-      need: need,
-      plants: plants,
-      totalEmitters: totalEmitters,
-      litersPerPlantPerIrrigation: litersPerPlant,
-      runtimeHoursPerSector: runtime,
-      maxSectors: (availableHours / runtime).floor(),
-      sectorsOk: sectors * runtime <= availableHours + 1e-9,
-      totalFlowM3h: totalFlow,
-      sectorFlowM3h: totalFlow / sectors,
-      lateralFlowM3h: lateralFlow,
-      lateralLossM: lateralLoss,
-      allowedLateralLossM: allowedLoss,
-      lateralOk: lateralLoss <= allowedLoss,
-      endEmitterFlowPct: endFlowPct,
-      lateralTotalLengthM: areaM2 / rowSpacingM,
-    );
-  }
-
-  // ───────────────────── الري بالرش ─────────────────────
-
-  static SprinklerResult? sprinkler({
-    required double areaM2,
-    required double sprinklerM3h,
-    required double spacingAlongM,
-    required double spacingAcrossM,
-    required double etcMmDay,
-    required double efficiency,
-    required double intervalDays,
-    required double availableHours,
-    required int sectors,
-    double? infiltrationMmH,
-  }) {
-    if (!_pos(sprinklerM3h) ||
-        !_pos(spacingAlongM) ||
-        !_pos(spacingAcrossM) ||
-        !_pos(availableHours) ||
-        sectors < 1) {
-      return null;
-    }
-    if (infiltrationMmH != null && !_pos(infiltrationMmH)) return null;
-    final need = waterNeed(
-      areaM2: areaM2,
-      etcMmDay: etcMmDay,
-      efficiency: efficiency,
-      intervalDays: intervalDays,
-    );
-    if (need == null) return null;
-
-    final cell = spacingAlongM * spacingAcrossM;
-    final rate = sprinklerM3h * 1000 / cell;
-    final runtime = need.grossPerIrrigationMm / rate;
-    final count = (areaM2 / cell).ceil();
-    final totalFlow = count * sprinklerM3h;
-    
-    return SprinklerResult(
-      need: need,
-      applicationRateMmH: rate,
-      runtimeHoursPerSector: runtime,
-      maxSectors: (availableHours / runtime).floor(),
-      sectorsOk: sectors * runtime <= availableHours + 1e-9,
-      sprinklers: count,
-      totalFlowM3h: totalFlow,
-      sectorFlowM3h: totalFlow / sectors,
-      infiltrationOk: infiltrationMmH == null || rate <= infiltrationMmH,
-    );
-  }
-
-  // ───────────────────── الري السطحي ─────────────────────
-
-  static SurfaceResult? surface({
-    required double areaM2,
-    required double etcMmDay,
-    required double efficiency,
-    required double intervalDays,
-    required double streamLps,
-    required double availableHours,
-  }) {
-    if (!_pos(streamLps) || !_pos(availableHours)) return null;
-    final need = waterNeed(
-      areaM2: areaM2,
-      etcMmDay: etcMmDay,
-      efficiency: efficiency,
-      intervalDays: intervalDays,
-    );
-    if (need == null) return null;
-    
-    final flowM3h = streamLps * 3.6;
-    final hours = need.perIrrigationVolumeM3 / flowM3h;
-    
-    return SurfaceResult(
-      need: need,
-      flowM3h: flowM3h,
-      irrigationHours: hours,
-      ok: hours <= availableHours,
-    );
-  }
-
-  // ───────────────────── الري المحوري ─────────────────────
-
-  static PivotResult? pivot({
-    required double radiusM,
-    required double etcMmDay,
-    required double efficiency,
-    required double intervalDays,
-    required double hoursPerRotation,
-  }) {
-    if (!_pos(radiusM) || !_pos(hoursPerRotation)) return null;
-    
-    final area = math.pi * radiusM * radiusM;
-    final need = waterNeed(
-      areaM2: area,
-      etcMmDay: etcMmDay,
-      efficiency: efficiency,
-      intervalDays: intervalDays,
-    );
-    if (need == null) return null;
-    
-    final flowM3h = need.perIrrigationVolumeM3 / hoursPerRotation;
-    
-    return PivotResult(
-      need: need,
-      areaM2: area,
-      flowM3h: flowM3h,
-      flowLps: flowM3h / 3.6,
-      endTowerSpeedMh: 2 * math.pi * radiusM / hoursPerRotation,
-      fitsInterval: hoursPerRotation <= intervalDays * 24,
-    );
-  }
-
-  // ───────────────────── المضخة ─────────────────────
-
-  static PumpResult? pump({
-    required double flowM3h,
-    required double staticLiftM,
-    required double operatingHeadM,
-    required double frictionLossM,
-    required double minorLossPct,
-    required double equipmentLossM,
-    required double pumpEfficiency,
-    required double motorEfficiency,
-  }) {
-    if (!_pos(flowM3h) ||
-        !_pos(pumpEfficiency) ||
-        pumpEfficiency > 1 ||
-        !_pos(motorEfficiency) ||
-        motorEfficiency > 1) {
-      return null;
-    }
-    if (staticLiftM < 0 ||
-        operatingHeadM < 0 ||
-        frictionLossM < 0 ||
-        minorLossPct < 0 ||
-        equipmentLossM < 0) {
-      return null;
-    }
-    
-    final head = staticLiftM +
-        operatingHeadM +
-        frictionLossM * (1 + minorLossPct / 100) +
-        equipmentLossM;
-        
-    final hydraulicKw = flowM3h * head / 367.2;
-    final shaftKw = hydraulicKw / pumpEfficiency;
-    final inputKw = shaftKw / motorEfficiency;
-    
-    return PumpResult(
-      totalHeadM: head,
-      hydraulicKw: hydraulicKw,
-      shaftKw: shaftKw,
-      motorInputKw: inputKw,
-      recommendedMotorKw: shaftKw * 1.15,
-      recommendedMotorHp: shaftKw * 1.15 * 1.341,
-    );
-  }
-}
-
-// ───────────────────── Data Classes ─────────────────────
-
-class WaterNeed {
-  final double grossDailyMm;
-  final double grossPerIrrigationMm;
-  final double dailyVolumeM3;
-  final double perIrrigationVolumeM3;
-  
-  const WaterNeed({
-    required this.grossDailyMm,
-    required this.grossPerIrrigationMm,
-    required this.dailyVolumeM3,
-    required this.perIrrigationVolumeM3,
-  });
-}
-
-class PipeChoice {
-  final double diameterMm;
-  final double velocityMs;
-  final double lossM;
-  final bool ok;
-  
-  const PipeChoice({
-    required this.diameterMm,
-    required this.velocityMs,
-    required this.lossM,
-    required this.ok,
-  });
-}
-
-class DripResult {
-  final WaterNeed need;
-  final double plants;
-  final double totalEmitters;
-  final double litersPerPlantPerIrrigation;
-  final double runtimeHoursPerSector;
-  final int maxSectors;
-  final bool sectorsOk;
-  final double totalFlowM3h;
-  final double sectorFlowM3h;
-  final double lateralFlowM3h;
-  final double lateralLossM;
-  final double allowedLateralLossM;
-  final bool lateralOk;
-  final double endEmitterFlowPct;
-  final double lateralTotalLengthM;
-  
-  const DripResult({
-    required this.need,
-    required this.plants,
-    required this.totalEmitters,
-    required this.litersPerPlantPerIrrigation,
-    required this.runtimeHoursPerSector,
-    required this.maxSectors,
-    required this.sectorsOk,
-    required this.totalFlowM3h,
-    required this.sectorFlowM3h,
-    required this.lateralFlowM3h,
-    required this.lateralLossM,
-    required this.allowedLateralLossM,
-    required this.lateralOk,
-    required this.endEmitterFlowPct,
-    required this.lateralTotalLengthM,
-  });
-}
-
-class SprinklerResult {
-  final WaterNeed need;
-  final double applicationRateMmH;
-  final double runtimeHoursPerSector;
-  final int maxSectors;
-  final bool sectorsOk;
-  final int sprinklers;
-  final double totalFlowM3h;
-  final double sectorFlowM3h;
-  final bool infiltrationOk;
-  
-  const SprinklerResult({
-    required this.need,
-    required this.applicationRateMmH,
-    required this.runtimeHoursPerSector,
-    required this.maxSectors,
-    required this.sectorsOk,
-    required this.sprinklers,
-    required this.totalFlowM3h,
-    required this.sectorFlowM3h,
-    required this.infiltrationOk,
-  });
-}
-
-class SurfaceResult {
-  final WaterNeed need;
-  final double flowM3h;
-  final double irrigationHours;
-  final bool ok;
-  
-  const SurfaceResult({
-    required this.need,
-    required this.flowM3h,
-    required this.irrigationHours,
-    required this.ok,
-  });
-}
-
-class PivotResult {
-  final WaterNeed need;
-  final double areaM2;
-  final double flowM3h;
-  final double flowLps;
-  final double endTowerSpeedMh;
-  final bool fitsInterval;
-  
-  const PivotResult({
-    required this.need,
-    required this.areaM2,
-    required this.flowM3h,
-    required this.flowLps,
-    required this.endTowerSpeedMh,
-    required this.fitsInterval,
-  });
-}
-
-class PumpResult {
-  final double totalHeadM;
-  final double hydraulicKw;
-  final double shaftKw;
-  final double motorInputKw;
-  final double recommendedMotorKw;
-  final double recommendedMotorHp;
-  
-  const PumpResult({
-    required this.totalHeadM,
-    required this.hydraulicKw,
-    required this.shaftKw,
-    required this.motorInputKw,
-    required this.recommendedMotorKw,
-    required this.recommendedMotorHp,
+    test('pivot draws a circle', () {
+      final dxf = IrrigationDxf.pivot(radiusM: 400);
+      expect(dxf, contains('CIRCLE'));
+    });
   });
 }
