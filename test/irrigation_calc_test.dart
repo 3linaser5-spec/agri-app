@@ -1,25 +1,25 @@
 import 'package:agri_app/utils/irrigation_calc.dart';
+import 'package:agri_app/utils/dxf_export.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  group('area and water need', () {
-    test('unit conversion', () {
-      expect(IrrigationCalc.areaToM2(2, AreaUnit.feddan), 8400);
+  group('IrrigationCalc', () {
+    test('areaToM2', () {
+      expect(IrrigationCalc.areaToM2(1, AreaUnit.feddan), 4200);
+      expect(IrrigationCalc.areaToM2(1, AreaUnit.hectare), 10000);
+      expect(IrrigationCalc.areaToM2(500, AreaUnit.squareMeter), 500);
     });
 
-    test('etc = eto x kc', () {
-      expect(IrrigationCalc.etc(5, 0.8), closeTo(4, 1e-9));
+    test('etc', () {
+      expect(IrrigationCalc.etc(5, 0.8), 4);
+      expect(IrrigationCalc.etc(0, 0.8), isNull);
     });
-  });
 
-  group('pipes', () {
     test('velocity', () {
       expect(IrrigationCalc.velocity(36, 100), closeTo(1.273, 0.01));
     });
-  });
 
-  group('drip', () {
-    test('plants', () {
+    test('drip', () {
       final r = IrrigationCalc.drip(
         areaM2: 4200,
         rowSpacingM: 1,
@@ -34,8 +34,21 @@ void main() {
         lateralLengthM: 50,
         lateralDiameterMm: 16,
         operatingHeadM: 10,
-      )!;
-      expect(r.plants, closeTo(8400, 1e-6));
+      );
+      expect(r, isNotNull);
+      expect(r!.plants, 8400);
+    });
+
+    test('DXF export', () {
+      final dxf = IrrigationDxf.drip(
+        widthM: 20,
+        lengthM: 30,
+        rowSpacingM: 1,
+        plantSpacingM: 1,
+        emittersPerPlant: 1,
+      );
+      expect(dxf, contains('ENTITIES'));
+      expect(dxf.trimRight().endsWith('EOF'), isTrue);
     });
   });
 }
