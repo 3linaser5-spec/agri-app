@@ -5,6 +5,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../utils/dxf_export.dart';
+import '../../utils/dxf_3d_export.dart';
 import '../../utils/irrigation_calc.dart';
 import '../../utils/number_utils.dart';
 
@@ -71,6 +72,8 @@ class _IrrigationCalculatorScreenState
     'radius': '400',
     'rotation': '40',
     'mainLen': '200',
+    'groundZ': '0',
+    'pumpZ': '0',
     'lift': '10',
     'equip': '5',
     'minor': '10',
@@ -100,7 +103,9 @@ class _IrrigationCalculatorScreenState
     'aspect': 'نسبة طول/عرض الحقل',
     'radius': 'نصف قطر البيفوت',
     'rotation': 'زمن الدورة الكاملة',
-    'mainLen': 'طول الماسورة الرئيسية',
+    'mainLen': 'بعد المضخة عن الحقل',
+    'groundZ': 'منسوب الأرض',
+    'pumpZ': 'منسوب المضخة',
     'lift': 'الارتفاع الاستاتيكي',
     'equip': 'فاقد الفلاتر والتركيبات',
     'minor': 'نسبة الفواقد الثانوية',
@@ -114,6 +119,7 @@ class _IrrigationCalculatorScreenState
   final Map<String, TextEditingController> _c = {};
   List<_Line> _results = const [];
   String? _dxf;
+  String? _dxf3d;
   bool _isExporting = false;
 
   TextEditingController _ctrl(String key) => _c.putIfAbsent(
@@ -136,6 +142,9 @@ class _IrrigationCalculatorScreenState
         'kc',
         'eff',
         'interval',
+        'mainLen',
+        'groundZ',
+        'pumpZ',
         if (_type != IrrigationType.pivot) 'area',
         if (_type == IrrigationType.drip) ...[
           'hours', 'rowSp', 'plantSp', 'emitters', 'emitterLph', 'sectors',
@@ -148,9 +157,7 @@ class _IrrigationCalculatorScreenState
           'hours', 'stream', 'furrow', 'aspect',
         ],
         if (_type == IrrigationType.pivot) ...['radius', 'rotation', 'head'],
-        if (_needsPump) ...[
-          'mainLen', 'lift', 'equip', 'minor', 'pumpEff', 'motorEff',
-        ],
+        if (_needsPump) ...['lift', 'equip', 'minor', 'pumpEff', 'motorEff'],
       ];
 
   void _selectType(IrrigationType t) {
@@ -179,6 +186,7 @@ class _IrrigationCalculatorScreenState
       _ctrl('head').text = head[t]!;
       _results = const [];
       _dxf = null;
+      _dxf3d = null;
     });
   }
 
@@ -204,6 +212,14 @@ class _IrrigationCalculatorScreenState
     if (_type != IrrigationType.pivot &&
         (!_v('area').isFinite || _v('area') <= 0)) {
       _snack('المساحة لازم تكون أكبر من صفر');
+      return;
+    }
+    if (!_v('mainLen').isFinite || _v('mainLen') <= 0) {
+      _snack('المسافة من المضخة إلى الحقل لازم تكون أكبر من صفر');
+      return;
+    }
+    if (!_v('groundZ').isFinite || !_v('pumpZ').isFinite) {
+      _snack('مناسيب الأرض والمضخة لازم تكون أرقامًا محدودة');
       return;
     }
 
@@ -244,187 +260,188 @@ class _IrrigationCalculatorScreenState
 
     String? invalid;
     switch (_type) {
-      case IrrigationType.drip: {
-        final area = IrrigationCalc.areaToM2(_v('area'), _unit);
-        final sectors = _v('sectors').round();
-        final r = IrrigationCalc.drip(
-          areaM2: area,
-          rowSpacingM: _v('rowSp'),
-          plantSpacingM: _v('plantSp'),
-          emittersPerPlant: _v('emitters').round(),
-          emitterLph: _v('emitterLph'),
-          etcMmDay: etc,
-          efficiency: eff,
-          intervalDays: interval,
-          availableHours: _v('hours'),
-          sectors: sectors,
-          lateralLengthM: _v('latLen'),
-          lateralDiameterMm: _lateralDia,
-          operatingHeadM: _v('head'),
-        );
-        if (r == null) {
-          invalid = 'تأكد إن كل القيم أكبر من صفر والكفاءة بين 1 و100%';
-          break;
+      case IrrigationType.drip:
+        {
+          final area = IrrigationCalc.areaToM2(_v('area'), _unit);
+          final sectors = _v('sectors').round();
+          final r = IrrigationCalc.drip(
+            areaM2: area,
+            rowSpacingM: _v('rowSp'),
+            plantSpacingM: _v('plantSp'),
+            emittersPerPlant: _v('emitters').round(),
+            emitterLph: _v('emitterLph'),
+            etcMmDay: etc,
+            efficiency: eff,
+            intervalDays: interval,
+            availableHours: _v('hours'),
+            sectors: sectors,
+            lateralLengthM: _v('latLen'),
+            lateralDiameterMm: _lateralDia,
+            operatingHeadM: _v('head'),
+          );
+          if (r == null) {
+            invalid = 'تأكد إن كل القيم أكبر من صفر والكفاءة بين 1 و100%';
+            break;
+          }
+          _needLines(lines, r.need);
+          lines
+            ..add(const _Line.section('تصميم التنقيط'))
+            ..add(_Line.row('عدد النباتات', _fmt(r.plants, 0)))
+            ..add(_Line.row('عدد النقاطات', _fmt(r.totalEmitters, 0)))
+            ..add(_Line.row('لتر/نبات/ريّة', _fmt(r.litersPerPlantPerIrrigation)))
+            ..add(_Line.row('زمن التشغيل لكل قطاع', '${_fmt(r.runtimeHoursPerSector)} ساعة'))
+            ..add(_Line.row('تصرف الشبكة كلها', '${_fmt(r.totalFlowM3h)} م³/ساعة'))
+            ..add(_Line.row('تصرف القطاع',
+                '${_fmt(r.sectorFlowM3h)} م³/ساعة (${_fmt(r.sectorFlowM3h / 3.6)} لتر/ث)'));
+          if (r.sectorsOk) {
+            lines.add(_Line.ok('القطاعات', 'تكفي (الحد الأقصى ${r.maxSectors})'));
+          } else {
+            lines.add(_Line.warn('القطاعات',
+                'الوقت لا يكفي: أقصى عدد قطاعات ${r.maxSectors}، زوّد الساعات أو قلّل القطاعات'));
+          }
+          lines
+            ..add(const _Line.section('الخطوط الفرعية'))
+            ..add(_Line.row('تصرف الخط', '${_fmt(r.lateralFlowM3h, 3)} م³/ساعة'))
+            ..add(_Line.row('تصرف آخر نقاط', '${_fmt(r.endEmitterFlowPct, 1)}%'));
+          if (r.lateralOk) {
+            lines.add(_Line.ok('فاقد الضغط في الخط',
+                '${_fmt(r.lateralLossM)} م (المسموح ${_fmt(r.allowedLateralLossM)})'));
+          } else {
+            lines.add(_Line.warn('فاقد الضغط في الخط',
+                '${_fmt(r.lateralLossM)} م أكبر من المسموح ${_fmt(r.allowedLateralLossM)} - قصّر الخط أو كبّر القطر'));
+          }
+          designFlow = r.sectorFlowM3h;
+          lines
+            ..add(const _Line.section('قائمة المواد'))
+            ..add(_Line.row('إجمالي طول الخطوط الفرعية', '${_fmt(r.lateralTotalLengthM, 0)} م'))
+            ..add(_Line.row('عدد النقاطات', _fmt(r.totalEmitters, 0)));
+          bomCost = true;
+          cost += r.lateralTotalLengthM * _v('p2') + r.totalEmitters * _v('p3');
+          dxf = IrrigationDxf.drip(
+            widthM: area / _v('latLen'),
+            lengthM: _v('latLen'),
+            rowSpacingM: _v('rowSp'),
+            plantSpacingM: _v('plantSp'),
+            emittersPerPlant: _v('emitters').round(),
+            sectors: sectors,
+            sectorFlowM3h: r.sectorFlowM3h,
+          );
         }
-        _needLines(lines, r.need);
-        lines
-          ..add(const _Line.section('تصميم التنقيط'))
-          ..add(_Line.row('عدد النباتات', _fmt(r.plants, 0)))
-          ..add(_Line.row('عدد النقاطات', _fmt(r.totalEmitters, 0)))
-          ..add(_Line.row('لتر/نبات/ريّة', _fmt(r.litersPerPlantPerIrrigation)))
-          ..add(_Line.row(
-              'زمن التشغيل لكل قطاع', '${_fmt(r.runtimeHoursPerSector)} ساعة'))
-          ..add(_Line.row(
-              'تصرف الشبكة كلها', '${_fmt(r.totalFlowM3h)} م³/ساعة'))
-          ..add(_Line.row('تصرف القطاع',
-              '${_fmt(r.sectorFlowM3h)} م³/ساعة (${_fmt(r.sectorFlowM3h / 3.6)} لتر/ث)'));
-        if (r.sectorsOk) {
-          lines.add(_Line.ok('القطاعات', 'تكفي (الحد الأقصى ${r.maxSectors})'));
-        } else {
-          lines.add(_Line.warn('القطاعات',
-              'الوقت لا يكفي: أقصى عدد قطاعات ${r.maxSectors}، زوّد الساعات أو قلّل القطاعات'));
+        break;
+      case IrrigationType.sprinkler:
+        {
+          final area = IrrigationCalc.areaToM2(_v('area'), _unit);
+          final infil = NumberUtils.tryParseDouble(_ctrl('infil').text);
+          final r = IrrigationCalc.sprinkler(
+            areaM2: area,
+            sprinklerM3h: _v('spr'),
+            spacingAlongM: _v('sAlong'),
+            spacingAcrossM: _v('sAcross'),
+            etcMmDay: etc,
+            efficiency: eff,
+            intervalDays: interval,
+            availableHours: _v('hours'),
+            sectors: _v('sectors').round(),
+            infiltrationMmH: infil,
+          );
+          if (r == null) {
+            invalid = 'تأكد إن كل القيم أكبر من صفر والكفاءة بين 1 و100%';
+            break;
+          }
+          _needLines(lines, r.need);
+          lines
+            ..add(const _Line.section('تصميم الرش'))
+            ..add(_Line.row('معدل الإضافة', '${_fmt(r.applicationRateMmH)} مم/ساعة'))
+            ..add(_Line.row('عدد الرشاشات', '${r.sprinklers}'))
+            ..add(_Line.row('زمن التشغيل لكل قطاع', '${_fmt(r.runtimeHoursPerSector)} ساعة'))
+            ..add(_Line.row('تصرف الشبكة كلها', '${_fmt(r.totalFlowM3h)} م³/ساعة'))
+            ..add(_Line.row('تصرف القطاع',
+                '${_fmt(r.sectorFlowM3h)} م³/ساعة (${_fmt(r.sectorFlowM3h / 3.6)} لتر/ث)'));
+          if (r.sectorsOk) {
+            lines.add(_Line.ok('القطاعات', 'تكفي (الحد الأقصى ${r.maxSectors})'));
+          } else {
+            lines.add(_Line.warn('القطاعات', 'الوقت لا يكفي: أقصى عدد قطاعات ${r.maxSectors}'));
+          }
+          if (infil != null) {
+            lines.add(r.infiltrationOk
+                ? const _Line.ok('معدل الإضافة مقابل التسرب', 'مناسب')
+                : const _Line.warn('معدل الإضافة مقابل التسرب',
+                    'أعلى من معدل تسرب التربة - هيحصل جريان سطحي'));
+          }
+          designFlow = r.sectorFlowM3h;
+          lines
+            ..add(const _Line.section('قائمة المواد'))
+            ..add(_Line.row('عدد الرشاشات', '${r.sprinklers}'));
+          bomCost = true;
+          cost += r.sprinklers * _v('p3');
+          final dims = IrrigationDxf.fieldDims(area, _v('aspect'));
+          dxf = IrrigationDxf.sprinkler(
+            widthM: dims.width,
+            lengthM: dims.length,
+            spacingAlongM: _v('sAlong'),
+            spacingAcrossM: _v('sAcross'),
+          );
         }
-        lines
-          ..add(const _Line.section('الخطوط الفرعية'))
-          ..add(_Line.row('تصرف الخط', '${_fmt(r.lateralFlowM3h, 3)} م³/ساعة'))
-          ..add(_Line.row('تصرف آخر نقاط', '${_fmt(r.endEmitterFlowPct, 1)}%'));
-        if (r.lateralOk) {
-          lines.add(_Line.ok('فاقد الضغط في الخط',
-              '${_fmt(r.lateralLossM)} م (المسموح ${_fmt(r.allowedLateralLossM)})'));
-        } else {
-          lines.add(_Line.warn('فاقد الضغط في الخط',
-              '${_fmt(r.lateralLossM)} م أكبر من المسموح ${_fmt(r.allowedLateralLossM)} - قصّر الخط أو كبّر القطر'));
+        break;
+      case IrrigationType.surface:
+        {
+          final area = IrrigationCalc.areaToM2(_v('area'), _unit);
+          final r = IrrigationCalc.surface(
+            areaM2: area,
+            etcMmDay: etc,
+            efficiency: eff,
+            intervalDays: interval,
+            streamLps: _v('stream'),
+            availableHours: _v('hours'),
+          );
+          if (r == null) {
+            invalid = 'تأكد إن كل القيم أكبر من صفر والكفاءة بين 1 و100%';
+            break;
+          }
+          _needLines(lines, r.need);
+          lines
+            ..add(const _Line.section('الري السطحي'))
+            ..add(_Line.row('تصرف المجرى', '${_fmt(r.flowM3h)} م³/ساعة'))
+            ..add(_Line.row('زمن الري للمساحة', '${_fmt(r.irrigationHours)} ساعة'));
+          lines.add(r.ok
+              ? const _Line.ok('الوقت', 'يكفي في الساعات المتاحة')
+              : const _Line.warn('الوقت', 'أكبر من الساعات المتاحة - زوّد التصرف أو قسّم الحقل'));
+          final dims = IrrigationDxf.fieldDims(area, _v('aspect'));
+          dxf = IrrigationDxf.surface(
+            widthM: dims.width,
+            lengthM: dims.length,
+            furrowSpacingM: _v('furrow'),
+          );
         }
-        designFlow = r.sectorFlowM3h;
-        lines
-          ..add(const _Line.section('قائمة المواد'))
-          ..add(_Line.row('إجمالي طول الخطوط الفرعية',
-              '${_fmt(r.lateralTotalLengthM, 0)} م'))
-          ..add(_Line.row('عدد النقاطات', _fmt(r.totalEmitters, 0)));
-        bomCost = true;
-        cost += r.lateralTotalLengthM * _v('p2') + r.totalEmitters * _v('p3');
-        dxf = IrrigationDxf.drip(
-          widthM: area / _v('latLen'),
-          lengthM: _v('latLen'),
-          rowSpacingM: _v('rowSp'),
-          plantSpacingM: _v('plantSp'),
-          emittersPerPlant: _v('emitters').round(),
-        );
-      }
-      case IrrigationType.sprinkler: {
-        final area = IrrigationCalc.areaToM2(_v('area'), _unit);
-        final infil = NumberUtils.tryParseDouble(_ctrl('infil').text);
-        final r = IrrigationCalc.sprinkler(
-          areaM2: area,
-          sprinklerM3h: _v('spr'),
-          spacingAlongM: _v('sAlong'),
-          spacingAcrossM: _v('sAcross'),
-          etcMmDay: etc,
-          efficiency: eff,
-          intervalDays: interval,
-          availableHours: _v('hours'),
-          sectors: _v('sectors').round(),
-          infiltrationMmH: infil,
-        );
-        if (r == null) {
-          invalid = 'تأكد إن كل القيم أكبر من صفر والكفاءة بين 1 و100%';
-          break;
+        break;
+      case IrrigationType.pivot:
+        {
+          final r = IrrigationCalc.pivot(
+            radiusM: _v('radius'),
+            etcMmDay: etc,
+            efficiency: eff,
+            intervalDays: interval,
+            hoursPerRotation: _v('rotation'),
+          );
+          if (r == null) {
+            invalid = 'تأكد إن كل القيم أكبر من صفر والكفاءة بين 1 و100%';
+            break;
+          }
+          _needLines(lines, r.need);
+          lines
+            ..add(const _Line.section('الري المحوري'))
+            ..add(_Line.row('المساحة المغطاة',
+                '${_fmt(r.areaM2 / IrrigationCalc.feddanM2)} فدان (${_fmt(r.areaM2, 0)} م²)'))
+            ..add(_Line.row('تصرف البيفوت',
+                '${_fmt(r.flowM3h)} م³/ساعة (${_fmt(r.flowLps)} لتر/ث)'))
+            ..add(_Line.row('سرعة آخر برج', '${_fmt(r.endTowerSpeedMh)} م/ساعة'));
+          lines.add(r.fitsInterval
+              ? const _Line.ok('الدورة', 'بتخلص قبل موعد الريّة اللي بعدها')
+              : const _Line.warn('الدورة', 'زمن الدورة أطول من الفترة بين الريات'));
+          designFlow = r.flowM3h;
+          dxf = IrrigationDxf.pivot(radiusM: _v('radius'));
         }
-        _needLines(lines, r.need);
-        lines
-          ..add(const _Line.section('تصميم الرش'))
-          ..add(_Line.row('معدل الإضافة', '${_fmt(r.applicationRateMmH)} مم/ساعة'))
-          ..add(_Line.row('عدد الرشاشات', '${r.sprinklers}'))
-          ..add(_Line.row(
-              'زمن التشغيل لكل قطاع', '${_fmt(r.runtimeHoursPerSector)} ساعة'))
-          ..add(_Line.row(
-              'تصرف الشبكة كلها', '${_fmt(r.totalFlowM3h)} م³/ساعة'))
-          ..add(_Line.row('تصرف القطاع',
-              '${_fmt(r.sectorFlowM3h)} م³/ساعة (${_fmt(r.sectorFlowM3h / 3.6)} لتر/ث)'));
-        if (r.sectorsOk) {
-          lines.add(_Line.ok('القطاعات', 'تكفي (الحد الأقصى ${r.maxSectors})'));
-        } else {
-          lines.add(_Line.warn('القطاعات',
-              'الوقت لا يكفي: أقصى عدد قطاعات ${r.maxSectors}'));
-        }
-        if (infil != null) {
-          lines.add(r.infiltrationOk
-              ? const _Line.ok('معدل الإضافة مقابل التسرب', 'مناسب')
-              : const _Line.warn('معدل الإضافة مقابل التسرب',
-                  'أعلى من معدل تسرب التربة - هيحصل جريان سطحي'));
-        }
-        designFlow = r.sectorFlowM3h;
-        lines
-          ..add(const _Line.section('قائمة المواد'))
-          ..add(_Line.row('عدد الرشاشات', '${r.sprinklers}'));
-        bomCost = true;
-        cost += r.sprinklers * _v('p3');
-        final dims = IrrigationDxf.fieldDims(area, _v('aspect'));
-        dxf = IrrigationDxf.sprinkler(
-          widthM: dims.width,
-          lengthM: dims.length,
-          spacingAlongM: _v('sAlong'),
-          spacingAcrossM: _v('sAcross'),
-        );
-      }
-      case IrrigationType.surface: {
-        final area = IrrigationCalc.areaToM2(_v('area'), _unit);
-        final r = IrrigationCalc.surface(
-          areaM2: area,
-          etcMmDay: etc,
-          efficiency: eff,
-          intervalDays: interval,
-          streamLps: _v('stream'),
-          availableHours: _v('hours'),
-        );
-        if (r == null) {
-          invalid = 'تأكد إن كل القيم أكبر من صفر والكفاءة بين 1 و100%';
-          break;
-        }
-        _needLines(lines, r.need);
-        lines
-          ..add(const _Line.section('الري السطحي'))
-          ..add(_Line.row('تصرف المجرى', '${_fmt(r.flowM3h)} م³/ساعة'))
-          ..add(_Line.row('زمن الري للمساحة', '${_fmt(r.irrigationHours)} ساعة'));
-        lines.add(r.ok
-            ? const _Line.ok('الوقت', 'يكفي في الساعات المتاحة')
-            : const _Line.warn(
-                'الوقت', 'أكبر من الساعات المتاحة - زوّد التصرف أو قسّم الحقل'));
-        final dims = IrrigationDxf.fieldDims(area, _v('aspect'));
-        dxf = IrrigationDxf.surface(
-          widthM: dims.width,
-          lengthM: dims.length,
-          furrowSpacingM: _v('furrow'),
-        );
-      }
-      case IrrigationType.pivot: {
-        final r = IrrigationCalc.pivot(
-          radiusM: _v('radius'),
-          etcMmDay: etc,
-          efficiency: eff,
-          intervalDays: interval,
-          hoursPerRotation: _v('rotation'),
-        );
-        if (r == null) {
-          invalid = 'تأكد إن كل القيم أكبر من صفر والكفاءة بين 1 و100%';
-          break;
-        }
-        _needLines(lines, r.need);
-        lines
-          ..add(const _Line.section('الري المحوري'))
-          ..add(_Line.row('المساحة المغطاة',
-              '${_fmt(r.areaM2 / IrrigationCalc.feddanM2)} فدان (${_fmt(r.areaM2, 0)} م²)'))
-          ..add(_Line.row('تصرف البيفوت',
-              '${_fmt(r.flowM3h)} م³/ساعة (${_fmt(r.flowLps)} لتر/ث)'))
-          ..add(_Line.row(
-              'سرعة آخر برج', '${_fmt(r.endTowerSpeedMh)} م/ساعة'));
-        lines.add(r.fitsInterval
-            ? const _Line.ok('الدورة', 'بتخلص قبل موعد الريّة اللي بعدها')
-            : const _Line.warn(
-                'الدورة', 'زمن الدورة أطول من الفترة بين الريات'));
-        designFlow = r.flowM3h;
-        dxf = IrrigationDxf.pivot(radiusM: _v('radius'));
-      }
+        break;
     }
 
     if (invalid != null) {
@@ -464,8 +481,7 @@ class _IrrigationCalculatorScreenState
       );
       lines.add(const _Line.section('المضخة'));
       if (pump == null) {
-        lines.add(const _Line.warn(
-            'المضخة', 'تأكد من الكفاءات (1 إلى 100%) وإن الفواقد مش سالبة'));
+        lines.add(const _Line.warn('المضخة', 'تأكد من الكفاءات (1 إلى 100%) وإن الفواقد مش سالبة'));
       } else {
         lines
           ..add(_Line.row('الضغط الكلي المطلوب', '${_fmt(pump.totalHeadM)} م'))
@@ -483,10 +499,106 @@ class _IrrigationCalculatorScreenState
         ..add(_Line.ok('الإجمالي (مواسير ونقاطات/رشاشات)', '${_fmt(cost, 0)} جنيه'));
     }
 
+    final dxf3d = dxf == null ? null : _buildDxf3d(designFlow);
+
     setState(() {
       _results = lines;
       _dxf = dxf;
+      _dxf3d = dxf3d;
     });
+  }
+
+  String _buildDxf3d(double? designFlow) {
+    final mainLengthM = _v('mainLen');
+    final fieldZ = _v('groundZ');
+    final pumpZ = _v('pumpZ');
+    final mainPipe = designFlow == null
+        ? null
+        : IrrigationCalc.pickDiameter(
+            flowM3h: designFlow,
+            lengthM: mainLengthM,
+          );
+    final pump = designFlow == null || !_needsPump
+        ? null
+        : IrrigationCalc.pump(
+            flowM3h: designFlow,
+            staticLiftM: _v('lift'),
+            operatingHeadM: _v('head'),
+            frictionLossM: mainPipe?.lossM ?? 0,
+            minorLossPct: _v('minor'),
+            equipmentLossM: _v('equip'),
+            pumpEfficiency: _v('pumpEff') / 100,
+            motorEfficiency: _v('motorEff') / 100,
+          );
+
+    switch (_type) {
+      case IrrigationType.drip:
+        final area = IrrigationCalc.areaToM2(_v('area'), _unit);
+        final length = _v('latLen');
+        return IrrigationDxf3d.drip(
+          widthM: area / length,
+          lengthM: length,
+          rowSpacingM: _v('rowSp'),
+          plantSpacingM: _v('plantSp'),
+          emittersPerPlant: _v('emitters').round(),
+          emitterLph: _v('emitterLph'),
+          sectors: _v('sectors').round(),
+          mainLengthM: mainLengthM,
+          mainPipeMm: mainPipe?.diameterMm ?? 50,
+          lateralPipeMm: _lateralDia,
+          fieldZ: fieldZ,
+          pumpZ: pumpZ,
+          sectorFlowM3h: designFlow ?? 0,
+          pumpKw: pump?.recommendedMotorKw ?? 0,
+        );
+      case IrrigationType.sprinkler:
+        final area = IrrigationCalc.areaToM2(_v('area'), _unit);
+        final dims = IrrigationDxf.fieldDims(area, _v('aspect'));
+        final sprinklersPerLateral = (dims.length / _v('sAlong')).ceil();
+        final lateralFlow = sprinklersPerLateral * _v('spr');
+        final lateralPipe = IrrigationCalc.pickDiameter(
+          flowM3h: lateralFlow,
+          lengthM: dims.length,
+        );
+        return IrrigationDxf3d.sprinkler(
+          widthM: dims.width,
+          lengthM: dims.length,
+          spacingAlongM: _v('sAlong'),
+          spacingAcrossM: _v('sAcross'),
+          sprinklerFlowM3h: _v('spr'),
+          sectors: _v('sectors').round(),
+          mainLengthM: mainLengthM,
+          mainPipeMm: mainPipe?.diameterMm ?? 50,
+          lateralPipeMm: lateralPipe.diameterMm,
+          fieldZ: fieldZ,
+          pumpZ: pumpZ,
+          sectorFlowM3h: designFlow ?? 0,
+          pumpKw: pump?.recommendedMotorKw ?? 0,
+        );
+      case IrrigationType.surface:
+        final area = IrrigationCalc.areaToM2(_v('area'), _unit);
+        final dims = IrrigationDxf.fieldDims(area, _v('aspect'));
+        return IrrigationDxf3d.surface(
+          widthM: dims.width,
+          lengthM: dims.length,
+          furrowSpacingM: _v('furrow'),
+          streamLps: _v('stream'),
+          mainLengthM: mainLengthM,
+          fieldZ: fieldZ,
+          pumpZ: pumpZ,
+        );
+      case IrrigationType.pivot:
+        return IrrigationDxf3d.pivot(
+          radiusM: _v('radius'),
+          mainLengthM: mainLengthM,
+          mainPipeMm: mainPipe?.diameterMm ?? 50,
+          flowM3h: designFlow ?? 1,
+          hoursPerRotation: _v('rotation'),
+          fieldZ: fieldZ,
+          pumpZ: pumpZ,
+          pumpKw: pump?.recommendedMotorKw ?? 0,
+        );
+    }
   }
 
   void _needLines(List<_Line> lines, WaterNeed n) {
@@ -495,8 +607,7 @@ class _IrrigationCalculatorScreenState
       ..add(_Line.row('الاحتياج الإجمالي اليومي',
           '${_fmt(n.grossDailyMm)} مم/يوم (${_fmt(n.dailyVolumeM3)} م³/يوم)'))
       ..add(_Line.row('عمق الريّة الواحدة', '${_fmt(n.grossPerIrrigationMm)} مم'))
-      ..add(_Line.row(
-          'حجم الريّة الواحدة', '${_fmt(n.perIrrigationVolumeM3)} م³'));
+      ..add(_Line.row('حجم الريّة الواحدة', '${_fmt(n.perIrrigationVolumeM3)} م³'));
   }
 
   // ───────────────────── التصدير ─────────────────────
@@ -506,15 +617,17 @@ class _IrrigationCalculatorScreenState
 
     setState(() => _isExporting = true);
 
-    // عرض رسالة تحميل
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Row(
           children: [
             SizedBox(
-              width: 20, 
-              height: 20, 
-              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                color: Colors.white,
+                strokeWidth: 2,
+              ),
             ),
             SizedBox(width: 16),
             Text('جاري إنشاء الملف...'),
@@ -528,7 +641,7 @@ class _IrrigationCalculatorScreenState
       final dir = await getTemporaryDirectory();
       final file = File('${dir.path}/irrigation_layout.dxf');
       await file.writeAsString(dxf);
-      
+
       if (mounted) ScaffoldMessenger.of(context).hideCurrentSnackBar();
 
       await SharePlus.instance.share(ShareParams(
@@ -543,6 +656,23 @@ class _IrrigationCalculatorScreenState
     }
   }
 
+  Future<void> _exportDxf3d() async {
+    final dxf = _dxf3d;
+    if (dxf == null) return;
+    try {
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/irrigation_layout_3d.dxf');
+      await file.writeAsString(dxf);
+      await SharePlus.instance.share(ShareParams(
+        files: [XFile(file.path)],
+        subject: 'مخطط الري ثلاثي الأبعاد (DXF) - تطبيق نباتي',
+      ));
+    } catch (_) {
+      if (!mounted) return;
+      _snack('تعذر إنشاء ملف DXF ثلاثي الأبعاد');
+    }
+  }
+
   // ───────────────────── الواجهة ─────────────────────
   InputDecoration _dec(String label, {String? suffix}) => InputDecoration(
         labelText: label,
@@ -553,7 +683,7 @@ class _IrrigationCalculatorScreenState
   Widget _field(String key, {String? suffix, String? label}) => TextField(
         controller: _ctrl(key),
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        textInputAction: TextInputAction.next, // يظهر زر Next في الكيبورد
+        textInputAction: TextInputAction.next,
         decoration: _dec(label ?? _labels[key] ?? key, suffix: suffix),
       );
 
@@ -611,61 +741,62 @@ class _IrrigationCalculatorScreenState
 
   List<Widget> _typeInputs() {
     switch (_type) {
-      case IrrigationType.drip: {
-        return [
-          _title('بيانات التنقيط'),
-          _two(_field('rowSp', suffix: 'م'), _field('plantSp', suffix: 'م')),
-          _gap(),
-          _two(_field('emitters'), _field('emitterLph', suffix: 'لتر/س')),
-          _gap(),
-          _two(_field('latLen', suffix: 'م'),
-              DropdownButtonFormField<double>(
-                initialValue: _lateralDia,
-                decoration: _dec('قطر الخط الفرعي (مم)'),
-                items: const [12.0, 16.0, 20.0, 25.0]
-                    .map((d) => DropdownMenuItem(
-                        value: d, child: Text(_fmt(d, 0))))
-                    .toList(),
-                onChanged: (v) => setState(() => _lateralDia = v ?? 16),
-              )),
-          _gap(),
-          _two(_field('sectors'), _field('head', suffix: 'م')),
-        ];
-      }
-      case IrrigationType.sprinkler: {
-        return [
-          _title('بيانات الرش'),
-          _two(_field('spr', suffix: 'م³/س'), _field('head', suffix: 'م')),
-          _gap(),
-          _two(_field('sAlong', suffix: 'م'), _field('sAcross', suffix: 'م')),
-          _gap(),
-          _two(
-            _field('sectors'),
-            _field('infil',
-                suffix: 'مم/س', label: 'تسرب التربة (اختياري)'),
-          ),
-          _gap(),
-          _field('aspect'),
-        ];
-      }
-      case IrrigationType.surface: {
-        return [
-          _title('بيانات الري السطحي'),
-          _two(_field('stream', suffix: 'لتر/ث'),
-              _field('furrow', suffix: 'م')),
-          _gap(),
-          _field('aspect'),
-        ];
-      }
-      case IrrigationType.pivot: {
-        return [
-          _title('بيانات البيفوت'),
-          _two(_field('radius', suffix: 'م'),
-              _field('rotation', suffix: 'ساعة')),
-          _gap(),
-          _field('head', suffix: 'م', label: 'ضغط تشغيل البيفوت'),
-        ];
-      }
+      case IrrigationType.drip:
+        {
+          return [
+            _title('بيانات التنقيط'),
+            _two(_field('rowSp', suffix: 'م'), _field('plantSp', suffix: 'م')),
+            _gap(),
+            _two(_field('emitters'), _field('emitterLph', suffix: 'لتر/س')),
+            _gap(),
+            _two(_field('latLen', suffix: 'م'),
+                DropdownButtonFormField<double>(
+                  initialValue: _lateralDia,
+                  decoration: _dec('قطر الخط الفرعي (مم)'),
+                  items: const [12.0, 16.0, 20.0, 25.0]
+                      .map((d) => DropdownMenuItem(
+                          value: d, child: Text(_fmt(d, 0))))
+                      .toList(),
+                  onChanged: (v) => setState(() => _lateralDia = v ?? 16),
+                )),
+            _gap(),
+            _two(_field('sectors'), _field('head', suffix: 'م')),
+          ];
+        }
+      case IrrigationType.sprinkler:
+        {
+          return [
+            _title('بيانات الرش'),
+            _two(_field('spr', suffix: 'م³/س'), _field('head', suffix: 'م')),
+            _gap(),
+            _two(_field('sAlong', suffix: 'م'), _field('sAcross', suffix: 'م')),
+            _gap(),
+            _two(
+              _field('sectors'),
+              _field('infil', suffix: 'مم/س', label: 'تسرب التربة (اختياري)'),
+            ),
+            _gap(),
+            _field('aspect'),
+          ];
+        }
+      case IrrigationType.surface:
+        {
+          return [
+            _title('بيانات الري السطحي'),
+            _two(_field('stream', suffix: 'لتر/ث'), _field('furrow', suffix: 'م')),
+            _gap(),
+            _field('aspect'),
+          ];
+        }
+      case IrrigationType.pivot:
+        {
+          return [
+            _title('بيانات البيفوت'),
+            _two(_field('radius', suffix: 'م'), _field('rotation', suffix: 'ساعة')),
+            _gap(),
+            _field('head', suffix: 'م', label: 'ضغط تشغيل البيفوت'),
+          ];
+        }
     }
   }
 
@@ -682,21 +813,43 @@ class _IrrigationCalculatorScreenState
               const SizedBox(height: 14),
               ElevatedButton.icon(
                 onPressed: _isExporting ? null : _exportDxf,
-                icon: _isExporting 
-                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                icon: _isExporting
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2,
+                        ),
+                      )
                     : const Icon(Icons.download),
-                label: Text(_isExporting ? 'جاري التصدير...' : 'تصدير مخطط DXF (لـ RainCAD / AutoCAD)'),
+                label: Text(_isExporting
+                    ? 'جاري التصدير...'
+                    : 'تصدير مخطط 2D بصيغة DXF'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: _blue,
                   foregroundColor: Colors.white,
                   minimumSize: const Size.fromHeight(48),
                 ),
               ),
+              if (_dxf3d != null) ...[
+                const SizedBox(height: 8),
+                ElevatedButton.icon(
+                  onPressed: _exportDxf3d,
+                  icon: const Icon(Icons.view_in_ar),
+                  label: const Text('تصدير شبكة الري 3D بصيغة DXF'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF166534),
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size.fromHeight(48),
+                  ),
+                ),
+              ],
               const SizedBox(height: 8),
               const Text(
-                'المخطط تخطيطي بسيط (حدود الحقل والخطوط والرشاشات) بالمتر، '
-                'وبيتفتح في أي برنامج CAD. الحسابات استرشادية ولازم مراجعة '
-                'مهندس ري قبل التنفيذ.',
+                'ملف 3D تخطيطي بوحدة المتر، مع مضخة وخطوط ومكونات النظام. '
+                'منسوب الحقل والمضخة يؤخذان من الحقول أعلاه، ولا تُنمذج تضاريس '
+                'الحقل أو مسارات الموقع التفصيلية. راجع مهندس ري قبل التنفيذ.',
                 style: TextStyle(fontSize: 11, color: Colors.grey),
               ),
             ],
@@ -776,14 +929,27 @@ class _IrrigationCalculatorScreenState
               _field('hours', suffix: 'ساعة'),
             ],
             ..._typeInputs(),
+            _title('موقع الشبكة للنموذج ثلاثي الأبعاد'),
+            _two(
+              _field('mainLen', suffix: 'م', label: 'بعد المضخة عن الحقل'),
+              _field('groundZ', suffix: 'م', label: 'منسوب سطح الحقل'),
+            ),
+            _gap(),
+            _field('pumpZ', suffix: 'م', label: 'منسوب المضخة'),
+            const Padding(
+              padding: EdgeInsets.only(top: 6),
+              child: Text(
+                'أدخل منسوب المضخة والحقل بالنسبة إلى مرجع ارتفاع واحد. اتركهما 0 إذا لم تتوفر بيانات مناسيب.',
+                style: TextStyle(fontSize: 11, color: Colors.grey),
+              ),
+            ),
             if (_needsPump) ...[
               _title('الماسورة الرئيسية والمضخة'),
-              _two(_field('mainLen', suffix: 'م'), _field('lift', suffix: 'م')),
+              _two(_field('lift', suffix: 'م'), _field('equip', suffix: 'م')),
               _gap(),
-              _two(_field('equip', suffix: 'م'), _field('minor', suffix: '%')),
+              _two(_field('minor', suffix: '%'), _field('pumpEff', suffix: '%')),
               _gap(),
-              _two(_field('pumpEff', suffix: '%'),
-                  _field('motorEff', suffix: '%')),
+              _field('motorEff', suffix: '%'),
             ],
             if (_type == IrrigationType.drip ||
                 _type == IrrigationType.sprinkler) ...[
@@ -814,7 +980,7 @@ class _IrrigationCalculatorScreenState
               ),
             ),
             if (_results.isNotEmpty) _resultCard(),
-            const SizedBox(height: 100), // مسافة عشان الزر يبان فوق الكيبورد
+            const SizedBox(height: 100),
           ],
         ),
       ),
