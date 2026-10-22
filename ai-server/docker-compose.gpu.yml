@@ -1,0 +1,10 @@
+# إضافة دعم كرت NVIDIA (يحتاج nvidia-container-toolkit على الجهاز)
+services:
+  ollama:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

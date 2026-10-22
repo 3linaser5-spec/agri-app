@@ -1,0 +1,45 @@
+# تشغيل: انسخ .env.example إلى .env وغيّر API_KEY ثم:  docker compose up -d --build
+# مع كرت شاشة NVIDIA:  docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
+services:
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    volumes:
+      - ollama-data:/root/.ollama
+    # غير منشور للخارج: البوابة فقط هي اللي بتكلمه داخل شبكة Docker
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  # يشتغل مرة واحدة: يسحب النموذج لو مش موجود (أول مرة بياخد وقت حسب النت)
+  model-pull:
+    image: ollama/ollama:latest
+    restart: "no"
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["ollama", "pull", "${OLLAMA_MODEL:-qwen2.5vl:7b}"]
+
+  gateway:
+    build: ./gateway
+    restart: unless-stopped
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_URL: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5vl:7b}
+      API_KEY: ${API_KEY:?اكتب API_KEY في ملف .env (16 حرف على الأقل)}
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-8}
+      MAX_IMAGE_SIDE: ${MAX_IMAGE_SIDE:-1024}
+      MAX_WAITING: ${MAX_WAITING:-4}
+    ports:
+      # على الجهاز نفسه فقط. للنشر على النت استخدم reverse proxy بـ HTTPS (انظر README)
+      - "127.0.0.1:8080:8080"
+
+volumes:
+  ollama-data:

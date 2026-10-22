@@ -1,0 +1,43 @@
+name: AI server
+
+on:
+  push:
+    paths: ["ai-server/**", ".github/workflows/ai-server.yml"]
+  pull_request:
+    paths: ["ai-server/**", ".github/workflows/ai-server.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  gateway:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Unit tests (standard library only)
+        working-directory: ai-server/gateway
+        run: python -I -m unittest discover -s tests -p "test_*.py" -v
+
+      - name: Install gateway requirements
+        working-directory: ai-server/gateway
+        run: pip install -r requirements.txt
+
+      - name: End-to-end test against a fake Ollama
+        working-directory: ai-server/gateway
+        run: python tests/e2e_fake_ollama.py
+
+      - name: Validate docker compose files
+        working-directory: ai-server
+        env:
+          API_KEY: ci-only-key-0123456789
+        run: |
+          docker compose config -q
+          docker compose -f docker-compose.yml -f docker-compose.gpu.yml config -q
+
+      - name: Build the gateway image
+        run: docker build -t nabati-gateway ai-server/gateway
