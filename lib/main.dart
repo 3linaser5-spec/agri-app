@@ -1,9 +1,9 @@
 import 'dart:io';
 import 'dart:async';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_ai/firebase_ai.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -29,6 +29,7 @@ import 'config/app_config.dart';
 import 'data/egypt_data.dart';
 import 'services/auth_service.dart';
 import 'services/offline_service.dart';
+import 'services/plant_disease_service.dart';
 import 'services/notification_service.dart';
 import 'services/weather_push_service.dart';
 import 'services/calculator_service.dart';
@@ -60,7 +61,8 @@ Future<String?> _initFirebase() async {
 
   try {
     await FirebaseAppCheck.instance.activate(
-      androidProvider: AndroidProvider.debug,
+      androidProvider:
+          kDebugMode ? AndroidProvider.debug : AndroidProvider.playIntegrity,
     );
   } catch (e) {
     debugPrint("تحذير أثناء تفعيل App Check: $e");
@@ -2326,13 +2328,19 @@ $_diagnosis
       );
       return;
     }
+    if (_imageFile == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('مصنف الأمراض يحتاج صورة واضحة لورقة النبات.')),
+      );
+      return;
+    }
 
     final hasInternet = await OfflineService.hasInternet();
     if (!hasInternet) {
       if (mounted) {
         setState(() {
           _diagnosis =
-              '⚠️ لا يوجد اتصال بالإنترنت حالياً.\nحُفظ السؤال محلياً، لكنه لم يُحلل بعد. أعد إرسال الطلب بعد عودة الاتصال للحصول على التشخيص.';
+              'لا يوجد اتصال بالإنترنت حاليًا. حُفظ الطلب محليًا، وأعد إرساله بعد عودة الاتصال للحصول على تحليل المصنف.';
         });
       }
       if (widget.pendingDiagnosisId == null) {
@@ -2341,7 +2349,7 @@ $_diagnosis
           userPhone: widget.userPhone,
           question: question,
           imagePath: _imageFile?.path,
-          diagnosis: 'لم يُرسل بعد: لا يوجد اتصال بالإنترنت',
+          diagnosis: 'لم يُحلل بعد: لا يوجد اتصال بالإنترنت',
           analysisPending: true,
         );
       }
@@ -2350,117 +2358,97 @@ $_diagnosis
 
     setState(() {
       _loading = true;
-      _diagnosis = "";
+      _diagnosis = '';
     });
 
-    int maxRetries = 3;
-    int attempt = 0;
-    bool success = false;
-
-    while (attempt < maxRetries && !success) {
-      try {
-        attempt++;
-
-        final model = FirebaseAI.googleAI().generativeModel(
-          model: AppConfig.geminiModel,
-          generationConfig: GenerationConfig(
-            temperature: 0.3,
-            maxOutputTokens: 4096,
-            topP: 0.9,
-            topK: 40,
-          ),
+    try {
+      final result = await PlantDiseaseService.instance.classify(image: _imageFile!);
+      final report = StringBuffer()
+        ..writeln('أقرب فئات المصنف إلى الصورة:')
+        ..writeln();
+      for (var index = 0; index < result.predictions.length; index++) {
+        final prediction = result.predictions[index];
+        report.writeln(
+          '${index + 1}) ${prediction.cropAr}: ${prediction.nameAr} — '
+          'درجة النموذج ${(prediction.confidence * 100).toStringAsFixed(1)}%',
         );
-
-        final prompt = """
-أنت مهندس زراعي خبير ومستشار زراعي مصري بخبرة 20 سنة.
-اسم المزارع: ${widget.userName}
-
-المطلوب منك: تقديم تقرير زراعي شامل ومفصل عن الحالة التالية.
-
-⚠️ قواعد الإجابة (مهمة جداً - التزم بها حرفياً):
-
-1. ابدأ بالسلام فقط في سطر واحد:
-"السلام عليكم يا ${widget.userName} 🌱"
-
-2. بعدها اكتب تقرير مفصل بالترتيب ده بالظبط، مع استخدام الإيموجي زي ما هو مكتوب:
-
-🔍 *المرض/الآفة:*
-اكتب اسم المرض أو الآفة بالتفصيل (اسم علمي + اسم شائع إن أمكن)، ووصف مختصر للأعراض الظاهرة.
-
-🎯 *الأسباب:*
-اذكر 3-4 أسباب رئيسية لظهور المشكلة (ظروف جوية، ري، تربة، إصابات...)، كل سبب في سطر منفصل مع شرح بسيط.
-
-💊 *العلاج:*
-اذكر خطة علاجية كاملة ومفصلة تشمل:
-- أسماء المبيدات أو المواد الفعالة (بالجرعات الموصى بها للفدان)
-- طريقة التطبيق (رش / حقن / تسميد)
-- عدد المرات والفاصل بين كل رشة
-- احتياطات الأمان اللي لازم تتبع
-
-🛡️ *الوقاية:*
-اذكر 4-5 نصائح وقائية للمستقبل لمنع تكرار المشكلة.
-
-3. لو الصورة مش واضحة أو المعلومات ناقصة، اسأل سؤال توضيحي واحد في الآخر.
-
-4. خلي التقرير كامل ومفصل، بس مترصّص في نقاط واضحة ومقروءة.
-
-5. متستخدمش نجوم ** كتير، استخدم الإيموجي اللي فوق بس.
-
-سؤال/مشكلة المزارع: $question
-""";
-
-        final parts = <Part>[TextPart(prompt)];
-
-        if (_imageFile != null) {
-          final imageBytes = await _imageFile!.readAsBytes();
-          parts.add(
-            InlineDataPart(_imageMimeType(_imageFile!.path), imageBytes),
+      }
+      final treatment = result.treatment;
+      report.writeln();
+      report.writeln('معلومات المكافحة من قاعدة العلاج المرفقة:');
+      if (treatment == null || !treatment.matched) {
+        report.writeln(
+          'لا توجد مطابقة دقيقة في قاعدة العلاج لهذه الفئة؛ لن أقترح مبيدًا أو جرعة.',
+        );
+      } else {
+        if (treatment.diseaseAr != null) {
+          report.writeln('السجل المطابق: ${treatment.diseaseAr}');
+        }
+        if (treatment.symptomsAr != null) {
+          report.writeln('الأعراض الواردة في السجل: ${treatment.symptomsAr}');
+        }
+        if (treatment.controlTimingAr != null) {
+          report.writeln('توقيت المكافحة المذكور: ${treatment.controlTimingAr}');
+        }
+        if (treatment.approvedPesticides.isEmpty) {
+          report.writeln(
+            treatment.noticeAr ??
+                'لا توجد توصية مبيد موثقة مفعّلة في قاعدة التشغيل؛ لا تستخدم جرعة بالتخمين.',
           );
-        }
-
-        final response = await model.generateContent([Content.multi(parts)]);
-        final diagnosisText =
-            response.text ?? 'لم يتمكن الذكاء الاصطناعي من تقديم تشخيص.';
-
-        success = true;
-        if (mounted) {
-          setState(() {
-            _diagnosis = diagnosisText;
-          });
-        }
-
-        try {
-          await OfflineService.saveDiagnosis(
-            userName: widget.userName,
-            userPhone: widget.userPhone,
-            question: question,
-            imagePath: _imageFile?.path,
-            diagnosis: diagnosisText,
-          );
-          final oldPendingId = widget.pendingDiagnosisId;
-          if (oldPendingId != null) {
-            await OfflineService.deleteDiagnosis(oldPendingId);
-          }
-        } catch (e) {
-          debugPrint("تعذر حفظ التشخيص محلياً");
-        }
-      } catch (e) {
-        if (!mounted) break;
-        if (attempt >= maxRetries) {
-          setState(() {
-            _diagnosis =
-                'عذراً، خدمة الذكاء الاصطناعي مشغولة حالياً.\nبرجاء المحاولة مرة أخرى بعد قليل.';
-          });
         } else {
-          await Future.delayed(const Duration(seconds: 2));
+          for (final product in treatment.approvedPesticides) {
+            final productName = product['product_name_ar'] ??
+                product['name_ar'] ??
+                product['product_name'];
+            if (productName != null) report.writeln('المنتج المسجل: $productName');
+          }
         }
       }
-    }
+      if (treatment?.source != null) {
+        report.writeln('المصدر المذكور في الملف: ${treatment!.source}');
+      }
+      if (treatment?.section != null) {
+        report.writeln('القسم: ${treatment!.section}');
+      }
+      if (treatment?.sourceVerificationNoteAr != null) {
+        report.writeln(treatment!.sourceVerificationNoteAr);
+      }
+      report
+        ..writeln()
+        ..writeln('تنبيه: هذه احتمالات آلية أولية وليست تشخيصًا مؤكدًا.')
+        ..writeln(result.disclaimer)
+        ..writeln('لا تستخدم النتيجة لاختيار مبيد أو جرعة؛ اعرض النبات على مهندس زراعي محلي.');
+      final diagnosisText = report.toString().trim();
 
-    if (!mounted) return;
-    setState(() {
-      _loading = false;
-    });
+      if (!mounted) return;
+      setState(() => _diagnosis = diagnosisText);
+
+      try {
+        await OfflineService.saveDiagnosis(
+          userName: widget.userName,
+          userPhone: widget.userPhone,
+          question: question,
+          imagePath: _imageFile?.path,
+          diagnosis: diagnosisText,
+        );
+        final oldPendingId = widget.pendingDiagnosisId;
+        if (oldPendingId != null) {
+          await OfflineService.deleteDiagnosis(oldPendingId);
+        }
+      } catch (_) {
+        debugPrint('تعذر حفظ نتيجة المصنف محليًا');
+      }
+    } on PlantDiseaseException catch (error) {
+      if (mounted) setState(() => _diagnosis = error.message);
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _diagnosis = 'تعذر تحليل الصورة الآن. تحقق من اتصالك وحاول مرة أخرى لاحقًا.';
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   @override

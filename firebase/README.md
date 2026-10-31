@@ -87,32 +87,47 @@ Google Cloud Console لتقييد المفتاح باسم الحزمة
 `com.dahshory.agri.agri_app` وبصمة SHA-1 الصحيحة، مع إبقاء الحماية الحقيقية في
 قواعد Firebase.
 
-إعداد `apiKey` الحالي في `lib/firebase_options.dart` يبدو مبتوراً وغير مطابق
-لطول/صيغة القيمة التي يوفرها Firebase عادةً. لا يمكن استنتاج مفتاح أو `appId` أو
-`projectId` الصحيح من نسخة المستودع؛ على مالك المشروع تشغيل `flutterfire configure`
-أو نسخ القيم من إعداد تطبيق Android في Firebase Console، ثم التأكد من تطابق
-`google-services.json` المستخدم محلياً وسر GitHub `GOOGLE_SERVICES_JSON`.
+تمت مطابقة `lib/firebase_options.dart` مع إعداد Android الرسمي للمشروع من Firebase
+Console. ملف `google-services.json` لم يُضف إلى المستودع؛ يظل الـworkflow يعتمد على سر
+GitHub `GOOGLE_SERVICES_JSON`، ويجب إبقاؤه مطابقًا لملف التطبيق نفسه.
 
-### Gemini عبر Firebase AI Logic
+### مصنف أمراض النباتات المخصص
 
-التطبيق يستخدم حزمة Flutter `firebase_ai` لإرسال الطلبات عبر Firebase AI Logic؛
-لا تضف مفتاح Gemini إلى `lib/` أو `--dart-define` أو GitHub Actions. المفتاح
-المضمن في تطبيق عميل قابل للاستخراج حتى لو جاء من GitHub Secret.
+أُضيف `functions/plant_ai` كـPython codebase منفصل عن دوال الطقس المكتوبة بـTypeScript.
+الدالة `classifyPlantDisease` تشغّل ملف TFLite المخصص داخل Firebase Cloud Functions،
+وتتطلب Firebase Auth وApp Check صالحًا، وتسمح بعشر صور يوميًا لكل حساب. لا تُحفظ الصور؛
+وتُعاد أعلى ثلاثة تصنيفات أولية مع البحث عن سجل مطابق بدقة في قاعدة العلاج المرفقة.
+يعرض التطبيق الأعراض وتوقيت المكافحة الواردين في السجل المطابق، ولا يعرض مبيدًا أو جرعة
+ما دامت بيانات المنتج غير موثقة.
 
-1. من Firebase Console افتح AI Services ← AI Logic، أكمِل إعداد المشروع واختر
-   مزود Gemini Developer API أو مزوداً مناسباً لمشروعك.
-2. من Security ← App Check سجّل تطبيق Android على **Play Integrity**، وتأكد من
-   إعداد بصمة التوقيع الصحيحة. الكود يفعّل Debug provider في debug وPlay Integrity
-   في release. لا تضع Debug token في إصدار منشور.
-3. راقب مؤشرات App Check وجرّب نسخة debug والنسخة الموقعة، ثم تحقق من أن Firebase
-   AI Logic يفرض App Check في صفحة APIs. عند رفض الطلبات راجع تسجيل التطبيق ورمز
-   App Check وإعداد Firebase قبل تعطيل enforcement.
-4. راقب الحصص والاستخدام، واضبط حدوداً مناسبة. App Check يقلل الطلبات من العملاء
-   غير المعتمدين لكنه لا يمنع إساءة الاستخدام من نسخة حقيقية مخترقة.
+شاشة الفحص لم تعد تستدعي Gemini؛ تستخدم `cloud_functions` لاستدعاء المصنف. App Check
+يستخدم Debug أثناء التطوير وPlay Integrity في إصدار Android الإنتاجي. قبل الإطلاق،
+سجّل تطبيق Android في Firebase App Check باستخدام Play Integrity وأضف بصمة SHA-256
+لشهادة التوقيع؛ يلزم أيضًا إعداد Play Integrity في Google Play Console إذا كان ذلك
+مطلوبًا لقناة التوزيع. لا تفعّل فرض App Check على الدالة قبل اختبار نسخة التطبيق المسجلة.
+لا تضع Debug token في إصدار منشور أو workflow عام.
 
-إذا استُخدم مفتاح Gemini سابقاً داخل APK موزع، دوّره وأوقف القديم بعد التحقق من
-عمل المسار الجديد، واحذف سر `GEMINI_API_KEY` القديم من إعدادات GitHub، وراجع
-استخدام المشروع بحثاً عن نشاط غير مصرح به.
+نشر الدالة يتطلب مشروع Firebase على Blaze، كما أن Python Functions موصوفة في توثيق
+Firebase الحالي كميزة تجريبية. راجع الميزانية وفعّل تنبيهات الفوترة قبل النشر. من جذر
+المستودع وبعد اختيار مشروع Firebase الصحيح، ينشر codebase المصنف فقط بهذا الأمر:
+
+```sh
+firebase deploy --only functions:plant-ai
+```
+
+قواعد Firestore الحالية تمنع الوصول المباشر من العميل إلى مجموعة عداد الاستخدام
+`_server_ai_usage`؛ الدالة تستخدم Admin SDK لحفظ العداد. ملف `treatments.json` يذكر
+كتاب لجنة مبيدات الآفات الزراعية 2026، لكنه يصف مصدره بأنه غير متحقق بصورة مستقلة،
+وسجلات التشغيل الحالية لا تحتوي مبيدات معتمدة مفعّلة؛ لذلك لا تُعرض أسماء منتجات أو جرعات.
+النموذج لا يغطي إلا الفئات الثماني والثلاثين التي دُرّب عليها ولا يضمن دقة صور الحقول.
+
+مراجع الإعداد الرسمية: [تنظيم codebases متعددة](https://firebase.google.com/docs/functions/organize-functions)،
+[إصدارات Python runtime](https://firebase.google.com/docs/functions/manage-functions)،
+[مرجع Callable Functions لـPython](https://firebase.google.com/docs/reference/functions/2nd-gen/python/firebase_functions.https_fn)،
+[App Check مع Play Integrity على Android](https://firebase.google.com/docs/app-check/android/play-integrity-provider)،
+[تهيئة App Check في Flutter](https://firebase.google.com/docs/app-check/flutter/default-providers)،
+[خطة Firebase Blaze والفوترة](https://firebase.google.com/docs/projects/billing/firebase-pricing-plans)،
+[حزمة LiteRT المستخدمة](https://pypi.org/project/ai-edge-litert/).
 
 ## 6) تحديث التطبيق
 

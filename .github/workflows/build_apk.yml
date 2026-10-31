@@ -40,28 +40,14 @@ jobs:
           cp /tmp/main.dart lib/main.dart
           cp /tmp/pubspec.yaml pubspec.yaml
 
-          # زرع كود Firebase App Check Debug Token تلقائياً داخل MainActivity.kt
+          # لا تضع Debug token داخل APK أو workflow؛ Debug مخصص للتطوير فقط.
           mkdir -p android/app/src/main/kotlin/com/dahshory/agri/agri_app
           cat << 'EOF' > android/app/src/main/kotlin/com/dahshory/agri/agri_app/MainActivity.kt
           package com.dahshory.agri.agri_app
 
-          import android.content.Context
-          import android.os.Bundle
           import io.flutter.embedding.android.FlutterActivity
 
-          class MainActivity: FlutterActivity() {
-              override fun onCreate(savedInstanceState: Bundle?) {
-                  val prefs = applicationContext.getSharedPreferences(
-                      "com.google.firebase.appcheck.debug.store",
-                      Context.MODE_PRIVATE
-                  )
-                  prefs.edit().putString(
-                      "com.google.firebase.appcheck.debug.DEBUG_SECRET",
-                      "08128BB7-E7D4-4073-8C93-BA16BDCE1642"
-                  ).apply()
-                  super.onCreate(savedInstanceState)
-              }
-          }
+          class MainActivity: FlutterActivity()
           EOF
           
           rm -f android/build.gradle
