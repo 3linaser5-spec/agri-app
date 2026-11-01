@@ -2263,15 +2263,6 @@ class _AiScannerScreenState extends State<AiScannerScreen> {
     }
   }
 
-  static String _imageMimeType(String path) {
-    final lower = path.toLowerCase();
-    if (lower.endsWith('.png')) return 'image/png';
-    if (lower.endsWith('.webp')) return 'image/webp';
-    if (lower.endsWith('.heic')) return 'image/heic';
-    if (lower.endsWith('.heif')) return 'image/heif';
-    return 'image/jpeg';
-  }
-
   Future<void> _sendToEngineerWhatsApp() async {
     const engineerPhone = AppConfig.engineerPhone;
     final message = """

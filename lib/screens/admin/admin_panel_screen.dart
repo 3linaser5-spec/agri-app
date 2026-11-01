@@ -340,7 +340,6 @@ class SectionTemplatesScreen extends StatefulWidget {
 class _SectionTemplatesScreenState extends State<SectionTemplatesScreen> {
   List<CalculatorTemplate> _templates = [];
   bool _loading = true;
-  bool _deleting = false;
   String? _error;
 
   @override
