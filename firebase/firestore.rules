@@ -101,6 +101,56 @@ service cloud.firestore {
       allow update: if signedIn()
         && resource.data.user_id == request.auth.uid
         && request.resource.data.user_id == request.auth.uid;
+
+      match /plant_health_cases/{caseId} {
+        function ownsParentProgram() {
+          return signedIn()
+            && get(/databases/$(database)/documents/my_farm/$(id)).data.user_id
+              == request.auth.uid;
+        }
+
+        function validPlantHealthCase() {
+          return request.resource.data.keys().hasAll([
+              'user_id', 'farm_crop', 'predicted_crop', 'disease', 'class_name',
+              'confidence', 'model_version', 'irrigation_action',
+              'irrigation_advice_ar', 'review_required', 'status', 'created_at'
+            ])
+            && request.resource.data.keys().hasOnly([
+              'user_id', 'farm_crop', 'predicted_crop', 'disease', 'class_name',
+              'confidence', 'model_version', 'irrigation_action',
+              'irrigation_advice_ar', 'review_required', 'status', 'created_at'
+            ])
+            && request.resource.data.user_id == request.auth.uid
+            && request.resource.data.farm_crop is string
+            && request.resource.data.farm_crop.size() <= 320
+            && request.resource.data.predicted_crop is string
+            && request.resource.data.predicted_crop.size() > 0
+            && request.resource.data.predicted_crop.size() <= 320
+            && request.resource.data.disease is string
+            && request.resource.data.disease.size() > 0
+            && request.resource.data.disease.size() <= 320
+            && request.resource.data.class_name is string
+            && request.resource.data.class_name.size() > 0
+            && request.resource.data.class_name.size() <= 320
+            && request.resource.data.confidence is number
+            && request.resource.data.confidence >= 0
+            && request.resource.data.confidence <= 1
+            && request.resource.data.model_version is string
+            && request.resource.data.model_version.size() <= 100
+            && request.resource.data.irrigation_action == 'monitor_and_review'
+            && request.resource.data.irrigation_advice_ar is string
+            && request.resource.data.irrigation_advice_ar.size() > 0
+            && request.resource.data.irrigation_advice_ar.size() <= 2000
+            && request.resource.data.review_required == true
+            && request.resource.data.status == 'needs_agronomist_review'
+            && request.resource.data.created_at == request.time;
+        }
+
+        allow read: if ownsParentProgram();
+        allow create: if ownsParentProgram() && validPlantHealthCase();
+        allow update: if false;
+        allow delete: if ownsParentProgram();
+      }
     }
 
     // الحاسبات والموسوعة: القراءة لأي مستخدم مسجّل، الكتابة للأدمن فقط

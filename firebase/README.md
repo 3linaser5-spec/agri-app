@@ -149,6 +149,26 @@ firebase deploy --only firestore:rules,storage
 [صلاحيات Cloud Storage والتحقق من البيانات](https://firebase.google.com/docs/storage/security/rules-conditions)،
 و[إصدار firebase_storage المتوافق](https://pub.dev/packages/firebase_storage/versions/13.0.0).
 
+### ربط تشخيص الآفات ببرنامج مزرعتي
+
+من بطاقة نتيجة المصنف يمكن اختيار برنامج محفوظ في «مزرعتي» وتسجيل المحصول المسجل،
+أقرب فئة متوقعة، نسبة ثقة النموذج وإصداره تحت المسار
+`my_farm/{programId}/plant_health_cases`. يظهر السجل في تبويب «صحة النبات» داخل
+تفاصيل البرنامج. يظل سجل الملاحظة منفصلاً عن مهام الجدول الأصلي حتى لا تتغير فهارس
+المهام أو تقدم البرنامج.
+
+الإرشاد المائي الحالي احترازي فقط: فحص رطوبة التربة والصرف ومراجعة مهندس زراعي؛ لا
+يصدر التطبيق أمرًا بزيادة أو خفض الري ولا يغير الجدول المحفوظ. لا توجد بعد قاعدة
+موثقة تربط كل مرض بمرحلة النمو ونظام الري ونوع التربة. يجب إدخال توصيات محددة لاحقًا
+من مصدر زراعي موثوق ومراجعتها قبل تفعيلها. كما أن المصنف الحالي يخرج 38 فئة ولا يشمل
+القمح؛ لا تعتمد نتائجه للقمح حتى يُدرّب ويُقيّم نموذج يغطي أمراض القمح.
+
+يتطلب حفظ السجلات نشر قواعد Firestore المعدّلة (لم ينفذ هذا التغيير أي نشر):
+
+```sh
+firebase deploy --only firestore:rules
+```
+
 مراجع الإعداد الرسمية: [تنظيم codebases متعددة](https://firebase.google.com/docs/functions/organize-functions)،
 [إصدارات Python runtime](https://firebase.google.com/docs/functions/manage-functions)،
 [مرجع Callable Functions لـPython](https://firebase.google.com/docs/reference/functions/2nd-gen/python/firebase_functions.https_fn)،

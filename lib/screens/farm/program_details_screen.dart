@@ -1,6 +1,8 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import '../../models/my_farm_model.dart';
 import '../../services/my_farm_service.dart';
+import '../../services/plant_health_service.dart';
 import '../../services/pdf_service.dart';
 import '../../services/notification_service.dart';
 import '../../utils/calc_engine.dart';
@@ -140,7 +142,7 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
       builder: (context) => AlertDialog(
         title: const Text('حذف البرنامج'),
         content: const Text(
-            'هل أنت متأكد من حذف البرنامج من مزرعتك؟\n\n⚠️ سيتم إلغاء كل التذكيرات المرتبطة بيه.'),
+            'هل أنت متأكد من حذف البرنامج من مزرعتك؟\n\nسيتم حذف سجلات صحة النبات المرتبطة به وإلغاء التذكيرات.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -206,7 +208,7 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Scaffold(
         appBar: AppBar(
           title: Text('${_program.templateEmoji} ${_program.templateName}',
@@ -232,6 +234,7 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
             tabs: [
               Tab(icon: Icon(Icons.timeline), text: 'المهام'),
               Tab(icon: Icon(Icons.shopping_cart), text: 'المشتريات'),
+              Tab(icon: Icon(Icons.health_and_safety), text: 'صحة النبات'),
             ],
           ),
         ),
@@ -301,6 +304,7 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
                   children: [
                     _buildTasksTab(isDark),
                     _buildMaterialsTab(isDark),
+                    _buildPlantHealthTab(isDark),
                   ],
                 ),
               ),
@@ -308,6 +312,143 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildPlantHealthTab(bool isDark) {
+    return StreamBuilder(
+      stream: PlantHealthService.watchProgramCases(_program.id),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Text(
+                'تعذر تحميل سجل صحة النبات. قد تحتاج قواعد Firestore الجديدة إلى النشر أولاً.',
+                textAlign: TextAlign.center,
+              ),
+            ),
+          );
+        }
+
+        final cases = snapshot.data?.docs ?? [];
+        if (cases.isEmpty) {
+          return ListView(
+            padding: const EdgeInsets.all(16),
+            children: const [
+              Card(
+                child: Padding(
+                  padding: EdgeInsets.all(20),
+                  child: Column(
+                    children: [
+                      Icon(Icons.health_and_safety,
+                          size: 44, color: Color(0xFF047857)),
+                      SizedBox(height: 10),
+                      Text('لا توجد تشخيصات مرتبطة بهذا البرنامج بعد',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontWeight: FontWeight.bold)),
+                      SizedBox(height: 6),
+                      Text(
+                        'بعد فحص صورة، اضغط «ربط التشخيص ببرنامج في مزرعتي» لاستخدامه كسجل متابعة.',
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          );
+        }
+
+        return ListView.separated(
+          padding: const EdgeInsets.all(16),
+          itemCount: cases.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 8),
+          itemBuilder: (context, index) {
+            final data = cases[index].data();
+            final crop = SafeParse.string(data['farm_crop'], 'غير محدد');
+            final predictedCrop =
+                SafeParse.string(data['predicted_crop'], 'غير معروف');
+            final disease = SafeParse.string(data['disease'], 'غير محدد');
+            final confidenceValue = data['confidence'];
+            final confidence = confidenceValue is num
+                ? (confidenceValue.toDouble() * 100).toStringAsFixed(1)
+                : '—';
+            final createdAt = data['created_at'];
+            final dateLabel = createdAt is Timestamp
+                ? '${createdAt.toDate().year}/${createdAt.toDate().month.toString().padLeft(2, '0')}/${createdAt.toDate().day.toString().padLeft(2, '0')}'
+                : 'تاريخ الحفظ غير متاح';
+            final advice = SafeParse.string(
+              data['irrigation_advice_ar'],
+              PlantHealthService.safeIrrigationAdvice,
+            );
+
+            return Card(
+              color: isDark ? const Color(0xFF1E1E1E) : null,
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.biotech, color: Color(0xFF047857)),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '$predictedCrop — $disease',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text('برنامج المزرعة: $crop • ثقة النموذج: $confidence٪'),
+                    Text(dateLabel,
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: isDark ? Colors.grey[400] : Colors.grey)),
+                    const SizedBox(height: 12),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: isDark
+                            ? const Color(0xFF172554)
+                            : const Color(0xFFEFF6FF),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'متابعة الري',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 5),
+                          Text(advice),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'الحالة: تحتاج مراجعة مهندس زراعي • لا يوجد تعديل آلي لبرنامج الري',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Color(0xFFB45309),
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 

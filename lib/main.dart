@@ -30,10 +30,13 @@ import 'data/egypt_data.dart';
 import 'services/auth_service.dart';
 import 'services/offline_service.dart';
 import 'services/plant_disease_service.dart';
+import 'services/plant_health_service.dart';
 import 'services/notification_service.dart';
 import 'services/weather_push_service.dart';
 import 'services/calculator_service.dart';
 import 'services/encyclopedia_service.dart';
+import 'models/my_farm_model.dart';
+import 'services/my_farm_service.dart';
 import 'models/encyclopedia_model.dart';
 import 'screens/admin/admin_panel_screen.dart';
 import 'screens/calculators/calculator_hub_screen.dart';
@@ -2163,6 +2166,8 @@ class _AiScannerScreenState extends State<AiScannerScreen> {
   final _questionCtrl = TextEditingController();
   bool _loading = false;
   String _diagnosis = "";
+  PlantDiseaseResult? _latestPlantResult;
+  bool _savingToFarm = false;
   final FlutterTts _flutterTts = FlutterTts();
   bool _isPlayingVoice = false;
   File? _imageFile;
@@ -2350,6 +2355,7 @@ $_diagnosis
     setState(() {
       _loading = true;
       _diagnosis = '';
+      _latestPlantResult = null;
     });
 
     try {
@@ -2412,7 +2418,10 @@ $_diagnosis
       final diagnosisText = report.toString().trim();
 
       if (!mounted) return;
-      setState(() => _diagnosis = diagnosisText);
+      setState(() {
+        _diagnosis = diagnosisText;
+        _latestPlantResult = result;
+      });
 
       try {
         await OfflineService.saveDiagnosis(
@@ -2440,6 +2449,132 @@ $_diagnosis
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  String _farmCropLabel(MyFarmProgram program) {
+    for (final entry in program.inputValues.entries) {
+      final key = entry.key.toLowerCase();
+      if (key.contains('crop') || key.contains('محصول')) {
+        final value = entry.value?.toString().trim() ?? '';
+        if (value.isNotEmpty) return value;
+      }
+    }
+    return 'غير محدد';
+  }
+
+  Future<void> _saveDiagnosisToFarm() async {
+    final result = _latestPlantResult;
+    final user = FirebaseAuth.instance.currentUser;
+    if (result == null || result.predictions.isEmpty) return;
+    if (user == null) {
+      _showFarmMessage('سجّل الدخول أولاً لحفظ التشخيص في مزرعتك.');
+      return;
+    }
+    if (_savingToFarm) return;
+
+    setState(() => _savingToFarm = true);
+    try {
+      final programs = await MyFarmService.getUserPrograms(user.uid).first;
+      if (!mounted) return;
+      if (programs.isEmpty) {
+        _showFarmMessage('لا توجد برامج في مزرعتي. احفظ برنامج المحصول أولاً.');
+        return;
+      }
+
+      final selectedProgram = await showDialog<MyFarmProgram>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('اختر برنامج المحصول'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView.separated(
+              shrinkWrap: true,
+              itemCount: programs.length,
+              separatorBuilder: (_, __) => const Divider(height: 1),
+              itemBuilder: (context, index) {
+                final program = programs[index];
+                final crop = _farmCropLabel(program);
+                return ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Text(program.templateEmoji,
+                      style: const TextStyle(fontSize: 24)),
+                  title: Text(program.templateName),
+                  subtitle: Text(
+                    crop == 'غير محدد'
+                        ? 'المحصول غير محدد في بيانات البرنامج'
+                        : 'المحصول: $crop',
+                  ),
+                  onTap: () => Navigator.pop(dialogContext, program),
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('إلغاء'),
+            ),
+          ],
+        ),
+      );
+      if (!mounted || selectedProgram == null) return;
+
+      final prediction = result.predictions.first;
+      final farmCrop = _farmCropLabel(selectedProgram);
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('حفظ كسجل متابعة'),
+          content: Text(
+            'برنامج المزرعة: ${selectedProgram.templateName}\n'
+            'المحصول المسجل: $farmCrop\n'
+            'أقرب نتيجة للنموذج: ${prediction.cropAr} — ${prediction.nameAr} '
+            '(${(prediction.confidence * 100).toStringAsFixed(1)}٪).\n\n'
+            'المصنف الحالي يغطي 38 فئة ولا يشمل القمح. سيُحفظ التشخيص كملاحظة تحتاج مراجعة، ولن يغيّر جدول الري أو يوصي بزيادة/خفض كمية المياه.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('رجوع'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('حفظ للمراجعة'),
+            ),
+          ],
+        ),
+      );
+      if (!mounted || confirmed != true) return;
+
+      await PlantHealthService.saveDiagnosisToProgram(
+        programId: selectedProgram.id,
+        farmCrop: farmCrop,
+        predictedCrop: prediction.cropAr,
+        disease: prediction.nameAr,
+        className: prediction.className,
+        confidence: prediction.confidence,
+        modelVersion: result.modelVersion,
+      );
+      if (mounted) {
+        _showFarmMessage(
+          'تم ربط التشخيص ببرنامج مزرعتك. افتح تبويب «صحة النبات» للمراجعة.',
+        );
+      }
+    } on PlantHealthException catch (error) {
+      if (mounted) _showFarmMessage(error.message);
+    } catch (_) {
+      if (mounted) {
+        _showFarmMessage('تعذر حفظ التشخيص. تحقق من الاتصال وصلاحيات Firestore.');
+      }
+    } finally {
+      if (mounted) setState(() => _savingToFarm = false);
+    }
+  }
+
+  void _showFarmMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
+    );
   }
 
   @override
@@ -2544,6 +2679,39 @@ $_diagnosis
                           textAlign: TextAlign.right,
                           textDirection: TextDirection.rtl,
                         ),
+                        if (_latestPlantResult != null) ...[
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.icon(
+                              onPressed: _savingToFarm ? null : _saveDiagnosisToFarm,
+                              icon: _savingToFarm
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : const Icon(Icons.agriculture),
+                              label: Text(_savingToFarm
+                                  ? 'جارٍ الحفظ في مزرعتي...'
+                                  : 'ربط التشخيص ببرنامج في مزرعتي'),
+                              style: FilledButton.styleFrom(
+                                backgroundColor: const Color(0xFF047857),
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 13),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          const Text(
+                            'يُحفظ كسجل يحتاج مراجعة؛ لا يغيّر كمية أو جدول الري تلقائيًا.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(fontSize: 11, color: Colors.black54),
+                          ),
+                        ],
                         const SizedBox(height: 12),
                         Row(
                           children: [
