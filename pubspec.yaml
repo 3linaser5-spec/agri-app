@@ -25,6 +25,7 @@ dependencies:
   firebase_app_check: ^0.4.0
   firebase_messaging: ^16.0.0
   cloud_functions: ^6.0.0
+  firebase_storage: ^13.0.0
 
   # ✅ الشبكة
   http: ^1.2.2

@@ -121,6 +121,54 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // صور التدريب وتسمياتها لا يصل إليها إلا الأدمن. لا يسمح العميل بتعديل
+    // أو حذف العينات بعد حفظها، للحفاظ على سجل البيانات الذي سيُستخدم لاحقاً.
+    function validTrainingSample(sampleId) {
+      return request.resource.data.keys().hasAll([
+          'crop', 'disease', 'className', 'storagePath', 'mimeType',
+          'sizeBytes', 'uploadedByUid', 'uploadedAt', 'status',
+          'labelConfirmedByAgronomist', 'source'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'crop', 'disease', 'className', 'storagePath', 'mimeType',
+          'sizeBytes', 'uploadedByUid', 'uploadedAt', 'status',
+          'labelConfirmedByAgronomist', 'source'
+        ])
+        && request.resource.data.crop is string
+        && request.resource.data.crop.size() > 0
+        && request.resource.data.crop.size() <= 320
+        && request.resource.data.disease is string
+        && request.resource.data.disease.size() > 0
+        && request.resource.data.disease.size() <= 320
+        && request.resource.data.className == request.resource.data.crop + '__' + request.resource.data.disease
+        && request.resource.data.className.size() <= 642
+        && request.resource.data.storagePath is string
+        && (
+          (request.resource.data.storagePath == 'plant_training/' + request.auth.uid + '/' + sampleId + '.jpg'
+            && request.resource.data.mimeType == 'image/jpeg')
+          || (request.resource.data.storagePath == 'plant_training/' + request.auth.uid + '/' + sampleId + '.jpeg'
+            && request.resource.data.mimeType == 'image/jpeg')
+          || (request.resource.data.storagePath == 'plant_training/' + request.auth.uid + '/' + sampleId + '.png'
+            && request.resource.data.mimeType == 'image/png')
+          || (request.resource.data.storagePath == 'plant_training/' + request.auth.uid + '/' + sampleId + '.webp'
+            && request.resource.data.mimeType == 'image/webp')
+        )
+        && request.resource.data.sizeBytes is int
+        && request.resource.data.sizeBytes > 0
+        && request.resource.data.sizeBytes <= 10 * 1024 * 1024
+        && request.resource.data.uploadedByUid == request.auth.uid
+        && request.resource.data.uploadedAt == request.time
+        && request.resource.data.status == 'pending_training'
+        && request.resource.data.labelConfirmedByAgronomist == true
+        && request.resource.data.source == 'admin_training_portal';
+    }
+
+    match /plant_training_samples/{sampleId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin() && validTrainingSample(sampleId);
+      allow update, delete: if false;
+    }
+
     // تسجيل رمز FCM لكل تثبيت. موقع المزرعة تقريبي ولا يُكتب إلا لحساب صاحبه.
     // لا يقرأ العميل الرمز أو بيانات الأجهزة؛ Functions يستخدم Admin SDK.
     match /users/{uid}/weather_push_devices/{token} {

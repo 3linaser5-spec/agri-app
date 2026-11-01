@@ -121,6 +121,34 @@ firebase deploy --only functions:plant-ai
 وسجلات التشغيل الحالية لا تحتوي مبيدات معتمدة مفعّلة؛ لذلك لا تُعرض أسماء منتجات أو جرعات.
 النموذج لا يغطي إلا الفئات الثماني والثلاثين التي دُرّب عليها ولا يضمن دقة صور الحقول.
 
+### بوابة صور التدريب للأدمن
+
+أضيفت إلى لوحة الأدمن شاشة تجمع صورة النبات مع المحصول والمرض بعد تأكيد مراجعة
+التصنيف. تُحفظ الصورة في `plant_training/{uid}/` داخل Cloud Storage، وتحفظ بياناتها
+الوصفية في مجموعة `plant_training_samples` بحالة `pending_training`. لا تنشئ الشاشة
+روابط تنزيل عامة، ولا تسمح بتعديل أو حذف العينات من التطبيق. تعتمد قواعد Firestore
+وStorage على وجود مستند `admins/{uid}`؛ يجب إنشاء المستند للحساب الإداري ونشر القواعد
+من Firebase Console أو CLI قبل نجاح الرفع. قواعد Storage تستخدم `firestore.exists`
+للتحقق من دور الأدمن، ويُحتسب فحص المستند ضمن قراءات Firestore.
+
+هذه البوابة تجمع الصور المصنفة فقط؛ **رفع صورة لا يغير أوزان النموذج العامل ولا ينشر
+نسخة جديدة تلقائياً**. سكربت التدريب المتاح يبدأ من MobileNetV2 بأوزان ImageNet وينزّل
+PlantVillage، ولا يستأنف من ملف TFLite المنشور. لم يُعثر ضمن الملفات المتاحة على
+checkpoint قابل للتدريب بصيغة `.keras` أو `.h5` أو `.pt`؛ لذلك يلزم إعداد وتشغيل خدمة
+تدريب منفصلة تجمع الصور القديمة والجديدة، وتقيّم النموذج، ثم تصدر نسخة جديدة قبل ربطها
+بدالة التشخيص. لا تعرض البوابة زر تدريب يوحي بأن هذه الخطوة تنفذ بالفعل.
+
+إعدادات الرفع متوافقة مع FlutterFire `firebase_storage` 13.x و`firebase_core` 4.x.
+لرفع القواعد بعد اختيار المشروع الصحيح (لم ينفذ هذا التغيير أي نشر):
+
+```sh
+firebase deploy --only firestore:rules,storage
+```
+
+راجع [رفع الملفات من Flutter](https://firebase.google.com/docs/storage/flutter/upload-files)،
+[صلاحيات Cloud Storage والتحقق من البيانات](https://firebase.google.com/docs/storage/security/rules-conditions)،
+و[إصدار firebase_storage المتوافق](https://pub.dev/packages/firebase_storage/versions/13.0.0).
+
 مراجع الإعداد الرسمية: [تنظيم codebases متعددة](https://firebase.google.com/docs/functions/organize-functions)،
 [إصدارات Python runtime](https://firebase.google.com/docs/functions/manage-functions)،
 [مرجع Callable Functions لـPython](https://firebase.google.com/docs/reference/functions/2nd-gen/python/firebase_functions.https_fn)،

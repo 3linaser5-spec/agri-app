@@ -7,6 +7,7 @@ import '../../utils/safe_parse.dart'; // ✅ لضمان قراءة النصوص 
 import 'template_editor_screen.dart';
 import 'json_import_screen.dart';
 import 'encyclopedia_admin_screen.dart';
+import 'training_data_admin_screen.dart';
 
 // ================== لوحة الأدمن الرئيسية ==================
 class AdminPanelScreen extends StatefulWidget {
@@ -167,6 +168,20 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                             context,
                             MaterialPageRoute(
                               builder: (_) => const EncyclopediaAdminScreen(),
+                            ),
+                          );
+                        },
+                      ),
+                      _buildAdminActionCard(
+                        icon: Icons.biotech,
+                        color: const Color(0xFF047857),
+                        title: 'بوابة بيانات تدريب النموذج',
+                        subtitle: 'ارفع صورة وحدد المحصول والمرض لحفظها كعينة تدريب',
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const TrainingDataAdminScreen(),
                             ),
                           );
                         },

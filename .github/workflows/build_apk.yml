@@ -2,7 +2,7 @@ name: Build Flutter APK
 
 on:
   push:
-    branches: [ main, "رئيسي" ]
+    branches: [ main, "رئيسي", "feature/firebase-plant-classifier" ]
   workflow_dispatch:
 
 permissions:

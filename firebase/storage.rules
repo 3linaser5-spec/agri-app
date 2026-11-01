@@ -1,0 +1,35 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return signedIn() && firestore.exists(
+        /databases/(default)/documents/admins/$(request.auth.uid)
+      );
+    }
+
+    match /plant_training/{adminUid}/{fileName} {
+      // القراءة للأدمن فقط. الرفع إلى مجلد UID صاحب الجلسة الحالية فقط.
+      allow read: if isAdmin();
+      allow create: if isAdmin()
+        && request.auth.uid == adminUid
+        && request.resource != null
+        && request.resource.size > 0
+        && request.resource.size <= 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp)');
+
+      // لا يوجد حذف من واجهة الإدارة؛ الحذف مسموح لصاحب المسار للأدمن فقط
+      // لتنظيف ملف يتيم إذا فشل إنشاء بياناته الوصفية في Firestore.
+      allow delete: if isAdmin() && request.auth.uid == adminUid;
+      allow update: if false;
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
