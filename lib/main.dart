@@ -1,9 +1,9 @@
 import 'dart:io';
 import 'dart:async';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_ai/firebase_ai.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -29,10 +29,15 @@ import 'config/app_config.dart';
 import 'data/egypt_data.dart';
 import 'services/auth_service.dart';
 import 'services/offline_service.dart';
+import 'services/plant_disease_service.dart';
+import 'services/plant_health_service.dart';
 import 'services/notification_service.dart';
 import 'services/weather_push_service.dart';
+import 'services/early_warning_service.dart';
 import 'services/calculator_service.dart';
 import 'services/encyclopedia_service.dart';
+import 'models/my_farm_model.dart';
+import 'services/my_farm_service.dart';
 import 'models/encyclopedia_model.dart';
 import 'screens/admin/admin_panel_screen.dart';
 import 'screens/calculators/calculator_hub_screen.dart';
@@ -60,7 +65,8 @@ Future<String?> _initFirebase() async {
 
   try {
     await FirebaseAppCheck.instance.activate(
-      androidProvider: AndroidProvider.debug,
+      androidProvider:
+          kDebugMode ? AndroidProvider.debug : AndroidProvider.playIntegrity,
     );
   } catch (e) {
     debugPrint("تحذير أثناء تفعيل App Check: $e");
@@ -69,7 +75,6 @@ Future<String?> _initFirebase() async {
   try {
     WeatherPushService.initialize();
     await NotificationService.initialize();
-    await NotificationService.subscribeToPestAlerts();
   } catch (e) {
     debugPrint("خطأ في تهيئة الإشعارات: $e");
   }
@@ -1187,12 +1192,30 @@ class _HomeDashboardState extends State<HomeDashboard> {
   double? _weatherLongitude;
   bool _weatherPushEnabled = false;
   bool _weatherPushBusy = false;
+  List<MyFarmProgram> _activePrograms = const [];
+  StreamSubscription<List<MyFarmProgram>>? _farmProgramsSubscription;
 
   @override
   void initState() {
     super.initState();
     _loadCachedWeather();
     _loadWeatherPushPreference();
+    _listenToFarmPrograms();
+  }
+
+  void _listenToFarmPrograms() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    _farmProgramsSubscription = MyFarmService.getUserPrograms(uid).listen(
+      (programs) {
+        _safeSet(() => _activePrograms = programs
+            .where((program) => program.status == 'active' && !program.isCompleted)
+            .toList(growable: false));
+      },
+      onError: (Object error) {
+        debugPrint('تعذر تحميل البرامج النشطة للإنذار المبكر');
+      },
+    );
   }
 
   bool _isAdmin() {
@@ -1868,18 +1891,18 @@ class _HomeDashboardState extends State<HomeDashboard> {
       child: Row(
         children: [
           const Icon(Icons.notifications_active_outlined,
-              color: Color(0xFF047857)),
+              color: Color(0xFF047857), size: 18),
           const SizedBox(width: 8),
           const Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('إشعارات الطقس على هذا الجهاز',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                Text('تنبيهات الطقس والإنذار المبكر',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
                 SizedBox(height: 3),
                 Text(
-                  'تنبيه عند توقع أمطار أو حر/برد شديد. عند التفعيل نستخدم موقعًا تقريبيًا (نحو 1 كم).',
-                  style: TextStyle(fontSize: 10, height: 1.35),
+                  'أمطار أو حر/برد، ومؤشرات رطوبة لمتابعة المحاصيل النشطة. الموقع تقريبي (نحو 1 كم).',
+                  style: TextStyle(fontSize: 9, height: 1.3),
                 ),
               ],
             ),
@@ -1904,149 +1927,211 @@ class _HomeDashboardState extends State<HomeDashboard> {
     );
   }
 
-  Widget _buildWeatherCard() {
+  Widget _buildEarlyWarningCard() {
+    if (_activePrograms.isEmpty) return const SizedBox.shrink();
+    final warnings = _weatherSnapshot == null
+        ? const <CropWeatherWarning>[]
+        : EarlyWarningService.evaluate(
+            forecast: _weatherSnapshot!.days,
+            programs: _activePrograms,
+          );
+    final warning = warnings.isEmpty ? null : warnings.first;
+    final color = warning?.level == CropWeatherRiskLevel.elevated
+        ? const Color(0xFFB45309)
+        : const Color(0xFF047857);
+    final title = _weatherSnapshot == null
+        ? 'الإنذار المبكر للمحصول'
+        : warning?.title ?? 'لا توجد إشارة رطوبة مرتفعة حاليًا';
+    final message = _weatherSnapshot == null
+        ? 'جارٍ تحميل توقعات الطقس لحقولك.'
+        : warning?.message ??
+            'نراجع توقعات الأيام الثلاثة القادمة للمحاصيل النشطة. الإشارة تعتمد الطقس فقط ولا تعني وجود إصابة.';
+
     return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      color: const Color(0xFFECFDF5),
+      margin: EdgeInsets.zero,
+      color: color.withValues(alpha: 0.07),
       elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: color.withValues(alpha: 0.25)),
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                const Expanded(
-                  child: Text('حالة الطقس في موقعك',
-                      style:
-                          TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                ),
-                InkWell(
-                  onTap: _showGovernoratePicker,
-                  borderRadius: BorderRadius.circular(8),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                          color: const Color(0xFF047857).withValues(alpha: 0.3)),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.location_on,
-                            size: 12, color: Color(0xFF047857)),
-                        const SizedBox(width: 3),
-                        Text(
-                          locationName.isNotEmpty
-                              ? locationName
-                              : 'اختر المحافظة',
-                          style: const TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF047857)),
-                        ),
-                        const SizedBox(width: 3),
-                        const Icon(Icons.arrow_drop_down,
-                            size: 16, color: Color(0xFF047857)),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 4),
-                _refreshing
-                    ? const SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Color(0xFF047857),
-                        ),
-                      )
-                    : IconButton(
-                        icon: const Icon(Icons.refresh,
-                            size: 22, color: Color(0xFF047857)),
-                        onPressed: () =>
-                            _fetchWeatherByLocation(manual: true),
-                        tooltip: 'تحديث الموقع والطقس',
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
-                      ),
-                const SizedBox(width: 8),
-                const Icon(Icons.wb_sunny, color: Colors.orange, size: 28),
-              ],
+            Icon(
+              warning?.level == CropWeatherRiskLevel.elevated
+                  ? Icons.warning_amber_rounded
+                  : Icons.eco_outlined,
+              color: color,
+              size: 20,
             ),
-            const SizedBox(height: 8),
-            Text(weatherStatusText,
-                style: const TextStyle(
-                    color: Colors.black87, fontWeight: FontWeight.bold)),
-            if (_weatherSnapshot != null) ...[
-              if (FirebaseAuth.instance.currentUser != null) ...[
-                const SizedBox(height: 12),
-                _buildWeatherPushControl(),
-              ],
-              const SizedBox(height: 12),
-              _buildWeatherAlertList(_weatherSnapshot!.alerts),
-              const SizedBox(height: 12),
-              const Text(
-                'توقعات الحرارة والأمطار - ٧ أيام',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: TextStyle(
+                          color: color,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12)),
+                  const SizedBox(height: 3),
+                  Text(message,
+                      maxLines: warning == null ? 2 : 4,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 10, height: 1.4)),
+                ],
               ),
-              const SizedBox(height: 8),
-              SizedBox(
-                height: 144,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: _weatherSnapshot!.days.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 8),
-                  itemBuilder: (context, index) => _buildForecastDayTile(
-                    _weatherSnapshot!.days[index],
-                    index,
-                  ),
-                ),
-              ),
-              Align(
-                alignment: AlignmentDirectional.centerStart,
-                child: TextButton.icon(
-                  onPressed: () => launchUrl(
-                    Uri.https('open-meteo.com'),
-                    mode: LaunchMode.externalApplication,
-                  ),
-                  icon: const Icon(Icons.open_in_new, size: 14),
-                  label: const Text('مصدر البيانات: Open-Meteo'),
-                ),
-              ),
-              const Text(
-                'التنبيهات تقديرية وليست تحذيرات رسمية من الأرصاد.',
-                style: TextStyle(fontSize: 10, color: Colors.black54),
-              ),
-            ],
-            const Divider(height: 20),
-            Row(
-              children: [
-                const Icon(Icons.water_drop, color: Colors.blue, size: 20),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    isWeatherLoaded
-                        ? ((double.tryParse(weatherTemp) ?? 0) > 30
-                            ? 'توصية الري: الطقس حار، يفضل الري في الصباح الباكر أو ليلاً لتجنب تبخر المياه.'
-                            : 'توصية الري: اعتدال الطقس مناسب للري، يرجى مراقبة رطوبة التربة.')
-                        : 'جاري تحليل التوصية...',
-                    style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF047857)),
-                  ),
-                ),
-              ],
             ),
           ],
         ),
       ),
     );
+  }
+
+  Widget _buildWeatherCard() {
+    final snapshot = _weatherSnapshot;
+    final icon = snapshot == null
+        ? Icons.cloud_outlined
+        : _forecastIcon(snapshot.currentWeatherCode);
+    return Card(
+      margin: EdgeInsets.zero,
+      color: const Color(0xFFECFDF5),
+      elevation: 0,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsetsDirectional.fromSTEB(12, 6, 8, 6),
+            child: Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(11),
+                  ),
+                  alignment: Alignment.center,
+                  child: Icon(icon, size: 20, color: const Color(0xFF0284C7)),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        snapshot == null
+                            ? 'الطقس · ${locationName.isEmpty ? 'موقع المزرعة' : locationName}'
+                            : '$locationName · ${snapshot.currentTemperatureC.toStringAsFixed(0)}°م',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 12),
+                      ),
+                      Text(
+                        snapshot == null
+                            ? weatherStatusText
+                            : '${snapshot.currentCondition} · رطوبة ${snapshot.currentHumidityPercent}٪',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 10, color: Colors.black54),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'اختر المحافظة أو الموقع',
+                  visualDensity: VisualDensity.compact,
+                  constraints: const BoxConstraints.tightFor(width: 34, height: 34),
+                  padding: EdgeInsets.zero,
+                  onPressed: _showGovernoratePicker,
+                  icon: const Icon(Icons.location_on_outlined,
+                      size: 18, color: Color(0xFF047857)),
+                ),
+                _refreshing
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Color(0xFF047857)),
+                      )
+                    : IconButton(
+                        tooltip: 'تحديث الطقس',
+                        visualDensity: VisualDensity.compact,
+                        constraints:
+                            const BoxConstraints.tightFor(width: 34, height: 34),
+                        padding: EdgeInsets.zero,
+                        onPressed: () => _fetchWeatherByLocation(manual: true),
+                        icon: const Icon(Icons.refresh,
+                            size: 18, color: Color(0xFF047857)),
+                      ),
+              ],
+            ),
+          ),
+          if (snapshot != null)
+            Theme(
+              data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+              child: ExpansionTile(
+                tilePadding: const EdgeInsetsDirectional.only(start: 12, end: 14),
+                childrenPadding:
+                    const EdgeInsetsDirectional.fromSTEB(12, 0, 12, 12),
+                visualDensity: VisualDensity.compact,
+                leading: const Icon(Icons.calendar_month_outlined,
+                    size: 17, color: Color(0xFF047857)),
+                title: const Text('التوقعات والتنبيهات',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                subtitle: const Text('تفاصيل ٧ أيام وإعداد الإشعارات',
+                    style: TextStyle(fontSize: 9)),
+                children: [
+                  if (FirebaseAuth.instance.currentUser != null) ...[
+                    _buildWeatherPushControl(),
+                    const SizedBox(height: 8),
+                  ],
+                  _buildWeatherAlertList(snapshot.alerts),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    height: 118,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: snapshot.days.length,
+                      separatorBuilder: (_, __) => const SizedBox(width: 6),
+                      itemBuilder: (context, index) =>
+                          _buildForecastDayTile(snapshot.days[index], index),
+                    ),
+                  ),
+                  Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: TextButton.icon(
+                      onPressed: () => launchUrl(
+                        Uri.https('open-meteo.com'),
+                        mode: LaunchMode.externalApplication,
+                      ),
+                      icon: const Icon(Icons.open_in_new, size: 12),
+                      label: const Text('مصدر البيانات: Open-Meteo',
+                          style: TextStyle(fontSize: 10)),
+                    ),
+                  ),
+                  const Text(
+                    'التنبيهات تقديرية وليست تحذيرات رسمية أو تشخيصًا زراعيًا.',
+                    style: TextStyle(fontSize: 9, color: Colors.black54),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _farmProgramsSubscription?.cancel();
+    super.dispose();
   }
 
   @override
@@ -2108,6 +2193,8 @@ class _HomeDashboardState extends State<HomeDashboard> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
           children: [
+            _buildEarlyWarningCard(),
+            if (_activePrograms.isNotEmpty) const SizedBox(height: 8),
             _buildWeatherCard(),
             const SizedBox(height: 16),
             _buildTipCard(),
@@ -2161,6 +2248,10 @@ class _AiScannerScreenState extends State<AiScannerScreen> {
   final _questionCtrl = TextEditingController();
   bool _loading = false;
   String _diagnosis = "";
+  PlantDiseaseResult? _latestPlantResult;
+  bool _savingToFarm = false;
+  String? _autoLinkedProgramId;
+  String? _farmLinkMessage;
   final FlutterTts _flutterTts = FlutterTts();
   bool _isPlayingVoice = false;
   File? _imageFile;
@@ -2261,15 +2352,6 @@ class _AiScannerScreenState extends State<AiScannerScreen> {
     }
   }
 
-  static String _imageMimeType(String path) {
-    final lower = path.toLowerCase();
-    if (lower.endsWith('.png')) return 'image/png';
-    if (lower.endsWith('.webp')) return 'image/webp';
-    if (lower.endsWith('.heic')) return 'image/heic';
-    if (lower.endsWith('.heif')) return 'image/heif';
-    return 'image/jpeg';
-  }
-
   Future<void> _sendToEngineerWhatsApp() async {
     const engineerPhone = AppConfig.engineerPhone;
     final message = """
@@ -2326,13 +2408,19 @@ $_diagnosis
       );
       return;
     }
+    if (_imageFile == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('مصنف الأمراض يحتاج صورة واضحة لورقة النبات.')),
+      );
+      return;
+    }
 
     final hasInternet = await OfflineService.hasInternet();
     if (!hasInternet) {
       if (mounted) {
         setState(() {
           _diagnosis =
-              '⚠️ لا يوجد اتصال بالإنترنت حالياً.\nحُفظ السؤال محلياً، لكنه لم يُحلل بعد. أعد إرسال الطلب بعد عودة الاتصال للحصول على التشخيص.';
+              'لا يوجد اتصال بالإنترنت حاليًا. حُفظ الطلب محليًا، وأعد إرساله بعد عودة الاتصال للحصول على تحليل المصنف.';
         });
       }
       if (widget.pendingDiagnosisId == null) {
@@ -2341,7 +2429,7 @@ $_diagnosis
           userPhone: widget.userPhone,
           question: question,
           imagePath: _imageFile?.path,
-          diagnosis: 'لم يُرسل بعد: لا يوجد اتصال بالإنترنت',
+          diagnosis: 'لم يُحلل بعد: لا يوجد اتصال بالإنترنت',
           analysisPending: true,
         );
       }
@@ -2350,117 +2438,290 @@ $_diagnosis
 
     setState(() {
       _loading = true;
-      _diagnosis = "";
+      _diagnosis = '';
+      _latestPlantResult = null;
+      _autoLinkedProgramId = null;
+      _farmLinkMessage = null;
     });
 
-    int maxRetries = 3;
-    int attempt = 0;
-    bool success = false;
-
-    while (attempt < maxRetries && !success) {
-      try {
-        attempt++;
-
-        final model = FirebaseAI.googleAI().generativeModel(
-          model: AppConfig.geminiModel,
-          generationConfig: GenerationConfig(
-            temperature: 0.3,
-            maxOutputTokens: 4096,
-            topP: 0.9,
-            topK: 40,
-          ),
+    try {
+      final result = await PlantDiseaseService.instance.classify(image: _imageFile!);
+      final report = StringBuffer()
+        ..writeln('أقرب فئات المصنف إلى الصورة:')
+        ..writeln();
+      for (var index = 0; index < result.predictions.length; index++) {
+        final prediction = result.predictions[index];
+        report.writeln(
+          '${index + 1}) ${prediction.cropAr}: ${prediction.nameAr} — '
+          'درجة النموذج ${(prediction.confidence * 100).toStringAsFixed(1)}%',
         );
-
-        final prompt = """
-أنت مهندس زراعي خبير ومستشار زراعي مصري بخبرة 20 سنة.
-اسم المزارع: ${widget.userName}
-
-المطلوب منك: تقديم تقرير زراعي شامل ومفصل عن الحالة التالية.
-
-⚠️ قواعد الإجابة (مهمة جداً - التزم بها حرفياً):
-
-1. ابدأ بالسلام فقط في سطر واحد:
-"السلام عليكم يا ${widget.userName} 🌱"
-
-2. بعدها اكتب تقرير مفصل بالترتيب ده بالظبط، مع استخدام الإيموجي زي ما هو مكتوب:
-
-🔍 *المرض/الآفة:*
-اكتب اسم المرض أو الآفة بالتفصيل (اسم علمي + اسم شائع إن أمكن)، ووصف مختصر للأعراض الظاهرة.
-
-🎯 *الأسباب:*
-اذكر 3-4 أسباب رئيسية لظهور المشكلة (ظروف جوية، ري، تربة، إصابات...)، كل سبب في سطر منفصل مع شرح بسيط.
-
-💊 *العلاج:*
-اذكر خطة علاجية كاملة ومفصلة تشمل:
-- أسماء المبيدات أو المواد الفعالة (بالجرعات الموصى بها للفدان)
-- طريقة التطبيق (رش / حقن / تسميد)
-- عدد المرات والفاصل بين كل رشة
-- احتياطات الأمان اللي لازم تتبع
-
-🛡️ *الوقاية:*
-اذكر 4-5 نصائح وقائية للمستقبل لمنع تكرار المشكلة.
-
-3. لو الصورة مش واضحة أو المعلومات ناقصة، اسأل سؤال توضيحي واحد في الآخر.
-
-4. خلي التقرير كامل ومفصل، بس مترصّص في نقاط واضحة ومقروءة.
-
-5. متستخدمش نجوم ** كتير، استخدم الإيموجي اللي فوق بس.
-
-سؤال/مشكلة المزارع: $question
-""";
-
-        final parts = <Part>[TextPart(prompt)];
-
-        if (_imageFile != null) {
-          final imageBytes = await _imageFile!.readAsBytes();
-          parts.add(
-            InlineDataPart(_imageMimeType(_imageFile!.path), imageBytes),
+      }
+      final treatment = result.treatment;
+      report.writeln();
+      report.writeln('معلومات المكافحة من قاعدة العلاج المرفقة:');
+      if (treatment == null || !treatment.matched) {
+        report.writeln(
+          'لا توجد مطابقة دقيقة في قاعدة العلاج لهذه الفئة؛ لن أقترح مبيدًا أو جرعة.',
+        );
+      } else {
+        if (treatment.diseaseAr != null) {
+          report.writeln('السجل المطابق: ${treatment.diseaseAr}');
+        }
+        if (treatment.symptomsAr != null) {
+          report.writeln('الأعراض الواردة في السجل: ${treatment.symptomsAr}');
+        }
+        if (treatment.controlTimingAr != null) {
+          report.writeln('توقيت المكافحة المذكور: ${treatment.controlTimingAr}');
+        }
+        if (treatment.approvedPesticides.isEmpty) {
+          report.writeln(
+            treatment.noticeAr ??
+                'لا توجد توصية مبيد موثقة مفعّلة في قاعدة التشغيل؛ لا تستخدم جرعة بالتخمين.',
           );
-        }
-
-        final response = await model.generateContent([Content.multi(parts)]);
-        final diagnosisText =
-            response.text ?? 'لم يتمكن الذكاء الاصطناعي من تقديم تشخيص.';
-
-        success = true;
-        if (mounted) {
-          setState(() {
-            _diagnosis = diagnosisText;
-          });
-        }
-
-        try {
-          await OfflineService.saveDiagnosis(
-            userName: widget.userName,
-            userPhone: widget.userPhone,
-            question: question,
-            imagePath: _imageFile?.path,
-            diagnosis: diagnosisText,
-          );
-          final oldPendingId = widget.pendingDiagnosisId;
-          if (oldPendingId != null) {
-            await OfflineService.deleteDiagnosis(oldPendingId);
-          }
-        } catch (e) {
-          debugPrint("تعذر حفظ التشخيص محلياً");
-        }
-      } catch (e) {
-        if (!mounted) break;
-        if (attempt >= maxRetries) {
-          setState(() {
-            _diagnosis =
-                'عذراً، خدمة الذكاء الاصطناعي مشغولة حالياً.\nبرجاء المحاولة مرة أخرى بعد قليل.';
-          });
         } else {
-          await Future.delayed(const Duration(seconds: 2));
+          for (final product in treatment.approvedPesticides) {
+            final productName = product['product_name_ar'] ??
+                product['name_ar'] ??
+                product['product_name'];
+            if (productName != null) report.writeln('المنتج المسجل: $productName');
+          }
         }
       }
-    }
+      if (treatment?.source != null) {
+        report.writeln('المصدر المذكور في الملف: ${treatment!.source}');
+      }
+      if (treatment?.section != null) {
+        report.writeln('القسم: ${treatment!.section}');
+      }
+      if (treatment?.sourceVerificationNoteAr != null) {
+        report.writeln(treatment!.sourceVerificationNoteAr);
+      }
+      report
+        ..writeln()
+        ..writeln('تنبيه: هذه احتمالات آلية أولية وليست تشخيصًا مؤكدًا.')
+        ..writeln(result.disclaimer)
+        ..writeln('لا تستخدم النتيجة لاختيار مبيد أو جرعة؛ اعرض النبات على مهندس زراعي محلي.');
+      final diagnosisText = report.toString().trim();
 
-    if (!mounted) return;
-    setState(() {
-      _loading = false;
-    });
+      if (!mounted) return;
+      setState(() {
+        _diagnosis = diagnosisText;
+        _latestPlantResult = result;
+      });
+
+      try {
+        await OfflineService.saveDiagnosis(
+          userName: widget.userName,
+          userPhone: widget.userPhone,
+          question: question,
+          imagePath: _imageFile?.path,
+          diagnosis: diagnosisText,
+        );
+        final oldPendingId = widget.pendingDiagnosisId;
+        if (oldPendingId != null) {
+          await OfflineService.deleteDiagnosis(oldPendingId);
+        }
+      } catch (_) {
+        debugPrint('تعذر حفظ نتيجة المصنف محليًا');
+      }
+      await _autoLinkDiagnosisToFarm(result);
+    } on PlantDiseaseException catch (error) {
+      if (mounted) setState(() => _diagnosis = error.message);
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _diagnosis = 'تعذر تحليل الصورة الآن. تحقق من اتصالك وحاول مرة أخرى لاحقًا.';
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  String _farmCropLabel(MyFarmProgram program) {
+    for (final entry in program.inputValues.entries) {
+      final key = entry.key.toLowerCase();
+      if (key.contains('crop') ||
+          key.contains('plant') ||
+          key.contains('variety') ||
+          key.contains('محصول') ||
+          key.contains('نبات') ||
+          key.contains('صنف')) {
+        final value = entry.value?.toString().trim() ?? '';
+        if (value.isNotEmpty) return value;
+      }
+    }
+    if (program.templateName.trim().isNotEmpty) return program.templateName;
+    return 'غير محدد';
+  }
+
+  Future<void> _autoLinkDiagnosisToFarm(PlantDiseaseResult result) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || result.predictions.isEmpty) return;
+
+    try {
+      final programs = await MyFarmService.getUserPrograms(user.uid).first;
+      final prediction = result.predictions.first;
+      final program = PlantHealthService.findUniqueMatchingProgram(
+        programs: programs,
+        className: prediction.className,
+      );
+      if (program == null) {
+        if (mounted) {
+          setState(() {
+            _farmLinkMessage =
+                'لم يُحفظ تلقائيًا: لم يُعثر على برنامج نشط واحد واضح للمحصول. اختر البرنامج يدويًا للمراجعة.';
+          });
+        }
+        return;
+      }
+
+      await PlantHealthService.saveDiagnosisToProgram(
+        programId: program.id,
+        farmCrop: _farmCropLabel(program),
+        predictedCrop: prediction.cropAr,
+        disease: prediction.nameAr,
+        className: prediction.className,
+        confidence: prediction.confidence,
+        modelVersion: result.modelVersion,
+      );
+      if (mounted) {
+        setState(() {
+          _autoLinkedProgramId = program.id;
+          _farmLinkMessage =
+              'تم حفظ التشخيص تلقائيًا في برنامج «${program.templateName}» للمراجعة.';
+        });
+      }
+    } on PlantHealthException catch (error) {
+      if (mounted) setState(() => _farmLinkMessage = error.message);
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _farmLinkMessage =
+              'تعذر الحفظ التلقائي في مزرعتي. تحقق من اتصال الإنترنت وقواعد Firestore.';
+        });
+      }
+    }
+  }
+
+  Future<void> _saveDiagnosisToFarm() async {
+    final result = _latestPlantResult;
+    final user = FirebaseAuth.instance.currentUser;
+    if (result == null || result.predictions.isEmpty) return;
+    if (user == null) {
+      _showFarmMessage('سجّل الدخول أولاً لحفظ التشخيص في مزرعتك.');
+      return;
+    }
+    if (_savingToFarm) return;
+
+    setState(() => _savingToFarm = true);
+    try {
+      final programs = await MyFarmService.getUserPrograms(user.uid).first;
+      if (!mounted) return;
+      if (programs.isEmpty) {
+        _showFarmMessage('لا توجد برامج في مزرعتي. احفظ برنامج المحصول أولاً.');
+        return;
+      }
+
+      final selectedProgram = await showDialog<MyFarmProgram>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('اختر برنامج المحصول'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView.separated(
+              shrinkWrap: true,
+              itemCount: programs.length,
+              separatorBuilder: (_, __) => const Divider(height: 1),
+              itemBuilder: (context, index) {
+                final program = programs[index];
+                final crop = _farmCropLabel(program);
+                return ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Text(program.templateEmoji,
+                      style: const TextStyle(fontSize: 24)),
+                  title: Text(program.templateName),
+                  subtitle: Text(
+                    crop == 'غير محدد'
+                        ? 'المحصول غير محدد في بيانات البرنامج'
+                        : 'المحصول: $crop',
+                  ),
+                  onTap: () => Navigator.pop(dialogContext, program),
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('إلغاء'),
+            ),
+          ],
+        ),
+      );
+      if (!mounted || selectedProgram == null) return;
+
+      final prediction = result.predictions.first;
+      final farmCrop = _farmCropLabel(selectedProgram);
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('حفظ كسجل متابعة'),
+          content: Text(
+            'برنامج المزرعة: ${selectedProgram.templateName}\n'
+            'المحصول المسجل: $farmCrop\n'
+            'أقرب نتيجة للنموذج: ${prediction.cropAr} — ${prediction.nameAr} '
+            '(${(prediction.confidence * 100).toStringAsFixed(1)}٪).\n\n'
+            'المصنف الحالي يغطي 38 فئة ولا يشمل القمح. سيُحفظ التشخيص كملاحظة تحتاج مراجعة، ولن يغيّر جدول الري أو يوصي بزيادة/خفض كمية المياه.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('رجوع'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('حفظ للمراجعة'),
+            ),
+          ],
+        ),
+      );
+      if (!mounted || confirmed != true) return;
+
+      await PlantHealthService.saveDiagnosisToProgram(
+        programId: selectedProgram.id,
+        farmCrop: farmCrop,
+        predictedCrop: prediction.cropAr,
+        disease: prediction.nameAr,
+        className: prediction.className,
+        confidence: prediction.confidence,
+        modelVersion: result.modelVersion,
+      );
+      if (mounted) {
+        setState(() {
+          _autoLinkedProgramId = selectedProgram.id;
+          _farmLinkMessage =
+              'تم حفظ التشخيص في برنامج «${selectedProgram.templateName}» للمراجعة.';
+        });
+        _showFarmMessage(
+          'تم ربط التشخيص ببرنامج مزرعتك. افتح تبويب «صحة النبات» للمراجعة.',
+        );
+      }
+    } on PlantHealthException catch (error) {
+      if (mounted) _showFarmMessage(error.message);
+    } catch (_) {
+      if (mounted) {
+        _showFarmMessage('تعذر حفظ التشخيص. تحقق من الاتصال وصلاحيات Firestore.');
+      }
+    } finally {
+      if (mounted) setState(() => _savingToFarm = false);
+    }
+  }
+
+  void _showFarmMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
+    );
   }
 
   @override
@@ -2565,6 +2826,63 @@ $_diagnosis
                           textAlign: TextAlign.right,
                           textDirection: TextDirection.rtl,
                         ),
+                        if (_latestPlantResult != null && _farmLinkMessage != null) ...[
+                          const SizedBox(height: 12),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: _autoLinkedProgramId != null
+                                  ? const Color(0xFFDCFCE7)
+                                  : const Color(0xFFFFF7ED),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              _farmLinkMessage!,
+                              textAlign: TextAlign.right,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: _autoLinkedProgramId != null
+                                    ? const Color(0xFF166534)
+                                    : const Color(0xFF9A3412),
+                              ),
+                            ),
+                          ),
+                        ],
+                        if (_latestPlantResult != null &&
+                            _autoLinkedProgramId == null) ...[
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.icon(
+                              onPressed: _savingToFarm ? null : _saveDiagnosisToFarm,
+                              icon: _savingToFarm
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : const Icon(Icons.agriculture),
+                              label: Text(_savingToFarm
+                                  ? 'جارٍ الحفظ في مزرعتي...'
+                                  : 'اختيار برنامج يدويًا للمراجعة'),
+                              style: FilledButton.styleFrom(
+                                backgroundColor: const Color(0xFF047857),
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 13),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          const Text(
+                            'يُحفظ كسجل يحتاج مراجعة؛ لا يغيّر كمية أو جدول الري تلقائيًا.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(fontSize: 11, color: Colors.black54),
+                          ),
+                        ],
                         const SizedBox(height: 12),
                         Row(
                           children: [

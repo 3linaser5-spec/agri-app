@@ -101,6 +101,56 @@ service cloud.firestore {
       allow update: if signedIn()
         && resource.data.user_id == request.auth.uid
         && request.resource.data.user_id == request.auth.uid;
+
+      match /plant_health_cases/{caseId} {
+        function ownsParentProgram() {
+          return signedIn()
+            && get(/databases/$(database)/documents/my_farm/$(id)).data.user_id
+              == request.auth.uid;
+        }
+
+        function validPlantHealthCase() {
+          return request.resource.data.keys().hasAll([
+              'user_id', 'farm_crop', 'predicted_crop', 'disease', 'class_name',
+              'confidence', 'model_version', 'irrigation_action',
+              'irrigation_advice_ar', 'review_required', 'status', 'created_at'
+            ])
+            && request.resource.data.keys().hasOnly([
+              'user_id', 'farm_crop', 'predicted_crop', 'disease', 'class_name',
+              'confidence', 'model_version', 'irrigation_action',
+              'irrigation_advice_ar', 'review_required', 'status', 'created_at'
+            ])
+            && request.resource.data.user_id == request.auth.uid
+            && request.resource.data.farm_crop is string
+            && request.resource.data.farm_crop.size() <= 320
+            && request.resource.data.predicted_crop is string
+            && request.resource.data.predicted_crop.size() > 0
+            && request.resource.data.predicted_crop.size() <= 320
+            && request.resource.data.disease is string
+            && request.resource.data.disease.size() > 0
+            && request.resource.data.disease.size() <= 320
+            && request.resource.data.class_name is string
+            && request.resource.data.class_name.size() > 0
+            && request.resource.data.class_name.size() <= 320
+            && request.resource.data.confidence is number
+            && request.resource.data.confidence >= 0
+            && request.resource.data.confidence <= 1
+            && request.resource.data.model_version is string
+            && request.resource.data.model_version.size() <= 100
+            && request.resource.data.irrigation_action == 'monitor_and_review'
+            && request.resource.data.irrigation_advice_ar is string
+            && request.resource.data.irrigation_advice_ar.size() > 0
+            && request.resource.data.irrigation_advice_ar.size() <= 2000
+            && request.resource.data.review_required == true
+            && request.resource.data.status == 'needs_agronomist_review'
+            && request.resource.data.created_at == request.time;
+        }
+
+        allow read: if ownsParentProgram();
+        allow create: if ownsParentProgram() && validPlantHealthCase();
+        allow update: if false;
+        allow delete: if ownsParentProgram();
+      }
     }
 
     // الحاسبات والموسوعة: القراءة لأي مستخدم مسجّل، الكتابة للأدمن فقط
@@ -119,6 +169,54 @@ service cloud.firestore {
     match /encyclopedia_items/{id} {
       allow read: if signedIn();
       allow write: if isAdmin();
+    }
+
+    // صور التدريب وتسمياتها لا يصل إليها إلا الأدمن. لا يسمح العميل بتعديل
+    // أو حذف العينات بعد حفظها، للحفاظ على سجل البيانات الذي سيُستخدم لاحقاً.
+    function validTrainingSample(sampleId) {
+      return request.resource.data.keys().hasAll([
+          'crop', 'disease', 'className', 'storagePath', 'mimeType',
+          'sizeBytes', 'uploadedByUid', 'uploadedAt', 'status',
+          'labelConfirmedByAgronomist', 'source'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'crop', 'disease', 'className', 'storagePath', 'mimeType',
+          'sizeBytes', 'uploadedByUid', 'uploadedAt', 'status',
+          'labelConfirmedByAgronomist', 'source'
+        ])
+        && request.resource.data.crop is string
+        && request.resource.data.crop.size() > 0
+        && request.resource.data.crop.size() <= 320
+        && request.resource.data.disease is string
+        && request.resource.data.disease.size() > 0
+        && request.resource.data.disease.size() <= 320
+        && request.resource.data.className == request.resource.data.crop + '__' + request.resource.data.disease
+        && request.resource.data.className.size() <= 642
+        && request.resource.data.storagePath is string
+        && (
+          (request.resource.data.storagePath == 'plant_training/' + request.auth.uid + '/' + sampleId + '.jpg'
+            && request.resource.data.mimeType == 'image/jpeg')
+          || (request.resource.data.storagePath == 'plant_training/' + request.auth.uid + '/' + sampleId + '.jpeg'
+            && request.resource.data.mimeType == 'image/jpeg')
+          || (request.resource.data.storagePath == 'plant_training/' + request.auth.uid + '/' + sampleId + '.png'
+            && request.resource.data.mimeType == 'image/png')
+          || (request.resource.data.storagePath == 'plant_training/' + request.auth.uid + '/' + sampleId + '.webp'
+            && request.resource.data.mimeType == 'image/webp')
+        )
+        && request.resource.data.sizeBytes is int
+        && request.resource.data.sizeBytes > 0
+        && request.resource.data.sizeBytes <= 10 * 1024 * 1024
+        && request.resource.data.uploadedByUid == request.auth.uid
+        && request.resource.data.uploadedAt == request.time
+        && request.resource.data.status == 'pending_training'
+        && request.resource.data.labelConfirmedByAgronomist == true
+        && request.resource.data.source == 'admin_training_portal';
+    }
+
+    match /plant_training_samples/{sampleId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin() && validTrainingSample(sampleId);
+      allow update, delete: if false;
     }
 
     // تسجيل رمز FCM لكل تثبيت. موقع المزرعة تقريبي ولا يُكتب إلا لحساب صاحبه.

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/material.dart';
@@ -9,11 +11,15 @@ import '../utils/safe_parse.dart';
 class NotificationService {
   static final FlutterLocalNotificationsPlugin _localNotifications =
       FlutterLocalNotificationsPlugin();
+  static bool _initialized = false;
+  static StreamSubscription<RemoteMessage>? _foregroundSubscription;
+  static StreamSubscription<RemoteMessage>? _openedSubscription;
 
   // ═══════════════════════════════════════════
   // تهيئة الإشعارات
   // ═══════════════════════════════════════════
   static Future<void> initialize() async {
+    if (_initialized) return;
     // 0. تهيئة الـ timezone (مهمة للجدولة)
     tz.initializeTimeZones();
     try {
@@ -59,11 +65,22 @@ class NotificationService {
           importance: Importance.high,
         ));
 
+    await _localNotifications
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(const AndroidNotificationChannel(
+          'crop_risk_alerts',
+          'إنذارات متابعة المحاصيل',
+          description: 'مؤشرات الطقس لمتابعة الحقول والمحاصيل المسجلة',
+          importance: Importance.high,
+        ));
+
     // 3. طلب صلاحيات الإشعارات
     await _requestPermissions();
 
     // 4. الاستماع للإشعارات من Firebase
     _listenToFirebaseMessages();
+    _initialized = true;
   }
 
   // ═══════════════════════════════════════════
@@ -100,23 +117,40 @@ class NotificationService {
   // ═══════════════════════════════════════════
   static void _listenToFirebaseMessages() {
     // الإشعارات اللي بتيجي والتطبيق مفتوح
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      debugPrint("📩 إشعار جديد (التطبيق مفتوح): ${message.notification?.title}");
-      if (message.notification != null) {
-        final title = message.notification!.title ?? 'تنبيه';
-        final body = message.notification!.body ?? '';
-        if (message.data['type'] == 'weather_alert') {
-          showWeatherNotification(title: title, body: body);
-        } else {
-          showLocalNotification(title: title, body: body);
-        }
-      }
-    });
+    _foregroundSubscription ??= FirebaseMessaging.onMessage.listen(
+      (RemoteMessage message) => unawaited(_showRemoteMessage(message)),
+    );
 
     // الإشعارات اللي بتيجي والتطبيق في الخلفية
-    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+    _openedSubscription ??=
+        FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
       debugPrint("📩 تم فتح التطبيق من الإشعار: ${message.notification?.title}");
     });
+    unawaited(FirebaseMessaging.instance.getInitialMessage().then((message) {
+      if (message != null) {
+        debugPrint('تم تشغيل التطبيق من إشعار FCM محفوظ.');
+      }
+    }));
+  }
+
+  static Future<void> _showRemoteMessage(RemoteMessage message) async {
+    final title = (message.notification?.title ?? message.data['title'] ?? '')
+        .toString()
+        .trim();
+    final body = (message.notification?.body ?? message.data['body'] ?? '')
+        .toString()
+        .trim();
+    if (title.isEmpty && body.isEmpty) return;
+
+    final resolvedTitle = title.isEmpty ? 'تنبيه زراعي' : title;
+    final type = message.data['type']?.toString();
+    if (type == 'weather_alert') {
+      await showWeatherNotification(title: resolvedTitle, body: body);
+    } else if (type == 'crop_risk_alert') {
+      await showCropRiskNotification(title: resolvedTitle, body: body);
+    } else {
+      await showLocalNotification(title: resolvedTitle, body: body);
+    }
   }
 
   // ═══════════════════════════════════════════
@@ -167,6 +201,29 @@ class NotificationService {
       iOS: DarwinNotificationDetails(),
     );
 
+    await _localNotifications.show(
+      DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      title,
+      body,
+      details,
+    );
+  }
+
+  static Future<void> showCropRiskNotification({
+    required String title,
+    required String body,
+  }) async {
+    const details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        'crop_risk_alerts',
+        'إنذارات متابعة المحاصيل',
+        channelDescription: 'مؤشرات الطقس لمتابعة الحقول والمحاصيل المسجلة',
+        importance: Importance.high,
+        priority: Priority.high,
+        icon: '@mipmap/ic_launcher',
+      ),
+      iOS: DarwinNotificationDetails(),
+    );
     await _localNotifications.show(
       DateTime.now().millisecondsSinceEpoch ~/ 1000,
       title,

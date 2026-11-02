@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 
-// ⚠️ استيراد الشاشات والخدمات بصورة صحيحة لتجنب الـ Circular Import
-import 'home_dashboard_screen.dart';
-import 'ai_scanner_screen.dart';
+// الشاشتان الرئيسيتان معرفتان في نقطة دخول التطبيق.
+import '../main.dart' show HomeDashboard, AiScannerScreen;
 import 'farm/my_farm_screen.dart';
 import 'admin/admin_panel_screen.dart';
 
 // استيراد شاشة حاسبة شبكات الري وتصدير الكاد التي أعددناها
-import '../screens/irrigation_calculator_screen.dart';
+import 'calculators/irrigation_calculator_screen.dart';
 
 class MainDashboardScreen extends StatefulWidget {
   final String userName;

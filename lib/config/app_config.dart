@@ -22,13 +22,6 @@ class AppConfig {
     return 'https://wa.me/$safePhone';
   }
 
-  /// موديل Gemini. غيّره وقت البناء لو اسم الموديل اتغيّر عند Google:
-  ///   --dart-define=GEMINI_MODEL=<model-id>
-  static const String geminiModel = String.fromEnvironment(
-    'GEMINI_MODEL', 
-    defaultValue: 'gemini-1.5-flash', // تم تعديله لموديل حقيقي
-  );
-
   /// حسابات الأدمن (واجهة فقط). الحماية الحقيقية لازم تكون في قواعد Firestore،
   /// راجع firebase/README.md.
   static const List<String> adminEmails = [

@@ -87,32 +87,97 @@ Google Cloud Console لتقييد المفتاح باسم الحزمة
 `com.dahshory.agri.agri_app` وبصمة SHA-1 الصحيحة، مع إبقاء الحماية الحقيقية في
 قواعد Firebase.
 
-إعداد `apiKey` الحالي في `lib/firebase_options.dart` يبدو مبتوراً وغير مطابق
-لطول/صيغة القيمة التي يوفرها Firebase عادةً. لا يمكن استنتاج مفتاح أو `appId` أو
-`projectId` الصحيح من نسخة المستودع؛ على مالك المشروع تشغيل `flutterfire configure`
-أو نسخ القيم من إعداد تطبيق Android في Firebase Console، ثم التأكد من تطابق
-`google-services.json` المستخدم محلياً وسر GitHub `GOOGLE_SERVICES_JSON`.
+تمت مطابقة `lib/firebase_options.dart` مع إعداد Android الرسمي للمشروع من Firebase
+Console. ملف `google-services.json` لم يُضف إلى المستودع؛ يظل الـworkflow يعتمد على سر
+GitHub `GOOGLE_SERVICES_JSON`، ويجب إبقاؤه مطابقًا لملف التطبيق نفسه.
 
-### Gemini عبر Firebase AI Logic
+### مصنف أمراض النباتات المخصص
 
-التطبيق يستخدم حزمة Flutter `firebase_ai` لإرسال الطلبات عبر Firebase AI Logic؛
-لا تضف مفتاح Gemini إلى `lib/` أو `--dart-define` أو GitHub Actions. المفتاح
-المضمن في تطبيق عميل قابل للاستخراج حتى لو جاء من GitHub Secret.
+أُضيف `functions/plant_ai` كـPython codebase منفصل عن دوال الطقس المكتوبة بـTypeScript.
+الدالة `classifyPlantDisease` تشغّل ملف TFLite المخصص داخل Firebase Cloud Functions،
+وتتطلب Firebase Auth وApp Check صالحًا، وتسمح بعشر صور يوميًا لكل حساب. لا تُحفظ الصور؛
+وتُعاد أعلى ثلاثة تصنيفات أولية مع البحث عن سجل مطابق بدقة في قاعدة العلاج المرفقة.
+يعرض التطبيق الأعراض وتوقيت المكافحة الواردين في السجل المطابق، ولا يعرض مبيدًا أو جرعة
+ما دامت بيانات المنتج غير موثقة.
 
-1. من Firebase Console افتح AI Services ← AI Logic، أكمِل إعداد المشروع واختر
-   مزود Gemini Developer API أو مزوداً مناسباً لمشروعك.
-2. من Security ← App Check سجّل تطبيق Android على **Play Integrity**، وتأكد من
-   إعداد بصمة التوقيع الصحيحة. الكود يفعّل Debug provider في debug وPlay Integrity
-   في release. لا تضع Debug token في إصدار منشور.
-3. راقب مؤشرات App Check وجرّب نسخة debug والنسخة الموقعة، ثم تحقق من أن Firebase
-   AI Logic يفرض App Check في صفحة APIs. عند رفض الطلبات راجع تسجيل التطبيق ورمز
-   App Check وإعداد Firebase قبل تعطيل enforcement.
-4. راقب الحصص والاستخدام، واضبط حدوداً مناسبة. App Check يقلل الطلبات من العملاء
-   غير المعتمدين لكنه لا يمنع إساءة الاستخدام من نسخة حقيقية مخترقة.
+شاشة الفحص لم تعد تستدعي Gemini؛ تستخدم `cloud_functions` لاستدعاء المصنف. App Check
+يستخدم Debug أثناء التطوير وPlay Integrity في إصدار Android الإنتاجي. قبل الإطلاق،
+سجّل تطبيق Android في Firebase App Check باستخدام Play Integrity وأضف بصمة SHA-256
+لشهادة التوقيع؛ يلزم أيضًا إعداد Play Integrity في Google Play Console إذا كان ذلك
+مطلوبًا لقناة التوزيع. لا تفعّل فرض App Check على الدالة قبل اختبار نسخة التطبيق المسجلة.
+لا تضع Debug token في إصدار منشور أو workflow عام.
 
-إذا استُخدم مفتاح Gemini سابقاً داخل APK موزع، دوّره وأوقف القديم بعد التحقق من
-عمل المسار الجديد، واحذف سر `GEMINI_API_KEY` القديم من إعدادات GitHub، وراجع
-استخدام المشروع بحثاً عن نشاط غير مصرح به.
+نشر الدالة يتطلب مشروع Firebase على Blaze، كما أن Python Functions موصوفة في توثيق
+Firebase الحالي كميزة تجريبية. راجع الميزانية وفعّل تنبيهات الفوترة قبل النشر. من جذر
+المستودع وبعد اختيار مشروع Firebase الصحيح، ينشر codebase المصنف فقط بهذا الأمر:
+
+```sh
+firebase deploy --only functions:plant-ai
+```
+
+قواعد Firestore الحالية تمنع الوصول المباشر من العميل إلى مجموعة عداد الاستخدام
+`_server_ai_usage`؛ الدالة تستخدم Admin SDK لحفظ العداد. ملف `treatments.json` يذكر
+كتاب لجنة مبيدات الآفات الزراعية 2026، لكنه يصف مصدره بأنه غير متحقق بصورة مستقلة،
+وسجلات التشغيل الحالية لا تحتوي مبيدات معتمدة مفعّلة؛ لذلك لا تُعرض أسماء منتجات أو جرعات.
+النموذج لا يغطي إلا الفئات الثماني والثلاثين التي دُرّب عليها ولا يضمن دقة صور الحقول.
+
+### بوابة صور التدريب للأدمن
+
+أضيفت إلى لوحة الأدمن شاشة تجمع صورة النبات مع المحصول والمرض بعد تأكيد مراجعة
+التصنيف. تُحفظ الصورة في `plant_training/{uid}/` داخل Cloud Storage، وتحفظ بياناتها
+الوصفية في مجموعة `plant_training_samples` بحالة `pending_training`. لا تنشئ الشاشة
+روابط تنزيل عامة، ولا تسمح بتعديل أو حذف العينات من التطبيق. تعتمد قواعد Firestore
+وStorage على وجود مستند `admins/{uid}`؛ يجب إنشاء المستند للحساب الإداري ونشر القواعد
+من Firebase Console أو CLI قبل نجاح الرفع. قواعد Storage تستخدم `firestore.exists`
+للتحقق من دور الأدمن، ويُحتسب فحص المستند ضمن قراءات Firestore.
+
+هذه البوابة تجمع الصور المصنفة فقط؛ **رفع صورة لا يغير أوزان النموذج العامل ولا ينشر
+نسخة جديدة تلقائياً**. سكربت التدريب المتاح يبدأ من MobileNetV2 بأوزان ImageNet وينزّل
+PlantVillage، ولا يستأنف من ملف TFLite المنشور. لم يُعثر ضمن الملفات المتاحة على
+checkpoint قابل للتدريب بصيغة `.keras` أو `.h5` أو `.pt`؛ لذلك يلزم إعداد وتشغيل خدمة
+تدريب منفصلة تجمع الصور القديمة والجديدة، وتقيّم النموذج، ثم تصدر نسخة جديدة قبل ربطها
+بدالة التشخيص. لا تعرض البوابة زر تدريب يوحي بأن هذه الخطوة تنفذ بالفعل.
+
+إعدادات الرفع متوافقة مع FlutterFire `firebase_storage` 13.x و`firebase_core` 4.x.
+لرفع القواعد بعد اختيار المشروع الصحيح (لم ينفذ هذا التغيير أي نشر):
+
+```sh
+firebase deploy --only firestore:rules,storage
+```
+
+راجع [رفع الملفات من Flutter](https://firebase.google.com/docs/storage/flutter/upload-files)،
+[صلاحيات Cloud Storage والتحقق من البيانات](https://firebase.google.com/docs/storage/security/rules-conditions)،
+و[إصدار firebase_storage المتوافق](https://pub.dev/packages/firebase_storage/versions/13.0.0).
+
+### ربط تشخيص الآفات ببرنامج مزرعتي
+
+بعد اكتمال المصنف، يحاول التطبيق تلقائيًا ربط النتيجة ببرنامج نشط واحد فقط إذا تطابق
+اسم المحصول في الفئة مع اسم محصول محفوظ ببرنامج المزرعة. عند عدم وجود تطابق وحيد
+(مثل القمح غير المدعوم أو تكرار برامج المحصول)، لا يخمّن التطبيق؛ يعرض اختيارًا يدويًا
+للمراجعة. يحفظ السجل المحصول المسجل، أقرب فئة متوقعة، نسبة ثقة النموذج وإصداره تحت المسار
+`my_farm/{programId}/plant_health_cases`. يظهر السجل في تبويب «صحة النبات» داخل
+تفاصيل البرنامج. يظل سجل الملاحظة منفصلاً عن مهام الجدول الأصلي حتى لا تتغير فهارس
+المهام أو تقدم البرنامج.
+
+الإرشاد المائي الحالي احترازي فقط: فحص رطوبة التربة والصرف ومراجعة مهندس زراعي؛ لا
+يصدر التطبيق أمرًا بزيادة أو خفض الري ولا يغير الجدول المحفوظ. لا توجد بعد قاعدة
+موثقة تربط كل مرض بمرحلة النمو ونظام الري ونوع التربة. يجب إدخال توصيات محددة لاحقًا
+من مصدر زراعي موثوق ومراجعتها قبل تفعيلها. كما أن المصنف الحالي يخرج 38 فئة ولا يشمل
+القمح؛ لا تعتمد نتائجه للقمح حتى يُدرّب ويُقيّم نموذج يغطي أمراض القمح.
+
+يتطلب حفظ السجلات نشر قواعد Firestore المعدّلة (لم ينفذ هذا التغيير أي نشر):
+
+```sh
+firebase deploy --only firestore:rules
+```
+
+مراجع الإعداد الرسمية: [تنظيم codebases متعددة](https://firebase.google.com/docs/functions/organize-functions)،
+[إصدارات Python runtime](https://firebase.google.com/docs/functions/manage-functions)،
+[مرجع Callable Functions لـPython](https://firebase.google.com/docs/reference/functions/2nd-gen/python/firebase_functions.https_fn)،
+[App Check مع Play Integrity على Android](https://firebase.google.com/docs/app-check/android/play-integrity-provider)،
+[تهيئة App Check في Flutter](https://firebase.google.com/docs/app-check/flutter/default-providers)،
+[خطة Firebase Blaze والفوترة](https://firebase.google.com/docs/projects/billing/firebase-pricing-plans)،
+[حزمة LiteRT المستخدمة](https://pypi.org/project/ai-edge-litert/).
 
 ## 6) تحديث التطبيق
 

@@ -14,6 +14,7 @@ void main() {
       expect(snapshot.days.first.minimumTemperatureC, 22);
       expect(snapshot.days.first.precipitationProbability, 68);
       expect(snapshot.days.first.precipitationMm, 7.2);
+      expect(snapshot.days.first.meanRelativeHumidityPercent, 90);
     });
 
     test('round-trips a cached forecast', () {
@@ -80,6 +81,15 @@ Map<String, dynamic> _sampleApiResponse({bool mild = false}) {
       'precipitation_probability_max': mild ? List<int>.filled(7, 10) : [68, 20, 15, 10, 10, 5, 5],
       'precipitation_sum': mild ? List<double>.filled(7, 0) : [7.2, 0, 0, 0, 0, 0, 0],
       'weather_code': List<int>.filled(7, 0),
+    },
+    'hourly': {
+      'time': List<String>.generate(
+        14,
+        (index) => '${dates[index ~/ 2]}T${index.isEven ? '00:00' : '12:00'}',
+      ),
+      'relative_humidity_2m': mild
+          ? List<int>.filled(14, 50)
+          : [90, 90, ...List<int>.filled(12, 50)],
     },
   };
 }

@@ -6,6 +6,7 @@ class WeatherForecastDay {
     required this.precipitationMm,
     required this.weatherCode,
     this.precipitationProbability,
+    this.meanRelativeHumidityPercent,
   });
 
   final DateTime date;
@@ -14,8 +15,13 @@ class WeatherForecastDay {
   final double precipitationMm;
   final int weatherCode;
   final int? precipitationProbability;
+  final double? meanRelativeHumidityPercent;
 
-  factory WeatherForecastDay.fromApi(Map<String, dynamic> daily, int index) {
+  factory WeatherForecastDay.fromApi(
+    Map<String, dynamic> daily,
+    int index, {
+    double? meanRelativeHumidityPercent,
+  }) {
     final times = _listAt(daily, 'time');
     if (index >= times.length || times[index] is! String) {
       throw const FormatException('Missing daily weather date');
@@ -34,6 +40,7 @@ class WeatherForecastDay {
       precipitationProbability:
           _intAt(daily, 'precipitation_probability_max', index),
       weatherCode: _intAt(daily, 'weather_code', index) ?? -1,
+      meanRelativeHumidityPercent: meanRelativeHumidityPercent,
     );
   }
 
@@ -45,6 +52,8 @@ class WeatherForecastDay {
       precipitationMm: (json['rain_mm'] as num).toDouble(),
       precipitationProbability: (json['rain_probability'] as num?)?.toInt(),
       weatherCode: (json['weather_code'] as num).toInt(),
+      meanRelativeHumidityPercent:
+          (json['mean_relative_humidity'] as num?)?.toDouble(),
     );
   }
 
@@ -55,6 +64,7 @@ class WeatherForecastDay {
         'rain_mm': precipitationMm,
         'rain_probability': precipitationProbability,
         'weather_code': weatherCode,
+        'mean_relative_humidity': meanRelativeHumidityPercent,
       };
 
   String get conditionLabel => weatherDescription(weatherCode);
@@ -130,9 +140,20 @@ class WeatherSnapshot {
       throw const FormatException('Weather response contains no daily forecast');
     }
 
+    final humidityMeans = _dailyHumidityMeans(json['hourly']);
     final days = List<WeatherForecastDay>.generate(
       timeValues.length,
-      (index) => WeatherForecastDay.fromApi(daily, index),
+      (index) {
+        final time = timeValues[index];
+        final dateKey = time is String && time.length >= 10
+            ? time.substring(0, 10)
+            : '';
+        return WeatherForecastDay.fromApi(
+          daily,
+          index,
+          meanRelativeHumidityPercent: humidityMeans[dateKey],
+        );
+      },
       growable: false,
     );
 
@@ -149,6 +170,31 @@ class WeatherSnapshot {
       currentWeatherCode: weatherCode.round(),
       days: days,
     );
+  }
+
+  static Map<String, double> _dailyHumidityMeans(dynamic rawHourly) {
+    if (rawHourly is! Map<String, dynamic>) return const {};
+    final times = rawHourly['time'];
+    final values = rawHourly['relative_humidity_2m'];
+    if (times is! List || values is! List) return const {};
+
+    final sums = <String, double>{};
+    final counts = <String, int>{};
+    final length = times.length < values.length ? times.length : values.length;
+    for (var index = 0; index < length; index++) {
+      final time = times[index];
+      final humidity = values[index];
+      if (time is! String || time.length < 10 || humidity is! num) continue;
+      final value = humidity.toDouble();
+      if (!value.isFinite || value < 0 || value > 100) continue;
+      final date = time.substring(0, 10);
+      sums.update(date, (sum) => sum + value, ifAbsent: () => value);
+      counts.update(date, (count) => count + 1, ifAbsent: () => 1);
+    }
+
+    return {
+      for (final date in sums.keys) date: sums[date]! / counts[date]!,
+    };
   }
 
   factory WeatherSnapshot.fromJson(Map<String, dynamic> json) {

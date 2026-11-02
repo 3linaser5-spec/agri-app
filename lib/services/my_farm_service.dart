@@ -54,7 +54,21 @@ class MyFarmService {
   // ✅ حذف برنامج
   static Future<bool> deleteProgram(String id) async {
     try {
-      await _firestore.collection('my_farm').doc(id).delete();
+      final programRef = _firestore.collection('my_farm').doc(id);
+      while (true) {
+        final cases = await programRef
+            .collection('plant_health_cases')
+            .limit(400)
+            .get();
+        if (cases.docs.isEmpty) break;
+
+        final batch = _firestore.batch();
+        for (final document in cases.docs) {
+          batch.delete(document.reference);
+        }
+        await batch.commit();
+      }
+      await programRef.delete();
       return true;
     } catch (e) {
       debugPrint('❌ خطأ في حذف البرنامج: $e');
