@@ -46,7 +46,7 @@ function readDevices(): Promise<FirebaseFirestore.QuerySnapshot> {
 }
 
 function dateKeyFromAlertKey(key: string): string | null {
-  const match = /^(rain|heat|cold):(\d{4}-\d{2}-\d{2})$/.exec(key);
+  const match = /^(rain|heat|cold|crop_risk):(\d{4}-\d{2}-\d{2})$/.exec(key);
   return match?.[2] ?? null;
 }
 
@@ -73,6 +73,7 @@ async function fetchForecast(latitude: number, longitude: number): Promise<unkno
     'daily',
     'temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum',
   );
+  url.searchParams.set('hourly', 'relative_humidity_2m');
   url.searchParams.set('forecast_days', '3');
   url.searchParams.set('timezone', 'auto');
 
@@ -108,13 +109,19 @@ async function deliverWeatherAlerts(
     token: device.token,
     notification: { title, body },
     data: {
-      type: 'weather_alert',
+      type: pending.some((alert) => alert.kind === 'crop_risk')
+        ? 'crop_risk_alert'
+        : 'weather_alert',
       kinds: pending.map((alert) => alert.kind).join(','),
       dates: pending.map((alert) => alert.date).join(','),
     },
     android: {
       priority: 'high',
-      notification: { channelId: 'weather_alerts' },
+      notification: {
+        channelId: pending.some((alert) => alert.kind === 'crop_risk')
+          ? 'crop_risk_alerts'
+          : 'weather_alerts',
+      },
     },
   };
 

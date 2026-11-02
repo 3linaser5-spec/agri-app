@@ -18,6 +18,7 @@ class WeatherService {
         'latitude': latitude.toStringAsFixed(5),
         'longitude': longitude.toStringAsFixed(5),
         'current': 'temperature_2m,relative_humidity_2m,weather_code',
+        'hourly': 'relative_humidity_2m',
         'daily':
             'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum',
         'forecast_days': '7',

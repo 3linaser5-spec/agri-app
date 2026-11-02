@@ -33,6 +33,7 @@ import 'services/plant_disease_service.dart';
 import 'services/plant_health_service.dart';
 import 'services/notification_service.dart';
 import 'services/weather_push_service.dart';
+import 'services/early_warning_service.dart';
 import 'services/calculator_service.dart';
 import 'services/encyclopedia_service.dart';
 import 'models/my_farm_model.dart';
@@ -74,7 +75,6 @@ Future<String?> _initFirebase() async {
   try {
     WeatherPushService.initialize();
     await NotificationService.initialize();
-    await NotificationService.subscribeToPestAlerts();
   } catch (e) {
     debugPrint("خطأ في تهيئة الإشعارات: $e");
   }
@@ -1192,12 +1192,30 @@ class _HomeDashboardState extends State<HomeDashboard> {
   double? _weatherLongitude;
   bool _weatherPushEnabled = false;
   bool _weatherPushBusy = false;
+  List<MyFarmProgram> _activePrograms = const [];
+  StreamSubscription<List<MyFarmProgram>>? _farmProgramsSubscription;
 
   @override
   void initState() {
     super.initState();
     _loadCachedWeather();
     _loadWeatherPushPreference();
+    _listenToFarmPrograms();
+  }
+
+  void _listenToFarmPrograms() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    _farmProgramsSubscription = MyFarmService.getUserPrograms(uid).listen(
+      (programs) {
+        _safeSet(() => _activePrograms = programs
+            .where((program) => program.status == 'active' && !program.isCompleted)
+            .toList(growable: false));
+      },
+      onError: (Object error) {
+        debugPrint('تعذر تحميل البرامج النشطة للإنذار المبكر');
+      },
+    );
   }
 
   bool _isAdmin() {
@@ -1873,18 +1891,18 @@ class _HomeDashboardState extends State<HomeDashboard> {
       child: Row(
         children: [
           const Icon(Icons.notifications_active_outlined,
-              color: Color(0xFF047857)),
+              color: Color(0xFF047857), size: 18),
           const SizedBox(width: 8),
           const Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('إشعارات الطقس على هذا الجهاز',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                Text('تنبيهات الطقس والإنذار المبكر',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
                 SizedBox(height: 3),
                 Text(
-                  'تنبيه عند توقع أمطار أو حر/برد شديد. عند التفعيل نستخدم موقعًا تقريبيًا (نحو 1 كم).',
-                  style: TextStyle(fontSize: 10, height: 1.35),
+                  'أمطار أو حر/برد، ومؤشرات رطوبة لمتابعة المحاصيل النشطة. الموقع تقريبي (نحو 1 كم).',
+                  style: TextStyle(fontSize: 9, height: 1.3),
                 ),
               ],
             ),
@@ -1909,149 +1927,211 @@ class _HomeDashboardState extends State<HomeDashboard> {
     );
   }
 
-  Widget _buildWeatherCard() {
+  Widget _buildEarlyWarningCard() {
+    if (_activePrograms.isEmpty) return const SizedBox.shrink();
+    final warnings = _weatherSnapshot == null
+        ? const <CropWeatherWarning>[]
+        : EarlyWarningService.evaluate(
+            forecast: _weatherSnapshot!.days,
+            programs: _activePrograms,
+          );
+    final warning = warnings.isEmpty ? null : warnings.first;
+    final color = warning?.level == CropWeatherRiskLevel.elevated
+        ? const Color(0xFFB45309)
+        : const Color(0xFF047857);
+    final title = _weatherSnapshot == null
+        ? 'الإنذار المبكر للمحصول'
+        : warning?.title ?? 'لا توجد إشارة رطوبة مرتفعة حاليًا';
+    final message = _weatherSnapshot == null
+        ? 'جارٍ تحميل توقعات الطقس لحقولك.'
+        : warning?.message ??
+            'نراجع توقعات الأيام الثلاثة القادمة للمحاصيل النشطة. الإشارة تعتمد الطقس فقط ولا تعني وجود إصابة.';
+
     return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      color: const Color(0xFFECFDF5),
+      margin: EdgeInsets.zero,
+      color: color.withValues(alpha: 0.07),
       elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: color.withValues(alpha: 0.25)),
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                const Expanded(
-                  child: Text('حالة الطقس في موقعك',
-                      style:
-                          TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                ),
-                InkWell(
-                  onTap: _showGovernoratePicker,
-                  borderRadius: BorderRadius.circular(8),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                          color: const Color(0xFF047857).withValues(alpha: 0.3)),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.location_on,
-                            size: 12, color: Color(0xFF047857)),
-                        const SizedBox(width: 3),
-                        Text(
-                          locationName.isNotEmpty
-                              ? locationName
-                              : 'اختر المحافظة',
-                          style: const TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF047857)),
-                        ),
-                        const SizedBox(width: 3),
-                        const Icon(Icons.arrow_drop_down,
-                            size: 16, color: Color(0xFF047857)),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 4),
-                _refreshing
-                    ? const SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Color(0xFF047857),
-                        ),
-                      )
-                    : IconButton(
-                        icon: const Icon(Icons.refresh,
-                            size: 22, color: Color(0xFF047857)),
-                        onPressed: () =>
-                            _fetchWeatherByLocation(manual: true),
-                        tooltip: 'تحديث الموقع والطقس',
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
-                      ),
-                const SizedBox(width: 8),
-                const Icon(Icons.wb_sunny, color: Colors.orange, size: 28),
-              ],
+            Icon(
+              warning?.level == CropWeatherRiskLevel.elevated
+                  ? Icons.warning_amber_rounded
+                  : Icons.eco_outlined,
+              color: color,
+              size: 20,
             ),
-            const SizedBox(height: 8),
-            Text(weatherStatusText,
-                style: const TextStyle(
-                    color: Colors.black87, fontWeight: FontWeight.bold)),
-            if (_weatherSnapshot != null) ...[
-              if (FirebaseAuth.instance.currentUser != null) ...[
-                const SizedBox(height: 12),
-                _buildWeatherPushControl(),
-              ],
-              const SizedBox(height: 12),
-              _buildWeatherAlertList(_weatherSnapshot!.alerts),
-              const SizedBox(height: 12),
-              const Text(
-                'توقعات الحرارة والأمطار - ٧ أيام',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: TextStyle(
+                          color: color,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12)),
+                  const SizedBox(height: 3),
+                  Text(message,
+                      maxLines: warning == null ? 2 : 4,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 10, height: 1.4)),
+                ],
               ),
-              const SizedBox(height: 8),
-              SizedBox(
-                height: 144,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: _weatherSnapshot!.days.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 8),
-                  itemBuilder: (context, index) => _buildForecastDayTile(
-                    _weatherSnapshot!.days[index],
-                    index,
-                  ),
-                ),
-              ),
-              Align(
-                alignment: AlignmentDirectional.centerStart,
-                child: TextButton.icon(
-                  onPressed: () => launchUrl(
-                    Uri.https('open-meteo.com'),
-                    mode: LaunchMode.externalApplication,
-                  ),
-                  icon: const Icon(Icons.open_in_new, size: 14),
-                  label: const Text('مصدر البيانات: Open-Meteo'),
-                ),
-              ),
-              const Text(
-                'التنبيهات تقديرية وليست تحذيرات رسمية من الأرصاد.',
-                style: TextStyle(fontSize: 10, color: Colors.black54),
-              ),
-            ],
-            const Divider(height: 20),
-            Row(
-              children: [
-                const Icon(Icons.water_drop, color: Colors.blue, size: 20),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    isWeatherLoaded
-                        ? ((double.tryParse(weatherTemp) ?? 0) > 30
-                            ? 'توصية الري: الطقس حار، يفضل الري في الصباح الباكر أو ليلاً لتجنب تبخر المياه.'
-                            : 'توصية الري: اعتدال الطقس مناسب للري، يرجى مراقبة رطوبة التربة.')
-                        : 'جاري تحليل التوصية...',
-                    style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF047857)),
-                  ),
-                ),
-              ],
             ),
           ],
         ),
       ),
     );
+  }
+
+  Widget _buildWeatherCard() {
+    final snapshot = _weatherSnapshot;
+    final icon = snapshot == null
+        ? Icons.cloud_outlined
+        : _forecastIcon(snapshot.currentWeatherCode);
+    return Card(
+      margin: EdgeInsets.zero,
+      color: const Color(0xFFECFDF5),
+      elevation: 0,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsetsDirectional.fromSTEB(12, 6, 8, 6),
+            child: Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(11),
+                  ),
+                  alignment: Alignment.center,
+                  child: Icon(icon, size: 20, color: const Color(0xFF0284C7)),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        snapshot == null
+                            ? 'الطقس · ${locationName.isEmpty ? 'موقع المزرعة' : locationName}'
+                            : '$locationName · ${snapshot.currentTemperatureC.toStringAsFixed(0)}°م',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 12),
+                      ),
+                      Text(
+                        snapshot == null
+                            ? weatherStatusText
+                            : '${snapshot.currentCondition} · رطوبة ${snapshot.currentHumidityPercent}٪',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 10, color: Colors.black54),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'اختر المحافظة أو الموقع',
+                  visualDensity: VisualDensity.compact,
+                  constraints: const BoxConstraints.tightFor(width: 34, height: 34),
+                  padding: EdgeInsets.zero,
+                  onPressed: _showGovernoratePicker,
+                  icon: const Icon(Icons.location_on_outlined,
+                      size: 18, color: Color(0xFF047857)),
+                ),
+                _refreshing
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Color(0xFF047857)),
+                      )
+                    : IconButton(
+                        tooltip: 'تحديث الطقس',
+                        visualDensity: VisualDensity.compact,
+                        constraints:
+                            const BoxConstraints.tightFor(width: 34, height: 34),
+                        padding: EdgeInsets.zero,
+                        onPressed: () => _fetchWeatherByLocation(manual: true),
+                        icon: const Icon(Icons.refresh,
+                            size: 18, color: Color(0xFF047857)),
+                      ),
+              ],
+            ),
+          ),
+          if (snapshot != null)
+            Theme(
+              data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+              child: ExpansionTile(
+                tilePadding: const EdgeInsetsDirectional.only(start: 12, end: 14),
+                childrenPadding:
+                    const EdgeInsetsDirectional.fromSTEB(12, 0, 12, 12),
+                visualDensity: VisualDensity.compact,
+                leading: const Icon(Icons.calendar_month_outlined,
+                    size: 17, color: Color(0xFF047857)),
+                title: const Text('التوقعات والتنبيهات',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                subtitle: const Text('تفاصيل ٧ أيام وإعداد الإشعارات',
+                    style: TextStyle(fontSize: 9)),
+                children: [
+                  if (FirebaseAuth.instance.currentUser != null) ...[
+                    _buildWeatherPushControl(),
+                    const SizedBox(height: 8),
+                  ],
+                  _buildWeatherAlertList(snapshot.alerts),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    height: 118,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: snapshot.days.length,
+                      separatorBuilder: (_, __) => const SizedBox(width: 6),
+                      itemBuilder: (context, index) =>
+                          _buildForecastDayTile(snapshot.days[index], index),
+                    ),
+                  ),
+                  Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: TextButton.icon(
+                      onPressed: () => launchUrl(
+                        Uri.https('open-meteo.com'),
+                        mode: LaunchMode.externalApplication,
+                      ),
+                      icon: const Icon(Icons.open_in_new, size: 12),
+                      label: const Text('مصدر البيانات: Open-Meteo',
+                          style: TextStyle(fontSize: 10)),
+                    ),
+                  ),
+                  const Text(
+                    'التنبيهات تقديرية وليست تحذيرات رسمية أو تشخيصًا زراعيًا.',
+                    style: TextStyle(fontSize: 9, color: Colors.black54),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _farmProgramsSubscription?.cancel();
+    super.dispose();
   }
 
   @override
@@ -2113,6 +2193,8 @@ class _HomeDashboardState extends State<HomeDashboard> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
           children: [
+            _buildEarlyWarningCard(),
+            if (_activePrograms.isNotEmpty) const SizedBox(height: 8),
             _buildWeatherCard(),
             const SizedBox(height: 16),
             _buildTipCard(),

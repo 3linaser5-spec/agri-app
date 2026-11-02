@@ -5,6 +5,7 @@ import { buildWeatherPushAlerts } from './weather-alerts';
 const today = '2026-10-18';
 
 function forecast(overrides: Partial<Record<string, unknown>> = {}) {
+  const { hourly, ...dailyOverrides } = overrides;
   return {
     daily: {
       time: ['2026-10-18', '2026-10-19', '2026-10-20', '2026-10-21'],
@@ -12,8 +13,9 @@ function forecast(overrides: Partial<Record<string, unknown>> = {}) {
       temperature_2m_min: [18, 4, 2, -1],
       precipitation_probability_max: [10, 75, 20, 100],
       precipitation_sum: [0, 3, 8, 30],
-      ...overrides,
+      ...dailyOverrides,
     },
+    ...(hourly === undefined ? {} : { hourly }),
   };
 }
 
@@ -51,6 +53,47 @@ test('ignores severe weather outside the three-day warning window', () => {
     today,
   );
   assert.deepEqual(alerts, []);
+});
+
+test('adds one crop scouting alert when high humidity overlaps rain in the forecast window', () => {
+  const alerts = buildWeatherPushAlerts(
+    forecast({
+      temperature_2m_max: [30, 31, 32, 50],
+      temperature_2m_min: [15, 14, 13, -5],
+      precipitation_probability_max: [20, 55, 70, 100],
+      precipitation_sum: [0, 1, 5, 50],
+      hourly: {
+        time: [
+          '2026-10-18T12:00',
+          '2026-10-19T00:00',
+          '2026-10-19T12:00',
+          '2026-10-20T00:00',
+          '2026-10-20T12:00',
+          '2026-10-21T12:00',
+        ],
+        relative_humidity_2m: [65, 80, 84, 90, 98, 99],
+      },
+    }),
+    today,
+  );
+  const alert = alerts.find((item) => item.kind === 'crop_risk');
+  assert.equal(alert?.date, '2026-10-20');
+  assert.equal(alert?.key, 'crop_risk:2026-10-20');
+  assert.match(alert?.title ?? '', /إنذار متابعة مرتفع/);
+  assert.match(alert?.body ?? '', /ليس تشخيصًا/);
+});
+
+test('does not create crop scouting alerts when hourly humidity is unavailable', () => {
+  const alerts = buildWeatherPushAlerts(
+    forecast({
+      hourly: {
+        time: ['2026-10-19T12:00'],
+        relative_humidity_2m: [null],
+      },
+    }),
+    today,
+  );
+  assert.equal(alerts.some((item) => item.kind === 'crop_risk'), false);
 });
 
 test('ignores malformed or incomplete API responses safely', () => {
