@@ -2168,6 +2168,8 @@ class _AiScannerScreenState extends State<AiScannerScreen> {
   String _diagnosis = "";
   PlantDiseaseResult? _latestPlantResult;
   bool _savingToFarm = false;
+  String? _autoLinkedProgramId;
+  String? _farmLinkMessage;
   final FlutterTts _flutterTts = FlutterTts();
   bool _isPlayingVoice = false;
   File? _imageFile;
@@ -2356,6 +2358,8 @@ $_diagnosis
       _loading = true;
       _diagnosis = '';
       _latestPlantResult = null;
+      _autoLinkedProgramId = null;
+      _farmLinkMessage = null;
     });
 
     try {
@@ -2438,6 +2442,7 @@ $_diagnosis
       } catch (_) {
         debugPrint('تعذر حفظ نتيجة المصنف محليًا');
       }
+      await _autoLinkDiagnosisToFarm(result);
     } on PlantDiseaseException catch (error) {
       if (mounted) setState(() => _diagnosis = error.message);
     } catch (_) {
@@ -2454,12 +2459,67 @@ $_diagnosis
   String _farmCropLabel(MyFarmProgram program) {
     for (final entry in program.inputValues.entries) {
       final key = entry.key.toLowerCase();
-      if (key.contains('crop') || key.contains('محصول')) {
+      if (key.contains('crop') ||
+          key.contains('plant') ||
+          key.contains('variety') ||
+          key.contains('محصول') ||
+          key.contains('نبات') ||
+          key.contains('صنف')) {
         final value = entry.value?.toString().trim() ?? '';
         if (value.isNotEmpty) return value;
       }
     }
+    if (program.templateName.trim().isNotEmpty) return program.templateName;
     return 'غير محدد';
+  }
+
+  Future<void> _autoLinkDiagnosisToFarm(PlantDiseaseResult result) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || result.predictions.isEmpty) return;
+
+    try {
+      final programs = await MyFarmService.getUserPrograms(user.uid).first;
+      final prediction = result.predictions.first;
+      final program = PlantHealthService.findUniqueMatchingProgram(
+        programs: programs,
+        className: prediction.className,
+      );
+      if (program == null) {
+        if (mounted) {
+          setState(() {
+            _farmLinkMessage =
+                'لم يُحفظ تلقائيًا: لم يُعثر على برنامج نشط واحد واضح للمحصول. اختر البرنامج يدويًا للمراجعة.';
+          });
+        }
+        return;
+      }
+
+      await PlantHealthService.saveDiagnosisToProgram(
+        programId: program.id,
+        farmCrop: _farmCropLabel(program),
+        predictedCrop: prediction.cropAr,
+        disease: prediction.nameAr,
+        className: prediction.className,
+        confidence: prediction.confidence,
+        modelVersion: result.modelVersion,
+      );
+      if (mounted) {
+        setState(() {
+          _autoLinkedProgramId = program.id;
+          _farmLinkMessage =
+              'تم حفظ التشخيص تلقائيًا في برنامج «${program.templateName}» للمراجعة.';
+        });
+      }
+    } on PlantHealthException catch (error) {
+      if (mounted) setState(() => _farmLinkMessage = error.message);
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _farmLinkMessage =
+              'تعذر الحفظ التلقائي في مزرعتي. تحقق من اتصال الإنترنت وقواعد Firestore.';
+        });
+      }
+    }
   }
 
   Future<void> _saveDiagnosisToFarm() async {
@@ -2556,6 +2616,11 @@ $_diagnosis
         modelVersion: result.modelVersion,
       );
       if (mounted) {
+        setState(() {
+          _autoLinkedProgramId = selectedProgram.id;
+          _farmLinkMessage =
+              'تم حفظ التشخيص في برنامج «${selectedProgram.templateName}» للمراجعة.';
+        });
         _showFarmMessage(
           'تم ربط التشخيص ببرنامج مزرعتك. افتح تبويب «صحة النبات» للمراجعة.',
         );
@@ -2679,7 +2744,31 @@ $_diagnosis
                           textAlign: TextAlign.right,
                           textDirection: TextDirection.rtl,
                         ),
-                        if (_latestPlantResult != null) ...[
+                        if (_latestPlantResult != null && _farmLinkMessage != null) ...[
+                          const SizedBox(height: 12),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: _autoLinkedProgramId != null
+                                  ? const Color(0xFFDCFCE7)
+                                  : const Color(0xFFFFF7ED),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              _farmLinkMessage!,
+                              textAlign: TextAlign.right,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: _autoLinkedProgramId != null
+                                    ? const Color(0xFF166534)
+                                    : const Color(0xFF9A3412),
+                              ),
+                            ),
+                          ),
+                        ],
+                        if (_latestPlantResult != null &&
+                            _autoLinkedProgramId == null) ...[
                           const SizedBox(height: 12),
                           SizedBox(
                             width: double.infinity,
@@ -2697,7 +2786,7 @@ $_diagnosis
                                   : const Icon(Icons.agriculture),
                               label: Text(_savingToFarm
                                   ? 'جارٍ الحفظ في مزرعتي...'
-                                  : 'ربط التشخيص ببرنامج في مزرعتي'),
+                                  : 'اختيار برنامج يدويًا للمراجعة'),
                               style: FilledButton.styleFrom(
                                 backgroundColor: const Color(0xFF047857),
                                 foregroundColor: Colors.white,

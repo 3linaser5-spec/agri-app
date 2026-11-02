@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../models/my_farm_model.dart';
 
 class PlantHealthService {
   PlantHealthService._();
@@ -8,6 +9,84 @@ class PlantHealthService {
 
   static const String safeIrrigationAdvice =
       'لا توجد توصية ري موثقة لهذا التشخيص في التطبيق حتى الآن. حافظ على برنامج الري المحسوب للمحصول، وافحص رطوبة التربة والصرف، ولا ترفع أو تخفض كمية الري اعتمادًا على تصنيف الصورة وحده. راجع مهندسًا زراعيًا لتحديد الإجراء المناسب حسب مرحلة النمو ونظام الري.';
+
+  static MyFarmProgram? findUniqueMatchingProgram({
+    required List<MyFarmProgram> programs,
+    required String className,
+  }) {
+    final cropCode = _normalize(className.split('__').first);
+    final cropKey = _cropAliases.keys
+        .firstWhere((key) => cropCode.startsWith(key), orElse: () => '');
+    final aliases = _cropAliases[cropKey];
+    if (aliases == null) return null;
+
+    final matches = programs.where((program) {
+      if (program.status != 'active') return false;
+      final candidateTexts = <String>[
+        program.templateName,
+        program.sectionName,
+        for (final entry in program.inputValues.entries)
+          if (_isCropField(entry.key)) entry.value?.toString() ?? '',
+      ];
+      return candidateTexts.any((text) => _containsAlias(text, aliases));
+    }).toList(growable: false);
+
+    return matches.length == 1 ? matches.single : null;
+  }
+
+  static bool _isCropField(String key) {
+    final normalized = _normalize(key);
+    return normalized.contains('crop') ||
+        normalized.contains('plant') ||
+        normalized.contains('variety') ||
+        normalized.contains('محصول') ||
+        normalized.contains('نبات') ||
+        normalized.contains('صنف');
+  }
+
+  static bool _containsAlias(String value, List<String> aliases) {
+    final normalizedValue = _normalize(value);
+    for (final alias in aliases) {
+      final normalizedAlias = _normalize(alias);
+      if (RegExp(r'^[a-z0-9 ]+$').hasMatch(normalizedAlias)) {
+        final escaped = RegExp.escape(normalizedAlias).replaceAll(' ', r'\s+');
+        if (RegExp('(^|[^a-z0-9])$escaped([^a-z0-9]|$)').hasMatch(normalizedValue)) {
+          return true;
+        }
+      } else if (normalizedValue.contains(normalizedAlias)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  static String _normalize(String value) => value
+      .toLowerCase()
+      .replaceAll(RegExp(r'[\u064B-\u065F\u0670]'), '')
+      .replaceAll('أ', 'ا')
+      .replaceAll('إ', 'ا')
+      .replaceAll('آ', 'ا')
+      .replaceAll('ى', 'ي')
+      .replaceAll('ة', 'ه')
+      .replaceAll(RegExp(r'[^a-z0-9\u0600-\u06FF]+'), ' ')
+      .trim();
+
+  static const Map<String, List<String>> _cropAliases = {
+    'apple': ['apple', 'تفاح'],
+    'blueberry': ['blueberry', 'توت ازرق'],
+    'cherry': ['cherry', 'كرز'],
+    'corn': ['corn', 'maize', 'ذره', 'ذرة'],
+    'grape': ['grape', 'عنب'],
+    'orange': ['orange', 'برتقال'],
+    'peach': ['peach', 'خوخ'],
+    'pepper': ['pepper', 'فلفل'],
+    'potato': ['potato', 'بطاطس', 'بطاطا'],
+    'raspberry': ['raspberry', 'توت العليق'],
+    'soybean': ['soybean', 'فول الصويا', 'صويا'],
+    'squash': ['squash', 'قرع', 'كوسه'],
+    'strawberry': ['strawberry', 'فراوله'],
+    'tomato': ['tomato', 'طماطم', 'بندوره'],
+  };
 
   static Stream<QuerySnapshot<Map<String, dynamic>>> watchProgramCases(
     String programId,
