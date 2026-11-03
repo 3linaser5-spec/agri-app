@@ -77,6 +77,7 @@ flutter:
     - assets/icon/
     - assets/fonts/
     - assets/images/
+    - assets/data/egypt_admin_locations.json
   
   fonts:
     - family: Cairo

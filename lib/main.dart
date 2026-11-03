@@ -34,6 +34,7 @@ import 'services/plant_health_service.dart';
 import 'services/notification_service.dart';
 import 'services/weather_push_service.dart';
 import 'services/early_warning_service.dart';
+import 'services/egypt_locations_service.dart';
 import 'services/calculator_service.dart';
 import 'services/encyclopedia_service.dart';
 import 'models/my_farm_model.dart';
@@ -1190,6 +1191,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
   WeatherSnapshot? _weatherSnapshot;
   double? _weatherLatitude;
   double? _weatherLongitude;
+  WeatherLocationSelection? _selectedWeatherLocation;
   bool _weatherPushEnabled = false;
   bool _weatherPushBusy = false;
   List<MyFarmProgram> _activePrograms = const [];
@@ -1230,11 +1232,11 @@ class _HomeDashboardState extends State<HomeDashboard> {
     });
   }
 
-  void _showGovernoratePicker() {
+  Future<void> _showGovernoratePicker() async {
     _loadGovernorates();
     if (!mounted) return;
 
-    showModalBottomSheet(
+    final selectedGovernorate = await showModalBottomSheet<GovernorateInfo>(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
@@ -1306,12 +1308,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
                               color: Color(0xFF047857))
                           : null,
                       onTap: () async {
-                        Navigator.pop(context);
-                        await _fetchWeatherForGovernorate(
-                          name,
-                          gov.lat,
-                          gov.lon,
-                        );
+                        Navigator.pop(context, gov);
                       },
                     );
                   },
@@ -1320,6 +1317,192 @@ class _HomeDashboardState extends State<HomeDashboard> {
             ],
           ),
         ),
+      ),
+    );
+    if (selectedGovernorate == null || !mounted) return;
+
+    try {
+      final catalog = await EgyptLocationCatalog.load();
+      final governorate = catalog.findGovernorate(selectedGovernorate.name);
+      if (governorate == null) {
+        throw const FormatException('لم تتوفر بيانات لهذه المحافظة.');
+      }
+      final area = await _pickAdministrativeArea(governorate, catalog);
+      if (area == null || !mounted) return;
+      final location = await _pickWeatherLocationInArea(
+        governorate,
+        area,
+        catalog.coverageNote,
+      );
+      if (location != null && mounted) {
+        await _fetchWeatherForAdministrativeLocation(location);
+      }
+    } catch (error) {
+      debugPrint('تعذر تحميل بيانات المراكز والقرى');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('تعذر تحميل قائمة المراكز والقرى. حاول مرة أخرى.'),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<EgyptAdministrativeArea?> _pickAdministrativeArea(
+    EgyptAdministrativeGovernorate governorate,
+    EgyptLocationCatalog catalog,
+  ) {
+    return showModalBottomSheet<EgyptAdministrativeArea>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: SafeArea(
+          child: SizedBox(
+            height: MediaQuery.of(sheetContext).size.height * 0.78,
+            child: Column(
+              children: [
+                const SizedBox(height: 18),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 18),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.location_city,
+                          color: Color(0xFF047857)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'اختر المركز أو المنطقة في ${governorate.name}',
+                          style: const TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(18, 8, 18, 10),
+                  child: Text(
+                    'اختر المركز أولاً، ثم اختر قريتك إن كانت مدرجة.',
+                    style: TextStyle(fontSize: 12, color: Colors.black54),
+                  ),
+                ),
+                Expanded(
+                  child: ListView.separated(
+                    itemCount: governorate.areas.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      final area = governorate.areas[index];
+                      return ListTile(
+                        leading: const Icon(Icons.place_outlined,
+                            color: Color(0xFF047857)),
+                        title: Text(area.name),
+                        subtitle: Text(area.villages.isEmpty
+                            ? 'استخدام موقع المركز أو المنطقة'
+                            : '${area.villages.length} قرية/وحدة محلية متاحة'),
+                        trailing: const Icon(Icons.chevron_left),
+                        onTap: () => Navigator.pop(sheetContext, area),
+                      );
+                    },
+                  ),
+                ),
+                _buildLocationDataAttribution(catalog.coverageNote),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<WeatherLocationSelection?> _pickWeatherLocationInArea(
+    EgyptAdministrativeGovernorate governorate,
+    EgyptAdministrativeArea area,
+    String coverageNote,
+  ) {
+    return showModalBottomSheet<WeatherLocationSelection>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: SafeArea(
+          child: SizedBox(
+            height: MediaQuery.of(sheetContext).size.height * 0.82,
+            child: Column(
+              children: [
+                const SizedBox(height: 18),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 18),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.holiday_village_outlined,
+                          color: Color(0xFF047857)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'اختر القرية في ${area.name}',
+                          style: const TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.location_city,
+                      color: Color(0xFF047857)),
+                  title: Text('استخدام موقع ${area.name}'),
+                  subtitle: const Text('طقس تقريبي على مستوى المركز/المنطقة'),
+                  onTap: () => Navigator.pop(
+                    sheetContext,
+                    WeatherLocationSelection.forArea(governorate, area),
+                  ),
+                ),
+                const Divider(height: 1),
+                Expanded(
+                  child: ListView.separated(
+                    itemCount: area.villages.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      final village = area.villages[index];
+                      return ListTile(
+                        leading: const Icon(Icons.holiday_village_outlined),
+                        title: Text(village.name),
+                        onTap: () => Navigator.pop(
+                          sheetContext,
+                          WeatherLocationSelection.forVillage(
+                            governorate,
+                            area,
+                            village,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                _buildLocationDataAttribution(coverageNote),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLocationDataAttribution(String coverageNote) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+      child: Text(
+        'البيانات: CAPMAS عبر OCHA/HDX · CC BY-IGO. $coverageNote',
+        textAlign: TextAlign.center,
+        style: const TextStyle(fontSize: 10, color: Colors.black54),
       ),
     );
   }
@@ -1422,26 +1605,25 @@ class _HomeDashboardState extends State<HomeDashboard> {
     return '${snapshot.currentCondition} · درجة الحرارة: $formattedTemperature°م | الرطوبة: ${snapshot.currentHumidityPercent}%';
   }
 
-  Future<void> _fetchWeatherForGovernorate(
-    String govName,
-    double lat,
-    double lon,
+  Future<void> _fetchWeatherForAdministrativeLocation(
+    WeatherLocationSelection location,
   ) async {
     _safeSet(() {
       _refreshing = true;
-      _selectedGovernorate = govName;
-      locationName = govName;
+      _selectedGovernorate = location.governorateName;
+      _selectedWeatherLocation = location;
+      locationName = location.displayName;
     });
 
     try {
       final snapshot = await WeatherService.fetch(
-        latitude: lat,
-        longitude: lon,
+        latitude: location.latitude,
+        longitude: location.longitude,
       );
       _safeSet(() {
         _weatherSnapshot = snapshot;
-        _weatherLatitude = lat;
-        _weatherLongitude = lon;
+        _weatherLatitude = location.latitude;
+        _weatherLongitude = location.longitude;
         weatherTemp = snapshot.currentTemperatureC.toString();
         weatherHumidity = snapshot.currentHumidityPercent.toString();
         weatherStatusText = _weatherSummary(snapshot);
@@ -1449,9 +1631,13 @@ class _HomeDashboardState extends State<HomeDashboard> {
       });
 
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('selected_gov', govName);
+      await prefs.setString('selected_gov', location.governorateName);
+      await prefs.setString(
+        'selected_weather_location',
+        json.encode(location.toJson()),
+      );
       await _saveWeatherCache();
-      unawaited(_syncWeatherPushLocation(lat, lon));
+      unawaited(_syncWeatherPushLocation(location.latitude, location.longitude));
     } catch (e) {
       debugPrint("خطأ في توقعات الطقس");
       _safeSet(() => weatherStatusText = "⚠️ تعذر الاتصال بالخدمة");
@@ -1463,6 +1649,16 @@ class _HomeDashboardState extends State<HomeDashboard> {
   Future<void> _loadCachedWeather() async {
     final prefs = await SharedPreferences.getInstance();
     _selectedGovernorate = prefs.getString('selected_gov') ?? "";
+    final savedLocation = prefs.getString('selected_weather_location');
+    if (savedLocation != null) {
+      try {
+        _selectedWeatherLocation = WeatherLocationSelection.fromJson(
+          Map<String, dynamic>.from(json.decode(savedLocation) as Map),
+        );
+      } catch (_) {
+        await prefs.remove('selected_weather_location');
+      }
+    }
     final cached = prefs.getString('weather_data');
     bool stale = true;
     if (cached != null) {
@@ -1484,6 +1680,10 @@ class _HomeDashboardState extends State<HomeDashboard> {
         }
         _safeSet(() {
           _weatherSnapshot = snapshot;
+          _weatherLatitude = (data['latitude'] as num?)?.toDouble() ??
+              _selectedWeatherLocation?.latitude;
+          _weatherLongitude = (data['longitude'] as num?)?.toDouble() ??
+              _selectedWeatherLocation?.longitude;
           weatherTemp = snapshot?.currentTemperatureC.toString() ??
               (data['temp'] ?? "--").toString();
           weatherHumidity = snapshot?.currentHumidityPercent.toString() ??
@@ -1491,26 +1691,21 @@ class _HomeDashboardState extends State<HomeDashboard> {
           weatherStatusText = snapshot == null
               ? (data['status'] ?? "").toString()
               : _weatherSummary(snapshot);
-          locationName = (data['location'] ?? "").toString();
+          locationName = _selectedWeatherLocation?.displayName ??
+              (data['location'] ?? "").toString();
           isWeatherLoaded = snapshot != null || data['loaded'] == true;
         });
       } catch (_) {}
     }
     if (!mounted) return;
     if (!isWeatherLoaded || stale || _weatherSnapshot == null) {
-      GovernorateInfo? gov;
-      if (_selectedGovernorate.isNotEmpty) {
-        for (final g in EgyptData.governorates) {
-          if (g.name == _selectedGovernorate) {
-            gov = g;
-            break;
-          }
-        }
-      }
-      if (gov != null) {
-        _fetchWeatherForGovernorate(gov.name, gov.lat, gov.lon);
+      final selectedLocation = _selectedWeatherLocation;
+      if (selectedLocation != null) {
+        unawaited(_fetchWeatherForAdministrativeLocation(selectedLocation));
       } else {
-        _fetchWeatherByLocation();
+        // لا نفترض أن مركز المحافظة هو موقع المزرعة؛ نستخدم GPS ما لم يحدد
+        // المستخدم مركزًا أو قرية بنفسه.
+        unawaited(_fetchWeatherByLocation());
       }
     }
   }
@@ -1525,6 +1720,8 @@ class _HomeDashboardState extends State<HomeDashboard> {
           'status': weatherStatusText,
           'location': locationName,
           'loaded': isWeatherLoaded,
+          'latitude': _weatherLatitude,
+          'longitude': _weatherLongitude,
           'saved_at': DateTime.now().millisecondsSinceEpoch,
           'forecast': _weatherSnapshot?.toJson(),
         }));
@@ -1547,12 +1744,12 @@ class _HomeDashboardState extends State<HomeDashboard> {
         final address = data['address'] ?? {};
         final city = address['city'] ??
             address['town'] ??
-            address['municipality'] ??
-            address['county'] ??
             address['village'] ??
+            address['municipality'] ??
             address['suburb'] ??
             address['neighbourhood'] ??
             address['city_district'] ??
+            address['county'] ??
             address['state_district'];
         if (city != null && city.toString().trim().isNotEmpty) {
           return city.toString();
@@ -1601,15 +1798,15 @@ class _HomeDashboardState extends State<HomeDashboard> {
 
       Position position = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.medium,
-          timeLimit: Duration(seconds: 20),
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 30),
         ),
       );
 
       String cityName = await _getCityName(
         position.latitude,
         position.longitude,
-        fallback: locationName,
+        fallback: 'موقعك الحالي',
       );
 
       final snapshot = await WeatherService.fetch(
@@ -1620,6 +1817,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
         _weatherSnapshot = snapshot;
         _weatherLatitude = position.latitude;
         _weatherLongitude = position.longitude;
+        _selectedWeatherLocation = null;
         weatherTemp = snapshot.currentTemperatureC.toString();
         weatherHumidity = snapshot.currentHumidityPercent.toString();
         locationName = cityName;
@@ -1630,6 +1828,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
       try {
         final prefs = await SharedPreferences.getInstance();
         await prefs.remove('selected_gov');
+        await prefs.remove('selected_weather_location');
       } catch (_) {}
       await _saveWeatherCache();
       unawaited(
@@ -2045,7 +2244,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
                   ),
                 ),
                 IconButton(
-                  tooltip: 'اختر المحافظة أو الموقع',
+                  tooltip: 'اختر المحافظة والمركز والقرية',
                   visualDensity: VisualDensity.compact,
                   constraints: const BoxConstraints.tightFor(width: 34, height: 34),
                   padding: EdgeInsets.zero,
