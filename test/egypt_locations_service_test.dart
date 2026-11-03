@@ -2,6 +2,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:agri_app/services/egypt_locations_service.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   group('EgyptLocationCatalog', () {
     test('loads Egyptian administrative data and Aswan villages', () async {
       final catalog = await EgyptLocationCatalog.load();
