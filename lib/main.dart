@@ -1612,10 +1612,26 @@ class _HomeDashboardState extends State<HomeDashboard> {
       _refreshing = true;
       _selectedGovernorate = location.governorateName;
       _selectedWeatherLocation = location;
+      _weatherLatitude = location.latitude;
+      _weatherLongitude = location.longitude;
+      _weatherSnapshot = null;
+      isWeatherLoaded = false;
+      weatherTemp = '--';
+      weatherHumidity = '--';
+      weatherStatusText = 'جاري جلب الطقس للموقع المختار...';
       locationName = location.displayName;
     });
 
     try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('selected_gov', location.governorateName);
+      await prefs.setString(
+        'selected_weather_location',
+        json.encode(location.toJson()),
+      );
+      await prefs.remove('weather_data');
+      unawaited(_syncWeatherPushLocation(location.latitude, location.longitude));
+
       final snapshot = await WeatherService.fetch(
         latitude: location.latitude,
         longitude: location.longitude,
@@ -1630,14 +1646,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
         isWeatherLoaded = true;
       });
 
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('selected_gov', location.governorateName);
-      await prefs.setString(
-        'selected_weather_location',
-        json.encode(location.toJson()),
-      );
       await _saveWeatherCache();
-      unawaited(_syncWeatherPushLocation(location.latitude, location.longitude));
     } catch (e) {
       debugPrint("خطأ في توقعات الطقس");
       _safeSet(() => weatherStatusText = "⚠️ تعذر الاتصال بالخدمة");
