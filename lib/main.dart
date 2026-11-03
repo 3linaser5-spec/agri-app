@@ -1655,6 +1655,15 @@ class _HomeDashboardState extends State<HomeDashboard> {
     }
   }
 
+  Future<void> _refreshWeather() async {
+    final selectedLocation = _selectedWeatherLocation;
+    if (selectedLocation != null) {
+      await _fetchWeatherForAdministrativeLocation(selectedLocation);
+      return;
+    }
+    await _fetchWeatherByLocation();
+  }
+
   Future<void> _loadCachedWeather() async {
     final prefs = await SharedPreferences.getInstance();
     _selectedGovernorate = prefs.getString('selected_gov') ?? "";
@@ -2334,12 +2343,12 @@ class _HomeDashboardState extends State<HomeDashboard> {
                             strokeWidth: 2, color: Color(0xFF047857)),
                       )
                     : IconButton(
-                        tooltip: 'تحديث الطقس',
+                        tooltip: 'تحديث طقس الموقع المختار',
                         visualDensity: VisualDensity.compact,
                         constraints:
                             const BoxConstraints.tightFor(width: 34, height: 34),
                         padding: EdgeInsets.zero,
-                        onPressed: _fetchWeatherByLocation,
+                        onPressed: _refreshWeather,
                         icon: const Icon(Icons.refresh,
                             size: 18, color: Color(0xFF047857)),
                       ),
