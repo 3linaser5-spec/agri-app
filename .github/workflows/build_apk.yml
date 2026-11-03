@@ -33,7 +33,6 @@ jobs:
           cp lib/main.dart /tmp/main.dart
           cp pubspec.yaml /tmp/pubspec.yaml
           
-          sed -i '/- assets\/data\//d' /tmp/pubspec.yaml
           
           flutter create --no-pub --org com.dahshory.agri --project-name agri_app .
           
@@ -245,6 +244,24 @@ jobs:
 
       - name: Build Signed APK
         run: flutter build apk --release --no-tree-shake-icons
+
+      - name: Verify administrative locations asset in APK
+        run: |
+          python3 - <<'PY'
+          import json
+          import zipfile
+
+          apk_path = 'build/app/outputs/flutter-apk/app-release.apk'
+          asset_path = 'assets/flutter_assets/assets/data/egypt_admin_locations.json'
+          with zipfile.ZipFile(apk_path) as apk:
+              if asset_path not in apk.namelist():
+                  raise SystemExit('مفقود: ملف بيانات المراكز والقرى داخل APK')
+              data = json.loads(apk.read(asset_path))
+          count = len(data.get('governorates', []))
+          if count != 27:
+              raise SystemExit(f'عدد المحافظات داخل APK غير صحيح: {count}')
+          print('تم التحقق من وجود بيانات المحافظات الـ27 داخل APK.')
+          PY
 
       - name: Upload APK
         uses: actions/upload-artifact@v4

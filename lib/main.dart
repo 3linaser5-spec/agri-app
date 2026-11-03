@@ -1283,7 +1283,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
                       style: TextStyle(fontSize: 11)),
                   onTap: () async {
                     Navigator.pop(context);
-                    await _fetchWeatherByLocation(manual: true);
+                    await _fetchWeatherByLocation();
                   },
                 ),
               ),
@@ -1655,6 +1655,15 @@ class _HomeDashboardState extends State<HomeDashboard> {
     }
   }
 
+  Future<void> _refreshWeather() async {
+    final selectedLocation = _selectedWeatherLocation;
+    if (selectedLocation != null) {
+      await _fetchWeatherForAdministrativeLocation(selectedLocation);
+      return;
+    }
+    await _fetchWeatherByLocation();
+  }
+
   Future<void> _loadCachedWeather() async {
     final prefs = await SharedPreferences.getInstance();
     _selectedGovernorate = prefs.getString('selected_gov') ?? "";
@@ -1743,14 +1752,39 @@ class _HomeDashboardState extends State<HomeDashboard> {
   }) async {
     try {
       final url = Uri.parse(
-          'https://nominatim.openstreetmap.org/reverse?lat=$lat&lon=$lon&format=json&accept-language=ar&zoom=10');
+          'https://nominatim.openstreetmap.org/reverse?lat=$lat&lon=$lon&format=json&addressdetails=1&accept-language=ar&zoom=18');
       final resp = await http.get(url, headers: {
         'User-Agent': 'Nabati-App/1.0',
       }).timeout(const Duration(seconds: 8));
 
       if (resp.statusCode == 200) {
         final data = json.decode(resp.body);
-        final address = data['address'] ?? {};
+        final rawAddress = data['address'];
+        final address = rawAddress is Map
+            ? Map<String, dynamic>.from(rawAddress)
+            : <String, dynamic>{};
+        final governorate = address['state'] ??
+            address['governorate'] ??
+            address['region'];
+        final locality = address['village'] ??
+            address['town'] ??
+            address['city'] ??
+            address['municipality'] ??
+            address['suburb'] ??
+            address['neighbourhood'] ??
+            address['city_district'] ??
+            address['county'] ??
+            address['state_district'];
+        if (governorate != null && governorate.toString().trim().isNotEmpty) {
+          final governorateName = governorate.toString().trim();
+          if (locality != null && locality.toString().trim().isNotEmpty) {
+            final localityName = locality.toString().trim();
+            if (localityName != governorateName) {
+              return '$localityName، $governorateName';
+            }
+          }
+          return governorateName;
+        }
         final city = address['city'] ??
             address['town'] ??
             address['village'] ??
@@ -1763,11 +1797,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
         if (city != null && city.toString().trim().isNotEmpty) {
           return city.toString();
         }
-        final state =
-            address['state'] ?? address['governorate'] ?? address['region'];
-        if (state != null && state.toString().trim().isNotEmpty) {
-          return state.toString();
-        }
       }
     } catch (e) {
       debugPrint("Nominatim error");
@@ -1776,41 +1805,82 @@ class _HomeDashboardState extends State<HomeDashboard> {
     return '${lat.toStringAsFixed(2)}, ${lon.toStringAsFixed(2)}';
   }
 
-  Future<void> _fetchWeatherByLocation({bool manual = false}) async {
-    if (manual) _safeSet(() => _refreshing = true);
+  Future<void> _fetchWeatherByLocation() async {
+    _safeSet(() {
+      _refreshing = true;
+      _selectedWeatherLocation = null;
+      _selectedGovernorate = '';
+      _weatherSnapshot = null;
+      _weatherLatitude = null;
+      _weatherLongitude = null;
+      weatherTemp = '--';
+      weatherHumidity = '--';
+      locationName = 'جار تحديد موقعك الحالي...';
+      weatherStatusText = 'جار طلب قراءة GPS حديثة ودقيقة...';
+      isWeatherLoaded = false;
+    });
 
     try {
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('selected_gov');
+      await prefs.remove('selected_weather_location');
+      await prefs.remove('weather_data');
+
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        _safeSet(() => weatherStatusText = "⚠️ برجاء تشغيل GPS في هاتفك");
-        if (manual) _safeSet(() => _refreshing = false);
+        _safeSet(() {
+          locationName = 'تعذر تحديد الموقع';
+          weatherStatusText = 'شغّل GPS في الهاتف ثم أعد المحاولة.';
+        });
         return;
       }
 
-      LocationPermission permission = await Geolocator.checkPermission();
+      var permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
-          _safeSet(() =>
-              weatherStatusText = "برجاء إعطاء صلاحية الموقع لمعرفة الطقس");
-          if (manual) _safeSet(() => _refreshing = false);
+          _safeSet(() {
+            locationName = 'تعذر تحديد الموقع';
+            weatherStatusText = 'اسمح للتطبيق باستخدام الموقع ثم أعد المحاولة.';
+          });
           return;
         }
       }
 
       if (permission == LocationPermission.deniedForever) {
-        _safeSet(() => weatherStatusText =
-            "⚠️ تم رفض صلاحية الموقع نهائياً، برجاء تفعيلها من الإعدادات");
-        if (manual) _safeSet(() => _refreshing = false);
+        _safeSet(() {
+          locationName = 'تعذر تحديد الموقع';
+          weatherStatusText =
+              'فعّل صلاحية الموقع من إعدادات الهاتف ثم أعد المحاولة.';
+        });
         return;
       }
 
-      Position position = await Geolocator.getCurrentPosition(
+      final position = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 30),
+          accuracy: LocationAccuracy.bestForNavigation,
+          timeLimit: Duration(seconds: 45),
         ),
       );
+      final now = DateTime.now();
+      final fixAge = now.difference(position.timestamp);
+      if (fixAge > const Duration(minutes: 3) ||
+          fixAge < const Duration(minutes: -1)) {
+        _safeSet(() {
+          locationName = 'قراءة GPS قديمة';
+          weatherStatusText =
+              'لم يصل موقع حديث. تحرك إلى مكان مفتوح وتأكد من تشغيل GPS.';
+        });
+        return;
+      }
+      if (!position.accuracy.isFinite || position.accuracy > 10000) {
+        _safeSet(() {
+          locationName = 'إشارة GPS غير دقيقة';
+          weatherStatusText =
+              'دقة الموقع ضعيفة؛ فعّل الموقع الدقيق في إعدادات الهاتف ثم أعد المحاولة.';
+        });
+        return;
+      }
 
       String cityName = await _getCityName(
         position.latitude,
@@ -1844,13 +1914,17 @@ class _HomeDashboardState extends State<HomeDashboard> {
         _syncWeatherPushLocation(position.latitude, position.longitude),
       );
     } catch (e) {
-      if (!isWeatherLoaded) {
-        _safeSet(
-            () => weatherStatusText = "⚠️ برجاء تشغيل GPS والانتظار قليلاً");
-      }
+      debugPrint('تعذر الحصول على موقع GPS حديث ودقيق');
+      _safeSet(() {
+        _weatherSnapshot = null;
+        isWeatherLoaded = false;
+        locationName = 'تعذر تحديد الموقع';
+        weatherStatusText =
+            'تحقق من تشغيل GPS وصلاحية الموقع الدقيق، ثم أعد المحاولة.';
+      });
+    } finally {
+      _safeSet(() => _refreshing = false);
     }
-
-    if (manual) _safeSet(() => _refreshing = false);
   }
 
   Widget _buildQuickActionCard({
@@ -2269,12 +2343,12 @@ class _HomeDashboardState extends State<HomeDashboard> {
                             strokeWidth: 2, color: Color(0xFF047857)),
                       )
                     : IconButton(
-                        tooltip: 'تحديث الطقس',
+                        tooltip: 'تحديث طقس الموقع المختار',
                         visualDensity: VisualDensity.compact,
                         constraints:
                             const BoxConstraints.tightFor(width: 34, height: 34),
                         padding: EdgeInsets.zero,
-                        onPressed: () => _fetchWeatherByLocation(manual: true),
+                        onPressed: _refreshWeather,
                         icon: const Icon(Icons.refresh,
                             size: 18, color: Color(0xFF047857)),
                       ),
