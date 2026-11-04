@@ -20,7 +20,7 @@ class WeatherService {
         'current': 'temperature_2m,relative_humidity_2m,weather_code',
         'hourly': 'relative_humidity_2m',
         'daily':
-            'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum',
+            'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,et0_fao_evapotranspiration',
         'forecast_days': '7',
         'timezone': 'auto',
       },

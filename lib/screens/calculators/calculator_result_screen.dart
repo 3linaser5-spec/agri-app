@@ -166,6 +166,7 @@ class _CalculatorResultScreenState extends State<CalculatorResultScreen> {
       sectionName: widget.sectionName ?? widget.template.name,
       governorate: _inputValues['governorate']?.toString() ?? '',
       climateZone: _inputValues['climate_zone']?.toString() ?? '',
+      areaUnit: widget.template.areaUnitLabel,
       inputValues: _inputValues,
       tasks: widget.template.tasks.map((t) => t.toMap()).toList(),
       materials: widget.template.materials.map((m) => m.toMap()).toList(),
