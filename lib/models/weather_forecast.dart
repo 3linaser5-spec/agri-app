@@ -7,6 +7,7 @@ class WeatherForecastDay {
     required this.weatherCode,
     this.precipitationProbability,
     this.meanRelativeHumidityPercent,
+    this.et0Mm,
   });
 
   final DateTime date;
@@ -16,6 +17,7 @@ class WeatherForecastDay {
   final int weatherCode;
   final int? precipitationProbability;
   final double? meanRelativeHumidityPercent;
+  final double? et0Mm;
 
   factory WeatherForecastDay.fromApi(
     Map<String, dynamic> daily,
@@ -41,6 +43,7 @@ class WeatherForecastDay {
           _intAt(daily, 'precipitation_probability_max', index),
       weatherCode: _intAt(daily, 'weather_code', index) ?? -1,
       meanRelativeHumidityPercent: meanRelativeHumidityPercent,
+      et0Mm: _doubleAt(daily, 'et0_fao_evapotranspiration', index),
     );
   }
 
@@ -54,6 +57,7 @@ class WeatherForecastDay {
       weatherCode: (json['weather_code'] as num).toInt(),
       meanRelativeHumidityPercent:
           (json['mean_relative_humidity'] as num?)?.toDouble(),
+      et0Mm: (json['et0_mm'] as num?)?.toDouble(),
     );
   }
 
@@ -65,6 +69,7 @@ class WeatherForecastDay {
         'rain_probability': precipitationProbability,
         'weather_code': weatherCode,
         'mean_relative_humidity': meanRelativeHumidityPercent,
+        'et0_mm': et0Mm,
       };
 
   String get conditionLabel => weatherDescription(weatherCode);

@@ -15,6 +15,7 @@ void main() {
       expect(snapshot.days.first.precipitationProbability, 68);
       expect(snapshot.days.first.precipitationMm, 7.2);
       expect(snapshot.days.first.meanRelativeHumidityPercent, 90);
+      expect(snapshot.days.first.et0Mm, 4.2);
     });
 
     test('round-trips a cached forecast', () {
@@ -26,6 +27,7 @@ void main() {
       expect(restored.days, hasLength(original.days.length));
       expect(restored.days.first.date, original.days.first.date);
       expect(restored.days.first.precipitationProbability, 68);
+      expect(restored.days.first.et0Mm, 4.2);
     });
 
     test('rejects a response missing daily forecasts', () {
@@ -80,6 +82,7 @@ Map<String, dynamic> _sampleApiResponse({bool mild = false}) {
       'temperature_2m_min': mild ? List<double>.filled(7, 18) : [22, 20, 19, 18, 18, 17, 17],
       'precipitation_probability_max': mild ? List<int>.filled(7, 10) : [68, 20, 15, 10, 10, 5, 5],
       'precipitation_sum': mild ? List<double>.filled(7, 0) : [7.2, 0, 0, 0, 0, 0, 0],
+      'et0_fao_evapotranspiration': List<double>.filled(7, 4.2),
       'weather_code': List<int>.filled(7, 0),
     },
     'hourly': {

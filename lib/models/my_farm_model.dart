@@ -11,7 +11,9 @@ class MyFarmProgram {
   final String sectionName;
   final String governorate;
   final String climateZone;
+  final String areaUnit;
   final Map<String, dynamic> inputValues;
+  final Map<String, dynamic> irrigationPlan;
   final List<Map<String, dynamic>> tasks;
   final List<Map<String, dynamic>> materials;
   final Map<String, dynamic> financial;
@@ -32,7 +34,9 @@ class MyFarmProgram {
     required this.sectionName,
     required this.governorate,
     required this.climateZone,
+    this.areaUnit = 'فدان',
     required this.inputValues,
+    this.irrigationPlan = const {},
     required this.tasks,
     required this.materials,
     required this.financial,
@@ -55,7 +59,9 @@ class MyFarmProgram {
       sectionName: SafeParse.string(data['section_name']),
       governorate: SafeParse.string(data['governorate']),
       climateZone: SafeParse.string(data['climate_zone']),
+      areaUnit: SafeParse.string(data['area_unit'], 'فدان'),
       inputValues: SafeParse.map(data['input_values']),
+      irrigationPlan: SafeParse.map(data['irrigation_plan']),
       tasks: tasks,
       materials: SafeParse.mapList(data['materials']),
       financial: SafeParse.map(data['financial']),
@@ -90,7 +96,9 @@ class MyFarmProgram {
         'section_name': sectionName,
         'governorate': governorate,
         'climate_zone': climateZone,
+        'area_unit': areaUnit,
         'input_values': inputValues,
+        'irrigation_plan': irrigationPlan,
         'tasks': tasks,
         'materials': materials,
         'financial': financial,
@@ -121,7 +129,9 @@ class MyFarmProgram {
       sectionName: sectionName,
       governorate: governorate,
       climateZone: climateZone,
+      areaUnit: areaUnit,
       inputValues: inputValues,
+      irrigationPlan: irrigationPlan,
       tasks: tasks,
       materials: materials,
       financial: financial,
@@ -133,6 +143,29 @@ class MyFarmProgram {
       doneTasks: list,
     );
   }
+
+  MyFarmProgram copyWithIrrigationPlan(Map<String, dynamic> plan) =>
+      MyFarmProgram(
+        id: id,
+        userId: userId,
+        templateId: templateId,
+        templateName: templateName,
+        templateEmoji: templateEmoji,
+        sectionId: sectionId,
+        sectionName: sectionName,
+        governorate: governorate,
+        climateZone: climateZone,
+        areaUnit: areaUnit,
+        inputValues: inputValues,
+        irrigationPlan: plan,
+        tasks: tasks,
+        materials: materials,
+        financial: financial,
+        startDate: startDate,
+        createdAt: createdAt,
+        status: status,
+        doneTasks: doneTasks,
+      );
 
   // ✅ حساب عدد الأيام من البداية بالتقويم (مش بكل 24 ساعة)
   // بنقارن التواريخ فقط وبـ UTC عشان تغيير التوقيت الصيفي ما يبوّظش العدّ.

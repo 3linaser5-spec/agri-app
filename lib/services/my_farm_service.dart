@@ -100,6 +100,23 @@ class MyFarmService {
     }
   }
 
+  /// حفظ أحدث تقدير ري للبرنامج؛ قواعد Firestore الحالية تقصر تعديل البرنامج
+  /// على صاحبه، ولا تحتاج هذه الإضافة إلى Cloud Function.
+  static Future<bool> saveIrrigationPlan(
+    String programId,
+    Map<String, dynamic> plan,
+  ) async {
+    try {
+      await _firestore.collection('my_farm').doc(programId).update({
+        'irrigation_plan': plan,
+      });
+      return true;
+    } catch (e) {
+      debugPrint('تعذر حفظ مخطط الري: $e');
+      return false;
+    }
+  }
+
   // ✅ تحديث حالة البرنامج
   static Future<bool> updateStatus(String id, String status) async {
     try {

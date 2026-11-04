@@ -7,6 +7,7 @@ import '../../services/pdf_service.dart';
 import '../../services/notification_service.dart';
 import '../../utils/calc_engine.dart';
 import '../../utils/safe_parse.dart';
+import 'irrigation_plan_tab.dart';
 
 class ProgramDetailsScreen extends StatefulWidget {
   final MyFarmProgram program;
@@ -208,7 +209,7 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return DefaultTabController(
-      length: 3,
+      length: 4,
       child: Scaffold(
         appBar: AppBar(
           title: Text('${_program.templateEmoji} ${_program.templateName}',
@@ -235,6 +236,7 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
               Tab(icon: Icon(Icons.timeline), text: 'المهام'),
               Tab(icon: Icon(Icons.shopping_cart), text: 'المشتريات'),
               Tab(icon: Icon(Icons.health_and_safety), text: 'صحة النبات'),
+              Tab(icon: Icon(Icons.water_drop_outlined), text: 'الري الذكي'),
             ],
           ),
         ),
@@ -305,6 +307,14 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
                     _buildTasksTab(isDark),
                     _buildMaterialsTab(isDark),
                     _buildPlantHealthTab(isDark),
+                    IrrigationPlanTab(
+                      program: _program,
+                      onPlanSaved: (plan) {
+                        if (mounted) {
+                          setState(() => _program = _program.copyWithIrrigationPlan(plan));
+                        }
+                      },
+                    ),
                   ],
                 ),
               ),
