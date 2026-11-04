@@ -5,6 +5,7 @@ import '../../services/my_farm_service.dart';
 import '../../services/plant_health_service.dart';
 import '../../services/pdf_service.dart';
 import '../../services/notification_service.dart';
+import '../../utils/calc_engine.dart';
 import '../../utils/safe_parse.dart';
 import 'irrigation_plan_tab.dart';
 

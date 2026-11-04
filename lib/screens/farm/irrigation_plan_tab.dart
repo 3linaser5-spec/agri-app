@@ -480,7 +480,7 @@ class _IrrigationPlanTabState extends State<IrrigationPlanTab> {
           backgroundColor: Color(0xFFE0F2FE),
           child: Icon(Icons.water_drop, color: Color(0xFF0284C7)),
         ),
-        title: Text('${estimate.date.dayName} $date',
+        title: Text('${_weekdayLabel(estimate.date)} $date',
             style: const TextStyle(fontWeight: FontWeight.bold)),
         subtitle: Text(
           'ET₀ ${estimate.et0Mm.toStringAsFixed(1)} مم • مطر ${estimate.rainMm.toStringAsFixed(1)} مم • احتياج صافٍ ${estimate.netNeedMm.toStringAsFixed(1)} مم',
@@ -497,6 +497,19 @@ class _IrrigationPlanTabState extends State<IrrigationPlanTab> {
         ),
       ),
     );
+  }
+
+  String _weekdayLabel(DateTime date) {
+    const names = [
+      'الاثنين',
+      'الثلاثاء',
+      'الأربعاء',
+      'الخميس',
+      'الجمعة',
+      'السبت',
+      'الأحد',
+    ];
+    return names[date.weekday - 1];
   }
 }
 
