@@ -8,6 +8,7 @@ import 'template_editor_screen.dart';
 import 'json_import_screen.dart';
 import 'encyclopedia_admin_screen.dart';
 import 'training_data_admin_screen.dart';
+import 'satellite_subscriptions_admin_screen.dart';
 
 // ================== لوحة الأدمن الرئيسية ==================
 class AdminPanelScreen extends StatefulWidget {
@@ -182,6 +183,20 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                             context,
                             MaterialPageRoute(
                               builder: (_) => const TrainingDataAdminScreen(),
+                            ),
+                          );
+                        },
+                      ),
+                      _buildAdminActionCard(
+                        icon: Icons.satellite_alt,
+                        color: const Color(0xFF2563EB),
+                        title: 'اشتراكات مراقبة الأقمار',
+                        subtitle: 'راجع الطلبات وحدد السعر والمدة وحد الحقول والتحليلات',
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const SatelliteSubscriptionsAdminScreen(),
                             ),
                           );
                         },

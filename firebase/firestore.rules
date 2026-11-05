@@ -251,6 +251,83 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // خدمة مراقبة الأقمار: العميل يطلب الاشتراك فقط؛ منح/تجديد الوصول للأدمن.
+    function activeSatelliteAccess(uid) {
+      return signedIn()
+        && request.auth.uid == uid
+        && exists(/databases/$(database)/documents/satellite_access/$(uid))
+        && get(/databases/$(database)/documents/satellite_access/$(uid)).data.status == 'active'
+        && get(/databases/$(database)/documents/satellite_access/$(uid)).data.expiresAt is timestamp
+        && get(/databases/$(database)/documents/satellite_access/$(uid)).data.expiresAt > request.time;
+    }
+
+    function validSatelliteField(uid) {
+      return request.resource.data.keys().hasOnly([
+          'uid', 'name', 'vertices', 'areaFeddan', 'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.keys().hasAll([
+          'uid', 'name', 'vertices', 'areaFeddan', 'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.uid == uid
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 120
+        && request.resource.data.vertices is list
+        && request.resource.data.vertices.size() >= 3
+        && request.resource.data.vertices.size() <= 100
+        && request.resource.data.areaFeddan is number
+        && request.resource.data.areaFeddan > 0
+        && request.resource.data.areaFeddan <= 100000
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    match /satellite_access/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /satellite_access_requests/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow create: if signedIn()
+        && request.auth.uid == uid
+        && !exists(/databases/$(database)/documents/satellite_access_requests/$(uid))
+        && request.resource.data.keys().hasOnly(['uid', 'status', 'createdAt'])
+        && request.resource.data.uid == uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.createdAt == request.time;
+      allow update: if isAdmin()
+        || (signedIn()
+          && request.auth.uid == uid
+          && resource.data.uid == uid
+          && (resource.data.status == 'rejected'
+            || (resource.data.status == 'activated'
+              && exists(/databases/$(database)/documents/satellite_access/$(uid))
+              && get(/databases/$(database)/documents/satellite_access/$(uid)).data.expiresAt is timestamp
+              && get(/databases/$(database)/documents/satellite_access/$(uid)).data.expiresAt <= request.time))
+          && request.resource.data.uid == uid
+          && request.resource.data.status == 'pending'
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['status', 'createdAt']));
+      allow delete: if isAdmin();
+    }
+
+    match /satellite_fields/{fieldId} {
+      allow read: if signedIn()
+        && (resource.data.uid == request.auth.uid || isAdmin());
+      // إنشاء/تعديل/حذف الحقول من خلال Callable Functions فقط؛ Admin SDK يتجاوز القواعد.
+      allow create, update, delete: if false;
+
+      match /ndvi_history/{sampleId} {
+        allow read: if signedIn()
+          && (get(/databases/$(database)/documents/satellite_fields/$(fieldId)).data.uid
+                == request.auth.uid
+              || isAdmin());
+        allow write: if false;
+      }
+    }
+
     // أي حاجة تانية ممنوعة
     match /{document=**} {
       allow read, write: if false;

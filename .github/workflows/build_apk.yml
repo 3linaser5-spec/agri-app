@@ -2,7 +2,7 @@ name: Build Flutter APK
 
 on:
   push:
-    branches: [ main, "رئيسي", "feature/firebase-plant-classifier" ]
+    branches: [ main, "رئيسي", "feature/firebase-plant-classifier", "feature/satellite-crop-monitoring" ]
   workflow_dispatch:
 
 permissions:
@@ -243,7 +243,9 @@ jobs:
         run: dart run flutter_launcher_icons
 
       - name: Build Signed APK
-        run: flutter build apk --release --no-tree-shake-icons
+        env:
+          MAPTILER_API_KEY: ${{ secrets.MAPTILER_API_KEY }}
+        run: flutter build apk --release --no-tree-shake-icons --dart-define=MAPTILER_API_KEY="$MAPTILER_API_KEY"
 
       - name: Verify administrative locations asset in APK
         run: |

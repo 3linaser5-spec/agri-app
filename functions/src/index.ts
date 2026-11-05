@@ -282,3 +282,9 @@ export const dispatchWeatherPushAlerts = onSchedule(
     });
   },
 );
+
+export {
+  deleteSatelliteField,
+  requestSatelliteNdvi,
+  saveSatelliteField,
+} from './satellite-ndvi';

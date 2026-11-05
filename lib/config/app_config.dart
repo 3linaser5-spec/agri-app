@@ -7,13 +7,23 @@ class AppConfig {
   AppConfig._(); // منع إنشاء كائن من الكلاس
 
   /// رقم واتساب المهندس (بصيغة دولية بدون + أو مسافات).
-  static const String engineerPhone =
-      String.fromEnvironment('ENGINEER_PHONE', defaultValue: '201284172047');
+  static const String engineerPhone = String.fromEnvironment(
+    'ENGINEER_PHONE',
+    defaultValue: '201284172047',
+  );
 
   /// نفس الرقم بالصيغة المحلية للعرض (في ملفات PDF).
   static const String engineerPhoneLocal = String.fromEnvironment(
-      'ENGINEER_PHONE_LOCAL',
-      defaultValue: '01284172047');
+    'ENGINEER_PHONE_LOCAL',
+    defaultValue: '01284172047',
+  );
+
+  /// مفتاح MapTiler يُمرر وقت البناء بعد تقييده من لوحة MapTiler.
+  /// المفتاح الظاهر داخل التطبيق ليس سراً؛ يجب تقييده حسب التطبيق/الاستخدام.
+  static const String mapTilerApiKey = String.fromEnvironment(
+    'MAPTILER_API_KEY',
+    defaultValue: '',
+  );
 
   /// رابط واتساب آمن (يشيل أي رموز غير أرقام).
   static String get whatsappUrl {
@@ -24,7 +34,5 @@ class AppConfig {
 
   /// حسابات الأدمن (واجهة فقط). الحماية الحقيقية لازم تكون في قواعد Firestore،
   /// راجع firebase/README.md.
-  static const List<String> adminEmails = [
-    '01284172047@agri-app.local',
-  ];
+  static const List<String> adminEmails = ['01284172047@agri-app.local'];
 }
