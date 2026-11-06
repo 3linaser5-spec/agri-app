@@ -52,12 +52,16 @@ class SatelliteField {
     required this.name,
     required this.vertices,
     required this.areaFeddan,
+    required this.lastAnalysisStatus,
+    this.lastAnalysisError,
   });
 
   final String id;
   final String name;
   final List<Map<String, double>> vertices;
   final double areaFeddan;
+  final String lastAnalysisStatus;
+  final String? lastAnalysisError;
 
   factory SatelliteField.fromDocument(
     QueryDocumentSnapshot<Map<String, dynamic>> doc,
@@ -78,6 +82,8 @@ class SatelliteField {
       name: data['name'] as String? ?? 'حقل بدون اسم',
       vertices: vertices,
       areaFeddan: (data['areaFeddan'] as num?)?.toDouble() ?? 0,
+      lastAnalysisStatus: data['lastAnalysisStatus'] as String? ?? 'idle',
+      lastAnalysisError: data['lastAnalysisError'] as String?,
     );
   }
 }
@@ -99,10 +105,16 @@ class SatelliteNdviSample {
     QueryDocumentSnapshot<Map<String, dynamic>> doc,
   ) {
     final data = doc.data();
+    DateTime readDate(dynamic value) {
+      if (value is Timestamp) return value.toDate();
+      if (value is String) return DateTime.parse(value);
+      throw const FormatException('صيغة تاريخ NDVI غير صالحة.');
+    }
+
     return SatelliteNdviSample(
       mean: (data['mean'] as num).toDouble(),
-      from: (data['from'] as Timestamp).toDate(),
-      to: (data['to'] as Timestamp).toDate(),
+      from: readDate(data['from']),
+      to: readDate(data['to']),
       sampleCount: (data['sampleCount'] as num?)?.toInt() ?? 0,
     );
   }
@@ -193,11 +205,14 @@ class SatelliteAccessService {
         );
   }
 
-  Future<void> requestNdviAnalysis(String fieldId) async {
+  Future<bool> requestNdviAnalysis(String fieldId) async {
     final callable = FirebaseFunctions.instanceFor(
       region: 'europe-west1',
     ).httpsCallable('requestSatelliteNdvi');
-    await callable.call<Map<String, dynamic>>({'fieldId': fieldId});
+    final result = await callable.call<Map<String, dynamic>>({
+      'fieldId': fieldId,
+    });
+    return result.data['confirmationPending'] == true;
   }
 
   Future<double> saveField({

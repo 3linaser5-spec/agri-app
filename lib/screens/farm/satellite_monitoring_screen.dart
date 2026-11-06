@@ -135,7 +135,7 @@ class _SatelliteMonitoringScreenState extends State<SatelliteMonitoringScreen> {
         ),
         const SizedBox(height: 18),
         const Text(
-          'ملاحظة: الخريطة الفضائية مخصصة لتحديد الحدود. تحليل NDVI يُنفّذ خادمياً من Sentinel‑2 بعد إعداد بيانات الاعتماد ونشر Cloud Functions.',
+          'ملاحظة: الخريطة الفضائية لتحديد الحدود فقط؛ مؤشر NDVI يأتي من NASA HLS-VI ويُعالج عبر AppEEARS بعد إعداد Earthdata ونشر Cloud Functions.',
           style: TextStyle(fontSize: 12, color: Colors.black54, height: 1.5),
         ),
       ],
@@ -241,10 +241,14 @@ class _SatelliteMonitoringScreenState extends State<SatelliteMonitoringScreen> {
             child: SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
-                onPressed: _analyzingFieldIds.contains(field.id)
+                onPressed:
+                    _analyzingFieldIds.contains(field.id) ||
+                        field.lastAnalysisStatus == 'processing'
                     ? null
                     : () => _analyzeField(field),
-                icon: _analyzingFieldIds.contains(field.id)
+                icon:
+                    _analyzingFieldIds.contains(field.id) ||
+                        field.lastAnalysisStatus == 'processing'
                     ? const SizedBox(
                         width: 18,
                         height: 18,
@@ -253,13 +257,34 @@ class _SatelliteMonitoringScreenState extends State<SatelliteMonitoringScreen> {
                     : const Icon(Icons.analytics_outlined),
                 label: Text(
                   _analyzingFieldIds.contains(field.id)
-                      ? 'جارٍ تحليل صور Sentinel‑2...'
+                      ? 'جارٍ إرسال طلب NASA HLS...'
+                      : field.lastAnalysisStatus == 'processing'
+                      ? 'بانتظار نتيجة NASA HLS...'
                       : 'تحليل NDVI الآن',
                 ),
                 style: FilledButton.styleFrom(backgroundColor: _satelliteGreen),
               ),
             ),
           ),
+          if (field.lastAnalysisStatus == 'processing')
+            const ListTile(
+              dense: true,
+              leading: Icon(Icons.satellite_alt_outlined),
+              title: Text('طلب التحليل قيد المعالجة لدى NASA AppEEARS'),
+              subtitle: Text('ستظهر النتائج تلقائياً هنا عند اكتمالها.'),
+            )
+          else if (field.lastAnalysisStatus == 'failed')
+            ListTile(
+              dense: true,
+              leading: const Icon(
+                Icons.error_outline,
+                color: Colors.deepOrange,
+              ),
+              title: const Text('لم يكتمل آخر تحليل'),
+              subtitle: Text(
+                field.lastAnalysisError ?? 'يمكنك إعادة المحاولة.',
+              ),
+            ),
           StreamBuilder<List<SatelliteNdviSample>>(
             stream: _service.watchNdviHistory(field.id),
             builder: (context, historySnapshot) {
@@ -278,7 +303,7 @@ class _SatelliteMonitoringScreenState extends State<SatelliteMonitoringScreen> {
                   leading: Icon(Icons.info_outline),
                   title: Text('لا توجد نتائج بعد'),
                   subtitle: Text(
-                    'اطلب تحليلاً لجلب سجل Sentinel‑2 لآخر 90 يوماً.',
+                    'اطلب تحليلاً لجلب مؤشر NDVI من NASA HLS لآخر 90 يوماً.',
                   ),
                 );
               }
@@ -295,7 +320,7 @@ class _SatelliteMonitoringScreenState extends State<SatelliteMonitoringScreen> {
                           'متوسط NDVI: ${sample.mean.toStringAsFixed(3)}',
                         ),
                         subtitle: Text(
-                          '${_date(sample.from)} – ${_date(sample.to)} • ${sample.sampleCount} عينة',
+                          '${_date(sample.from)} – ${_date(sample.to)} • ${sample.sampleCount > 0 ? '${sample.sampleCount} بكسل' : 'إحصاء الحقل'}',
                         ),
                       ),
                     )
@@ -311,12 +336,14 @@ class _SatelliteMonitoringScreenState extends State<SatelliteMonitoringScreen> {
   Future<void> _analyzeField(SatelliteField field) async {
     setState(() => _analyzingFieldIds.add(field.id));
     try {
-      await _service.requestNdviAnalysis(field.id);
+      final confirmationPending = await _service.requestNdviAnalysis(field.id);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
+          SnackBar(
             content: Text(
-              'اكتمل طلب تحليل NDVI وتُحدّث النتائج عند توفر مشاهد صافية.',
+              confirmationPending
+                  ? 'سُجل الطلب ونتحقق من ظهوره لدى NASA؛ لن تُخصم الحصة مرتين.'
+                  : 'أُرسل طلب NDVI إلى NASA HLS؛ ستظهر النتيجة هنا بعد اكتمال المعالجة.',
             ),
           ),
         );

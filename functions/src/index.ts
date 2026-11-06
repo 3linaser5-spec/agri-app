@@ -285,6 +285,7 @@ export const dispatchWeatherPushAlerts = onSchedule(
 
 export {
   deleteSatelliteField,
+  processSatelliteNdviJobs,
   requestSatelliteNdvi,
   saveSatelliteField,
 } from './satellite-ndvi';
