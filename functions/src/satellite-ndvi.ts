@@ -3,7 +3,15 @@ import { logger } from 'firebase-functions';
 import { defineSecret } from 'firebase-functions/params';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
-import { buildHlsAreaRequest, parseHlsStatisticsCsv, type HlsVertex, type ParsedHlsSample } from './appeears';
+import {
+  HLS_INDEX_KEYS,
+  buildHlsAreaRequest,
+  buildHlsZones,
+  parseHlsStatisticsCsv,
+  type HlsIndexKey,
+  type HlsVertex,
+  type ParsedHlsSample,
+} from './appeears';
 
 const appeearsUsername = defineSecret('APPEEARS_USERNAME');
 const appeearsPassword = defineSecret('APPEEARS_PASSWORD');
@@ -148,10 +156,10 @@ async function submitHlsTask(
   return body.task_id;
 }
 
-function combineSameDay(samples: ParsedHlsSample[]): ParsedHlsSample[] {
+function combineSamples(samples: ParsedHlsSample[]): ParsedHlsSample[] {
   const groups = new Map<string, ParsedHlsSample[]>();
   for (const sample of samples) {
-    const key = sample.from.slice(0, 10);
+    const key = `${sample.from.slice(0, 10)}:${sample.zoneId}:${sample.index}`;
     const group = groups.get(key) ?? [];
     group.push(sample);
     groups.set(key, group);
@@ -165,6 +173,8 @@ function combineSameDay(samples: ParsedHlsSample[]): ParsedHlsSample[] {
     const from = new Date(`${date}T00:00:00.000Z`);
     const to = new Date(from.getTime() + 24 * 60 * 60 * 1000);
     return {
+      index: group[0]!.index,
+      zoneId: group[0]!.zoneId,
       mean: weightedMean,
       stDev: group.reduce((sum, sample) => sum + sample.stDev, 0) / group.length,
       sampleCount: totalCount,
@@ -209,9 +219,9 @@ async function fetchTaskSamples(taskId: string, token: string): Promise<ParsedHl
     if (Buffer.byteLength(text, 'utf8') > MAX_STATS_FILE_BYTES) {
       throw new Error('ملف إحصاءات NASA أكبر من الحد الآمن للقراءة.');
     }
-    samples.push(...parseHlsStatisticsCsv(text));
+    samples.push(...parseHlsStatisticsCsv(text, String(file.file_name ?? '')));
   }
-  return combineSameDay(samples);
+  return combineSamples(samples);
 }
 
 function appEearsStatus(body: Record<string, unknown>): string {
@@ -293,24 +303,76 @@ async function completeJob(
       return;
     }
 
+    const daily = new Map<string, {
+      from: string;
+      to: string;
+      zoneIndices: Record<string, Record<string, number>>;
+    }>();
     for (const sample of samples) {
       const dayId = sample.from.slice(0, 10);
+      const day = daily.get(dayId) ?? {
+        from: sample.from,
+        to: sample.to,
+        zoneIndices: {},
+      };
+      const zone = day.zoneIndices[sample.zoneId] ?? {};
+      zone[sample.index] = sample.mean;
+      day.zoneIndices[sample.zoneId] = zone;
+      daily.set(dayId, day);
+    }
+    for (const [dayId, day] of daily) {
+      const indices: Partial<Record<HlsIndexKey, number>> = {};
+      const totals: Record<string, { sum: number; zones: number }> = {};
+      for (const values of Object.values(day.zoneIndices)) {
+        for (const [key, value] of Object.entries(values)) {
+          const total = totals[key] ?? { sum: 0, zones: 0 };
+          total.sum += value;
+          total.zones += 1;
+          totals[key] = total;
+        }
+      }
+      for (const [key, total] of Object.entries(totals)) {
+        if ((HLS_INDEX_KEYS as readonly string[]).includes(key) && total.zones > 0) {
+          indices[key as HlsIndexKey] = total.sum / total.zones;
+        }
+      }
       const historyRef = fieldRef.collection('ndvi_history').doc(dayId);
       transaction.set(historyRef, {
-        ...sample,
-        from: Timestamp.fromDate(new Date(sample.from)),
-        to: Timestamp.fromDate(new Date(sample.to)),
+        indices,
+        zoneIndices: day.zoneIndices,
+        mean: indices.NDVI ?? null,
+        sampleCount: Object.keys(day.zoneIndices).length,
+        from: Timestamp.fromDate(new Date(day.from)),
+        to: Timestamp.fromDate(new Date(day.to)),
         source: 'NASA HLS-VI (Sentinel-2 + Landsat) via AppEEARS',
         createdAt: FieldValue.serverTimestamp(),
       });
     }
-    const latest = samples[samples.length - 1];
+    const latest = [...daily.entries()].sort(([left], [right]) => left.localeCompare(right)).at(-1)?.[1];
+    const latestIndices: Partial<Record<HlsIndexKey, number>> = {};
+    if (latest) {
+      const sums: Record<string, { sum: number; count: number }> = {};
+      for (const values of Object.values(latest.zoneIndices)) {
+        for (const [key, value] of Object.entries(values)) {
+          const total = sums[key] ?? { sum: 0, count: 0 };
+          total.sum += value;
+          total.count += 1;
+          sums[key] = total;
+        }
+      }
+      for (const [key, total] of Object.entries(sums)) {
+        if ((HLS_INDEX_KEYS as readonly string[]).includes(key)) {
+          latestIndices[key as HlsIndexKey] = total.sum / total.count;
+        }
+      }
+    }
     if (fieldSnapshot.get('lastNdviJobId') === jobRef.id) {
       transaction.update(fieldRef, {
         lastAnalyzedAt: FieldValue.serverTimestamp(),
-        lastAnalysisStatus: samples.length > 0 ? 'ready' : 'no_valid_scenes',
+        lastAnalysisStatus: daily.size > 0 ? 'ready' : 'no_valid_scenes',
         lastAnalysisError: FieldValue.delete(),
-        lastNdvi: latest?.mean ?? null,
+        lastNdvi: latestIndices.NDVI ?? null,
+        lastIndices: latestIndices,
         lastNdviIntervalFrom: latest ? Timestamp.fromDate(new Date(latest.from)) : null,
         lastNdviIntervalTo: latest ? Timestamp.fromDate(new Date(latest.to)) : null,
         lastNdviJobId: FieldValue.delete(),
@@ -318,7 +380,7 @@ async function completeJob(
     }
     transaction.update(jobRef, {
       status: 'done',
-      resultCount: samples.length,
+      resultCount: daily.size,
       completedAt: FieldValue.serverTimestamp(),
       nextPollAt: FieldValue.delete(),
       error: FieldValue.delete(),
@@ -449,12 +511,28 @@ export const saveSatelliteField = onCall(
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError('unauthenticated', 'سجل الدخول أولاً.');
     const name = typeof request.data?.name === 'string' ? request.data.name.trim() : '';
+    const cropType = typeof request.data?.cropType === 'string' ? request.data.cropType.trim() : '';
+    const cultivar = typeof request.data?.cultivar === 'string' ? request.data.cultivar.trim() : '';
+    const plantingDateText = typeof request.data?.plantingDate === 'string' ? request.data.plantingDate : '';
+    const plantingDate = /^\d{4}-\d{2}-\d{2}$/.test(plantingDateText)
+      ? new Date(`${plantingDateText}T00:00:00.000Z`)
+      : new Date(Number.NaN);
     const fieldId = typeof request.data?.fieldId === 'string' ? request.data.fieldId.trim() : '';
-    if (!name || name.length > 120 || fieldId.includes('/') || fieldId.length > 180) {
-      throw new HttpsError('invalid-argument', 'اسم الحقل أو معرّفه غير صالح.');
+    if (
+      !name || name.length > 120 || !cropType || cropType.length > 80 ||
+      !cultivar || cultivar.length > 100 || !Number.isFinite(plantingDate.getTime()) ||
+      plantingDate.getTime() > Date.now() || plantingDate.getTime() < Date.now() - 30 * 365 * 24 * 60 * 60 * 1000 ||
+      fieldId.includes('/') || fieldId.length > 180
+    ) {
+      throw new HttpsError('invalid-argument', 'تحقق من اسم القطعة والمحصول والصنف وتاريخ الزراعة.');
     }
     const vertices = parseVertices(request.data?.vertices);
     const areaFeddan = polygonAreaFeddan(vertices);
+    const zoneDefinitions = buildHlsZones(vertices).map((zone) => ({
+      id: zone.id,
+      vertices: zone.vertices,
+      center: zone.center,
+    }));
     if (!Number.isFinite(areaFeddan) || areaFeddan <= 0 || areaFeddan > 100000) {
       throw new HttpsError('failed-precondition', 'مساحة الحدود غير صالحة.');
     }
@@ -494,7 +572,17 @@ export const saveSatelliteField = onCall(
       if (!fieldId && fieldsSnapshot.size >= maxFields) {
         throw new HttpsError('resource-exhausted', 'وصلت إلى الحد الأقصى لعدد الحقول في اشتراكك.');
       }
-      const data = { uid, name, vertices, areaFeddan, updatedAt: FieldValue.serverTimestamp() };
+      const data = {
+        uid,
+        name,
+        vertices,
+        areaFeddan,
+        cropType,
+        cultivar,
+        plantingDate: Timestamp.fromDate(plantingDate),
+        zoneDefinitions,
+        updatedAt: FieldValue.serverTimestamp(),
+      };
       if (fieldId) transaction.update(targetRef, data);
       else {
         transaction.set(targetRef, { ...data, createdAt: FieldValue.serverTimestamp() });

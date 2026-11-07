@@ -261,27 +261,6 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/satellite_access/$(uid)).data.expiresAt > request.time;
     }
 
-    function validSatelliteField(uid) {
-      return request.resource.data.keys().hasOnly([
-          'uid', 'name', 'vertices', 'areaFeddan', 'createdAt', 'updatedAt'
-        ])
-        && request.resource.data.keys().hasAll([
-          'uid', 'name', 'vertices', 'areaFeddan', 'createdAt', 'updatedAt'
-        ])
-        && request.resource.data.uid == uid
-        && request.resource.data.name is string
-        && request.resource.data.name.size() > 0
-        && request.resource.data.name.size() <= 120
-        && request.resource.data.vertices is list
-        && request.resource.data.vertices.size() >= 3
-        && request.resource.data.vertices.size() <= 100
-        && request.resource.data.areaFeddan is number
-        && request.resource.data.areaFeddan > 0
-        && request.resource.data.areaFeddan <= 100000
-        && request.resource.data.createdAt is timestamp
-        && request.resource.data.updatedAt == request.time;
-    }
-
     match /satellite_access/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
       allow create, update, delete: if isAdmin();

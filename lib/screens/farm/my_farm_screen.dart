@@ -4,7 +4,6 @@ import '../../models/my_farm_model.dart';
 import '../../services/my_farm_service.dart';
 import '../../utils/safe_parse.dart'; // ✅ لضمان قراءة النصوص بأمان
 import 'program_details_screen.dart';
-import 'satellite_monitoring_screen.dart';
 
 class MyFarmScreen extends StatefulWidget {
   const MyFarmScreen({super.key});
@@ -44,18 +43,6 @@ class _MyFarmScreenState extends State<MyFarmScreen> {
             style: TextStyle(color: Colors.white)),
         backgroundColor: const Color(0xFF047857),
         iconTheme: const IconThemeData(color: Colors.white),
-        actions: [
-          IconButton(
-            tooltip: 'مراقبة الأقمار الصناعية',
-            icon: const Icon(Icons.satellite_alt),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => const SatelliteMonitoringScreen(),
-              ),
-            ),
-          ),
-        ],
       ),
       body: Directionality(
         textDirection: TextDirection.rtl,

@@ -3,6 +3,17 @@ import 'dart:math' as math;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 
+/// يحوّل خريطة Firestore إلى قيم رقمية فقط، ويتجاهل أي حقل غير رقمي.
+Map<String, double> _numericMap(dynamic raw) {
+  if (raw is! Map) return <String, double>{};
+  final result = <String, double>{};
+  for (final entry in raw.entries) {
+    final value = entry.value;
+    if (value is num) result[entry.key.toString()] = value.toDouble();
+  }
+  return result;
+}
+
 /// بيانات استحقاق مراقبة الأقمار الصناعية؛ التفعيل والمدة يحددهما الأدمن.
 class SatelliteEntitlement {
   const SatelliteEntitlement({
@@ -46,27 +57,164 @@ class SatelliteEntitlement {
   }
 }
 
+/// تعريف مؤشر نباتي من مجموعة NASA HLS-VI مع شرحه الزراعي العربي.
+class SatelliteIndexInfo {
+  const SatelliteIndexInfo({
+    required this.key,
+    required this.nameAr,
+    required this.purposeAr,
+    required this.min,
+    required this.max,
+  });
+
+  final String key;
+  final String nameAr;
+  final String purposeAr;
+  final double min;
+  final double max;
+}
+
+const List<SatelliteIndexInfo> satelliteIndexCatalog = <SatelliteIndexInfo>[
+  SatelliteIndexInfo(
+    key: 'NDVI',
+    nameAr: 'مؤشر الغطاء النباتي',
+    purposeAr: 'حيوية النبات وكثافة الغطاء الأخضر بشكل عام.',
+    min: -1,
+    max: 1,
+  ),
+  SatelliteIndexInfo(
+    key: 'EVI',
+    nameAr: 'المؤشر المحسّن للنبات',
+    purposeAr: 'أدق من NDVI في الغطاء الكثيف، ويقل تأثره بالتربة والجو.',
+    min: -1,
+    max: 1,
+  ),
+  SatelliteIndexInfo(
+    key: 'SAVI',
+    nameAr: 'المؤشر المعدّل للتربة',
+    purposeAr: 'يقلل أثر التربة الظاهرة، مفيد في بداية النمو والأراضي الجافة.',
+    min: -1,
+    max: 1,
+  ),
+  SatelliteIndexInfo(
+    key: 'MSAVI',
+    nameAr: 'المؤشر المعدّل ذاتياً للتربة',
+    purposeAr: 'نسخة مطوّرة من SAVI لا تحتاج ضبط معامل التربة يدوياً.',
+    min: -1,
+    max: 1,
+  ),
+  SatelliteIndexInfo(
+    key: 'NDMI',
+    nameAr: 'مؤشر رطوبة الغطاء النباتي',
+    purposeAr: 'يرصد محتوى الماء في أوراق النبات، وليس رطوبة التربة مباشرة.',
+    min: -1,
+    max: 1,
+  ),
+  SatelliteIndexInfo(
+    key: 'NDWI',
+    nameAr: 'مؤشر المياه السطحية',
+    purposeAr: 'يفيد في رصد المسطحات المائية والمياه الراكدة بين النباتات.',
+    min: -1,
+    max: 1,
+  ),
+  SatelliteIndexInfo(
+    key: 'NBR',
+    nameAr: 'مؤشر الحروق',
+    purposeAr: 'يكشف التلف الشديد والحروق وتغيّر نوع الغطاء.',
+    min: -1,
+    max: 1,
+  ),
+  SatelliteIndexInfo(
+    key: 'NBR2',
+    nameAr: 'مؤشر الحروق الموسّع',
+    purposeAr: 'يستخدم مع NBR لفصل الرطوبة عن آثار الحرق والتلف.',
+    min: -1,
+    max: 1,
+  ),
+  SatelliteIndexInfo(
+    key: 'TVI',
+    nameAr: 'مؤشر الغطاء الثلاثي',
+    purposeAr: 'قراءة إضافية لكثافة الغطاء الأخضر بمنظور طيفي مختلف.',
+    min: 0,
+    max: 1,
+  ),
+];
+
+/// منطقة تحليل داخل القطعة؛ تقسيم تقريبي إلى شبكة تسمح بتحديد مواضع الضعف.
+class SatelliteZone {
+  const SatelliteZone({
+    required this.id,
+    required this.vertices,
+    required this.center,
+  });
+
+  final String id;
+  final List<Map<String, double>> vertices;
+  final Map<String, double> center;
+
+  factory SatelliteZone.fromMap(Map<dynamic, dynamic> data) {
+    final rawVertices = data['vertices'];
+    final rawCenter = data['center'];
+    final centerMap = rawCenter is Map ? rawCenter : const <String, dynamic>{};
+    return SatelliteZone(
+      id: data['id'] as String? ?? 'Z01',
+      vertices: rawVertices is List
+          ? rawVertices.whereType<Map>().map((point) {
+              return <String, double>{
+                'lat': (point['lat'] as num).toDouble(),
+                'lng': (point['lng'] as num).toDouble(),
+              };
+            }).toList()
+          : <Map<String, double>>[],
+      center: <String, double>{
+        'lat': (centerMap['lat'] as num?)?.toDouble() ?? 0,
+        'lng': (centerMap['lng'] as num?)?.toDouble() ?? 0,
+      },
+    );
+  }
+}
+
+/// قطعة أرض واحدة يملكها العميل، بحدودها ومحصولها وتقسيمها الداخلي.
 class SatelliteField {
   const SatelliteField({
     required this.id,
     required this.name,
+    required this.cropType,
+    required this.cultivar,
+    required this.plantingDate,
     required this.vertices,
     required this.areaFeddan,
+    required this.zones,
     required this.lastAnalysisStatus,
     this.lastAnalysisError,
+    this.lastIndices = const <String, double>{},
+    this.lastAnalyzedAt,
   });
 
   final String id;
   final String name;
+  final String cropType;
+  final String cultivar;
+  final DateTime? plantingDate;
   final List<Map<String, double>> vertices;
   final double areaFeddan;
+  final List<SatelliteZone> zones;
   final String lastAnalysisStatus;
   final String? lastAnalysisError;
+  final Map<String, double> lastIndices;
+  final DateTime? lastAnalyzedAt;
+
+  int? get cropAgeDays {
+    final planted = plantingDate;
+    if (planted == null) return null;
+    return DateTime.now().difference(planted).inDays;
+  }
 
   factory SatelliteField.fromDocument(
     QueryDocumentSnapshot<Map<String, dynamic>> doc,
-  ) {
-    final data = doc.data();
+  ) => SatelliteField.fromMap(doc.id, doc.data());
+
+  factory SatelliteField.fromMap(String id, Map<String, dynamic> data) {
     final rawVertices = data['vertices'];
     final vertices = rawVertices is List
         ? rawVertices.whereType<Map>().map((point) {
@@ -76,30 +224,48 @@ class SatelliteField {
             };
           }).toList()
         : <Map<String, double>>[];
+    final rawZones = data['zoneDefinitions'];
+    final zones = rawZones is List
+        ? rawZones.whereType<Map>().map(SatelliteZone.fromMap).toList()
+        : <SatelliteZone>[];
+    final plantingDate = data['plantingDate'];
+    final analyzedAt = data['lastAnalyzedAt'];
+    final rawIndices = data['lastIndices'];
 
     return SatelliteField(
-      id: doc.id,
-      name: data['name'] as String? ?? 'حقل بدون اسم',
+      id: id,
+      name: data['name'] as String? ?? 'قطعة بدون اسم',
+      cropType: data['cropType'] as String? ?? 'غير محدد',
+      cultivar: data['cultivar'] as String? ?? 'غير محدد',
+      plantingDate: plantingDate is Timestamp ? plantingDate.toDate() : null,
       vertices: vertices,
       areaFeddan: (data['areaFeddan'] as num?)?.toDouble() ?? 0,
+      zones: zones,
       lastAnalysisStatus: data['lastAnalysisStatus'] as String? ?? 'idle',
       lastAnalysisError: data['lastAnalysisError'] as String?,
+      lastIndices: _numericMap(rawIndices),
+      lastAnalyzedAt: analyzedAt is Timestamp ? analyzedAt.toDate() : null,
     );
   }
 }
 
+/// قراءة يومية واحدة لكل المؤشرات، مع تفصيل مكاني لكل منطقة تحليل.
 class SatelliteNdviSample {
   const SatelliteNdviSample({
-    required this.mean,
+    required this.indices,
+    required this.zoneIndices,
     required this.from,
     required this.to,
     required this.sampleCount,
   });
 
-  final double mean;
+  final Map<String, double> indices;
+  final Map<String, Map<String, double>> zoneIndices;
   final DateTime from;
   final DateTime to;
   final int sampleCount;
+
+  double get mean => indices['NDVI'] ?? 0;
 
   factory SatelliteNdviSample.fromDocument(
     QueryDocumentSnapshot<Map<String, dynamic>> doc,
@@ -108,11 +274,24 @@ class SatelliteNdviSample {
     DateTime readDate(dynamic value) {
       if (value is Timestamp) return value.toDate();
       if (value is String) return DateTime.parse(value);
-      throw const FormatException('صيغة تاريخ NDVI غير صالحة.');
+      throw const FormatException('صيغة تاريخ التحليل غير صالحة.');
+    }
+
+    final indices = _numericMap(data['indices']);
+    if (indices.isEmpty && data['mean'] is num) {
+      indices['NDVI'] = (data['mean'] as num).toDouble();
+    }
+    final zoneIndices = <String, Map<String, double>>{};
+    final rawZones = data['zoneIndices'];
+    if (rawZones is Map) {
+      for (final entry in rawZones.entries) {
+        zoneIndices[entry.key.toString()] = _numericMap(entry.value);
+      }
     }
 
     return SatelliteNdviSample(
-      mean: (data['mean'] as num).toDouble(),
+      indices: indices,
+      zoneIndices: zoneIndices,
       from: readDate(data['from']),
       to: readDate(data['to']),
       sampleCount: (data['sampleCount'] as num?)?.toInt() ?? 0,
@@ -190,6 +369,18 @@ class SatelliteAccessService {
         );
   }
 
+  /// يتابع مستند قطعة واحدة حتى تظهر حالة التحليل الجديدة دون إعادة فتح الشاشة.
+  Stream<SatelliteField?> watchField(String fieldId) {
+    return _firestore
+        .collection('satellite_fields')
+        .doc(fieldId)
+        .snapshots()
+        .map((snapshot) {
+          final data = snapshot.data();
+          return data == null ? null : SatelliteField.fromMap(fieldId, data);
+        });
+  }
+
   Stream<List<SatelliteNdviSample>> watchNdviHistory(String fieldId) {
     return _firestore
         .collection('satellite_fields')
@@ -219,6 +410,9 @@ class SatelliteAccessService {
     required String uid,
     String? fieldId,
     required String name,
+    required String cropType,
+    required String cultivar,
+    required DateTime plantingDate,
     required List<Map<String, double>> vertices,
   }) async {
     final callable = FirebaseFunctions.instanceFor(
@@ -227,6 +421,10 @@ class SatelliteAccessService {
     final result = await callable.call<Map<String, dynamic>>({
       'fieldId': fieldId,
       'name': name.trim(),
+      'cropType': cropType.trim(),
+      'cultivar': cultivar.trim(),
+      'plantingDate':
+          '${plantingDate.year.toString().padLeft(4, '0')}-${plantingDate.month.toString().padLeft(2, '0')}-${plantingDate.day.toString().padLeft(2, '0')}',
       'vertices': vertices,
     });
     final data = result.data;
