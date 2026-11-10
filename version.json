@@ -3,6 +3,7 @@
   "latest_version": "1.0.0",
   "min_version": "1.0.0",
   "download_url": "https://github.com/3linaser5-spec/agri-app/releases/latest/download/app-release.apk",
+  "sha256": "7a7fe09c870d5326fbc6ca29d679a45df8a3117420eff6c10b49e6a8519ee9cc",
   "changelog": "• الإصدار الأول من تطبيق نباتي\n• تشخيص الآفات بالذكاء الاصطناعي\n• موسوعة زراعية شاملة\n• إحصائيات وسجل التشخيصات\n• العمل بدون إنترنت مع المزامنة التلقائية\n• تنبيهات فورية عن الآفات",
   "mandatory": false
 }

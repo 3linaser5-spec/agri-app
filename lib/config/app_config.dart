@@ -22,9 +22,4 @@ class AppConfig {
     return 'https://wa.me/$safePhone';
   }
 
-  /// حسابات الأدمن (واجهة فقط). الحماية الحقيقية لازم تكون في قواعد Firestore،
-  /// راجع firebase/README.md.
-  static const List<String> adminEmails = [
-    '01284172047@agri-app.local',
-  ];
 }

@@ -1,0 +1,31 @@
+# Flutter/Dart generated files
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+build/
+coverage/
+
+# Local Android configuration and signing material
+android/local.properties
+android/key.properties
+android/app/google-services.json
+*.jks
+*.keystore
+
+# Node and Python generated files
+functions/node_modules/
+functions/lib/
+functions/plant_ai/__pycache__/
+functions/plant_ai/.venv/
+*.py[cod]
+
+# OS/editor files
+.DS_Store
+.idea/
+.vscode/
+
+# Firebase Emulator output
+.firebase/
+firebase-debug.log
+firestore-debug.log

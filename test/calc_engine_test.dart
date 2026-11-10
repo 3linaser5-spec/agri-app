@@ -79,6 +79,17 @@ void main() {
       );
     });
 
+    test('formula variable matching is case-insensitive', () {
+      expect(
+        CalcEngine.quantity(
+          perUnit: 0,
+          formula: 'AREA * seedRate',
+          inputs: {'area': 2, 'seedRate': 5},
+        ),
+        closeTo(10, 1e-9),
+      );
+    });
+
     test('an invalid formula falls back to per-unit x area', () {
       expect(
         CalcEngine.quantity(

@@ -1,6 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../models/calculator_models.dart';
-import '../config/app_config.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 
 class CalculatorService {
@@ -33,7 +33,7 @@ class CalculatorService {
       return _parseDocs(snapshot.docs, CalculatorSection.fromFirestore, 'قسم');
     } catch (e) {
       debugPrint('❌ خطأ في جلب الأقسام: $e');
-      return [];
+      rethrow;
     }
   }
 
@@ -49,7 +49,7 @@ class CalculatorService {
           snapshot.docs, CalculatorTemplate.fromFirestore, 'قالب');
     } catch (e) {
       debugPrint('❌ خطأ في جلب القوالب: $e');
-      return [];
+      rethrow;
     }
   }
 
@@ -61,7 +61,7 @@ class CalculatorService {
       return CalculatorTemplate.fromFirestore(doc);
     } catch (e) {
       debugPrint('❌ خطأ في جلب القالب: $e');
-      return null;
+      rethrow;
     }
   }
 
@@ -129,10 +129,15 @@ class CalculatorService {
   }
 
   // ======== التحقق من الأدمن ========
-  static const List<String> adminEmails = AppConfig.adminEmails;
-
-  static bool isAdmin(String? email) {
-    if (email == null) return false;
-    return adminEmails.contains(email);
+  static Future<bool> isCurrentUserAdmin() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return false;
+    try {
+      final admin = await _firestore.collection('admins').doc(uid).get();
+      return admin.exists;
+    } catch (e) {
+      debugPrint('تعذر التحقق من صلاحية الأدمن: $e');
+      return false;
+    }
   }
 }

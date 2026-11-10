@@ -3,14 +3,17 @@ import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { getMessaging, type Message } from 'firebase-admin/messaging';
 import { initializeApp } from 'firebase-admin/app';
 import { logger } from 'firebase-functions';
+import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { buildWeatherPushAlerts, type WeatherPushAlert } from './weather-alerts';
+import { parseWeatherDeviceRegistration } from './weather-device';
 
 initializeApp();
 
 const db = getFirestore();
 const WEATHER_COLLECTION = 'weather_push_devices';
 const STATE_COLLECTION = 'weather_push_state';
+const MAX_WEATHER_DEVICES_PER_USER = 5;
 const INVALID_TOKEN_CODES = new Set([
   'messaging/invalid-registration-token',
   'messaging/registration-token-not-registered',
@@ -83,6 +86,51 @@ async function fetchForecast(latitude: number, longitude: number): Promise<unkno
   }
   return response.json() as Promise<unknown>;
 }
+
+export const registerWeatherPushDevice = onCall(
+  {
+    enforceAppCheck: true,
+    region: 'europe-west1',
+  },
+  async (request) => {
+    const uid = request.auth?.uid;
+    if (!uid) {
+      throw new HttpsError('unauthenticated', 'سجّل الدخول أولاً.');
+    }
+
+    const registration = parseWeatherDeviceRegistration(request.data);
+    if (!registration) {
+      throw new HttpsError('invalid-argument', 'بيانات تسجيل الجهاز غير صالحة.');
+    }
+
+    const devices = db.collection('users').doc(uid).collection(WEATHER_COLLECTION);
+    const deviceRef = devices.doc(registration.token);
+    await db.runTransaction(async (transaction) => {
+      const snapshot = await transaction.get(
+        devices.limit(MAX_WEATHER_DEVICES_PER_USER + 1),
+      );
+      const alreadyRegistered = snapshot.docs.some(
+        (document) => document.id === registration.token,
+      );
+      if (!alreadyRegistered && snapshot.size >= MAX_WEATHER_DEVICES_PER_USER) {
+        throw new HttpsError(
+          'resource-exhausted',
+          'وصل الحساب إلى الحد الأقصى للأجهزة المسجلة لتنبيهات الطقس.',
+        );
+      }
+
+      transaction.set(deviceRef, {
+        token: registration.token,
+        latitude: registration.latitude,
+        longitude: registration.longitude,
+        enabled: true,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    });
+
+    return { registered: true };
+  },
+);
 
 async function deliverWeatherAlerts(
   device: WeatherDevice,

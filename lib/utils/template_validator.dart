@@ -48,7 +48,9 @@ class TemplateValidator {
         if (f is Map && _isNonEmptyString(f['id'])) {
           final id = f['id'] as String;
           // نضيف الـ id فقط لو كان صالحاً (يطابق شروط التسمية)
-          if (id == id.trim() && _idPattern.hasMatch(id)) {
+          if (id == id.trim() &&
+              _idPattern.hasMatch(id) &&
+              id.toLowerCase() != 'area') {
             knownVars.add(id);
           }
         }
@@ -74,7 +76,9 @@ class TemplateValidator {
             err('$at: "id" مطلوب');
           } else if (id != (id as String).trim() || !_idPattern.hasMatch(id)) {
             err('$at: الـ id لازم يكون معرفًا إنجليزيًا بدون فراغات (يبدأ بحرف أو _)');
-          } else if (!seen.add(id)) {
+          } else if (id.toLowerCase() == 'area') {
+            err('$at: الـ id "area" محجوز لمتغير مساحة الحقل');
+          } else if (!seen.add(id.toLowerCase())) {
             err('$at: الـ id "$id" مكرر');
           }
           if (!_isNonEmptyString(f['label'])) err('$at: "label" مطلوب');
