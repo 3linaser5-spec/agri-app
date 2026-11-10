@@ -27,7 +27,14 @@ class _Var extends _Node {
   _Var(this.name);
   @override
   double eval(Map<String, double> vars) {
-    final v = vars[name];
+    final normalizedName = name.toLowerCase();
+    double? v;
+    for (final entry in vars.entries) {
+      if (entry.key.toLowerCase() == normalizedName) {
+        v = entry.value;
+        break;
+      }
+    }
     if (v == null) throw FormulaException('متغير غير معروف: $name');
     return v;
   }
@@ -286,7 +293,11 @@ class FormulaEvaluator {
       final node = _Parser(formula).parse();
       final used = <String>{};
       node.collect(used);
-      final unknown = used.where((v) => !knownVars.contains(v)).toList();
+      final normalizedKnownVars =
+          knownVars.map((name) => name.toLowerCase()).toSet();
+      final unknown = used
+          .where((name) => !normalizedKnownVars.contains(name.toLowerCase()))
+          .toList();
       if (unknown.isNotEmpty) {
         return 'متغير غير معروف: ${unknown.join('، ')} '
             '(المتاح: ${(knownVars.toList()..sort()).join('، ')})';

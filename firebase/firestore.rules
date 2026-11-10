@@ -82,25 +82,117 @@ service cloud.firestore {
 
     // التشخيصات: صاحبها يكتب (create) ويقرأ، الأدمن يقرأ
     match /diagnoses/{id} {
-      allow create: if signedIn() && request.resource.data.uid == request.auth.uid;
+      function validDiagnosisShape() {
+        return request.resource.data.keys().hasAll([
+            'uid', 'userName', 'userPhone', 'question', 'diagnosis',
+            'createdAt', 'syncedAt'
+          ])
+          && request.resource.data.keys().hasOnly([
+            'uid', 'userName', 'userPhone', 'question', 'diagnosis',
+            'createdAt', 'syncedAt'
+          ])
+          && request.resource.data.uid is string
+          && request.resource.data.userName is string
+          && request.resource.data.userName.size() <= 400
+          && request.resource.data.userPhone is string
+          && request.resource.data.userPhone.size() <= 32
+          && request.resource.data.question is string
+          && request.resource.data.question.size() <= 10000
+          && request.resource.data.diagnosis is string
+          && request.resource.data.diagnosis.size() <= 20000
+          && request.resource.data.createdAt is string
+          && request.resource.data.createdAt.size() <= 64
+          && request.resource.data.syncedAt == request.time;
+      }
+
+      allow create: if signedIn()
+        && request.resource.data.uid == request.auth.uid
+        && validDiagnosisShape();
       allow read: if signedIn() && (resource.data.uid == request.auth.uid || isAdmin());
       // المزامنة بتكتب بمعرّف ثابت (set). لو الرفع نجح قبل كده وحالة الصف
       // المحلي ما اتحدّثتش، إعادة المحاولة بتكتب نفس المستند وبتتحسب update،
       // فنسمح بيها لصاحب المستند بس وبدون تغيير الـ uid. الحذف ممنوع.
       allow update: if signedIn()
         && resource.data.uid == request.auth.uid
-        && request.resource.data.uid == request.auth.uid;
+        && request.resource.data.uid == request.auth.uid
+        && validDiagnosisShape();
       allow delete: if false;
     }
 
     // برامج المزرعة: صاحب البرنامج فقط
     match /my_farm/{id} {
-      allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
+      function validFarmProgramShape() {
+        return request.resource.data.keys().hasAll([
+            'user_id', 'template_id', 'template_name', 'template_emoji',
+            'section_id', 'section_name', 'governorate', 'climate_zone',
+            'area_unit', 'input_values', 'irrigation_plan', 'tasks',
+            'materials', 'financial', 'start_date', 'created_at', 'status',
+            'done_tasks'
+          ])
+          && request.resource.data.keys().hasOnly([
+            'user_id', 'template_id', 'template_name', 'template_emoji',
+            'section_id', 'section_name', 'governorate', 'climate_zone',
+            'area_unit', 'input_values', 'irrigation_plan', 'tasks',
+            'materials', 'financial', 'start_date', 'created_at', 'status',
+            'done_tasks'
+          ])
+          && request.resource.data.user_id is string
+          && request.resource.data.template_id is string
+          && request.resource.data.template_id.size() <= 256
+          && request.resource.data.template_name is string
+          && request.resource.data.template_name.size() <= 400
+          && request.resource.data.template_emoji is string
+          && request.resource.data.template_emoji.size() <= 64
+          && request.resource.data.section_id is string
+          && request.resource.data.section_id.size() <= 256
+          && request.resource.data.section_name is string
+          && request.resource.data.section_name.size() <= 400
+          && request.resource.data.governorate is string
+          && request.resource.data.governorate.size() <= 400
+          && request.resource.data.climate_zone is string
+          && request.resource.data.climate_zone.size() <= 400
+          && request.resource.data.area_unit is string
+          && request.resource.data.area_unit.size() <= 100
+          && request.resource.data.input_values is map
+          && request.resource.data.input_values.size() <= 100
+          && request.resource.data.irrigation_plan is map
+          && request.resource.data.irrigation_plan.size() <= 100
+          && request.resource.data.tasks is list
+          && request.resource.data.tasks.size() <= 200
+          && request.resource.data.materials is list
+          && request.resource.data.materials.size() <= 200
+          && request.resource.data.financial is map
+          && request.resource.data.financial.size() <= 100
+          && request.resource.data.start_date is timestamp
+          && request.resource.data.created_at == request.time
+          && request.resource.data.status in ['active', 'completed']
+          && request.resource.data.done_tasks is list
+          && request.resource.data.done_tasks.size() <= 200;
+      }
+
+      allow create: if signedIn()
+        && request.resource.data.user_id == request.auth.uid
+        && validFarmProgramShape();
       allow read, delete: if signedIn() && resource.data.user_id == request.auth.uid;
       // تعديل: نفس الصاحب، ولا يغيّر الـ user_id
       allow update: if signedIn()
         && resource.data.user_id == request.auth.uid
-        && request.resource.data.user_id == request.auth.uid;
+        && request.resource.data.user_id == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'done_tasks', 'status', 'irrigation_plan'
+        ])
+        && (!request.resource.data.diff(resource.data).affectedKeys()
+              .hasAny(['done_tasks'])
+            || (request.resource.data.done_tasks is list
+              && request.resource.data.done_tasks.size()
+                  <= resource.data.tasks.size()))
+        && (!request.resource.data.diff(resource.data).affectedKeys()
+              .hasAny(['status'])
+            || request.resource.data.status in ['active', 'completed'])
+        && (!request.resource.data.diff(resource.data).affectedKeys()
+              .hasAny(['irrigation_plan'])
+            || (request.resource.data.irrigation_plan is map
+              && request.resource.data.irrigation_plan.size() <= 100));
 
       match /plant_health_cases/{caseId} {
         function ownsParentProgram() {
@@ -219,30 +311,11 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
-    // تسجيل رمز FCM لكل تثبيت. موقع المزرعة تقريبي ولا يُكتب إلا لحساب صاحبه.
-    // لا يقرأ العميل الرمز أو بيانات الأجهزة؛ Functions يستخدم Admin SDK.
+    // لا يقرأ العميل الرمز أو بيانات الأجهزة. إنشاء/تحديث التسجيل يمر عبر
+    // registerWeatherPushDevice لفرض سقف الأجهزة وتدوير الموقع على الخادم.
     match /users/{uid}/weather_push_devices/{token} {
       allow read: if false;
-      allow create, update: if signedIn()
-        && request.auth.uid == uid
-        && request.resource.data.keys().hasOnly([
-          'token', 'latitude', 'longitude', 'enabled', 'updatedAt'
-        ])
-        && request.resource.data.keys().hasAll([
-          'token', 'latitude', 'longitude', 'enabled', 'updatedAt'
-        ])
-        && request.resource.data.token is string
-        && request.resource.data.token == token
-        && request.resource.data.token.size() > 0
-        && request.resource.data.token.size() <= 1500
-        && request.resource.data.latitude is number
-        && request.resource.data.latitude >= -90
-        && request.resource.data.latitude <= 90
-        && request.resource.data.longitude is number
-        && request.resource.data.longitude >= -180
-        && request.resource.data.longitude <= 180
-        && request.resource.data.enabled == true
-        && request.resource.data.updatedAt == request.time;
+      allow create, update: if false;
       allow delete: if signedIn() && request.auth.uid == uid;
     }
 

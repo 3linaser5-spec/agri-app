@@ -33,6 +33,13 @@ void main() {
       expect(TemplateValidator.validate(validTemplate()), isEmpty);
     });
 
+    test('accepts a formula when a field id contains uppercase letters', () {
+      final t = validTemplate();
+      (t['fields'] as List)[0]['id'] = 'seedRate';
+      (t['materials'] as List)[0]['quantity_formula'] = 'area * seedRate';
+      expect(TemplateValidator.validate(t), isEmpty);
+    });
+
     test('name is required', () {
       final t = validTemplate()..remove('name');
       expect(TemplateValidator.validate(t), isNotEmpty);
@@ -77,6 +84,20 @@ void main() {
       (t['fields'] as List).add(
           {'id': 'seed_rate', 'label': 'تاني', 'type': 'number'});
       expect(anyContains(TemplateValidator.validate(t), 'مكرر'), isTrue);
+    });
+
+    test('rejects ids that differ only by letter case', () {
+      final t = validTemplate();
+      (t['fields'] as List)[0]['id'] = 'seedRate';
+      (t['fields'] as List).add(
+          {'id': 'SEEDRATE', 'label': 'تاني', 'type': 'number'});
+      expect(anyContains(TemplateValidator.validate(t), 'مكرر'), isTrue);
+    });
+
+    test('reserves area for the built-in field-area variable', () {
+      final t = validTemplate();
+      (t['fields'] as List)[0]['id'] = 'Area';
+      expect(anyContains(TemplateValidator.validate(t), 'محجوز'), isTrue);
     });
 
     test('rejects an unknown field type', () {

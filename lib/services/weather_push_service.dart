@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
@@ -17,6 +18,7 @@ class WeatherPushService {
   WeatherPushService._();
 
   static const _timeout = Duration(seconds: 15);
+  static final _functions = FirebaseFunctions.instanceFor(region: 'europe-west1');
   static StreamSubscription<String>? _tokenRefreshSubscription;
 
   static void initialize() {
@@ -207,13 +209,17 @@ class WeatherPushService {
     if (FirebaseAuth.instance.currentUser?.uid != uid) {
       throw StateError('تغير الحساب أثناء تسجيل إشعارات الطقس.');
     }
-    await _devices(uid).doc(token).set({
-      'token': token,
-      'latitude': latitude,
-      'longitude': longitude,
-      'enabled': true,
-      'updatedAt': FieldValue.serverTimestamp(),
-    }).timeout(_timeout);
+    await _functions
+        .httpsCallable(
+          'registerWeatherPushDevice',
+          options: HttpsCallableOptions(timeout: _timeout),
+        )
+        .call(<String, Object>{
+          'token': token,
+          'latitude': latitude,
+          'longitude': longitude,
+        })
+        .timeout(_timeout);
   }
 
   static void _validateCoordinates(double latitude, double longitude) {

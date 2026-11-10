@@ -138,7 +138,7 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: color.withOpacity(isDark ? 0.2 : 0.1),
+              color: color.withValues(alpha: isDark ? 0.2 : 0.1),
               shape: BoxShape.circle,
             ),
             child: Icon(icon, size: 28, color: color),

@@ -63,6 +63,37 @@ class NumberUtils {
     return buffer.toString();
   }
 
+  /// Returns an Egyptian mobile in local canonical form (`01xxxxxxxxx`).
+  /// Supports local numbers and the +20/0020/20 country-code forms.
+  static String? normalizeEgyptianMobile(String input) {
+    var value = normalize(input).replaceAll(RegExp(r'[\s().-]'), '');
+    if (value.startsWith('+')) value = value.substring(1);
+
+    String local;
+    if (value.startsWith('0020') && value.length == 14) {
+      local = '0${value.substring(4)}';
+    } else if (value.startsWith('20') && value.length == 12) {
+      local = '0${value.substring(2)}';
+    } else {
+      local = value;
+    }
+
+    return RegExp(r'^01[0125][0-9]{8}$').hasMatch(local) ? local : null;
+  }
+
+  /// Legacy email-auth accounts used the phone spelling entered at signup.
+  static String? legacyEgyptianMobile(String input) {
+    final normalized = normalize(input).replaceAll(RegExp(r'[\s().-]'), '');
+    final canonical = normalizeEgyptianMobile(input);
+    if (canonical == null ||
+        normalized.startsWith('+') ||
+        normalized.startsWith('00') ||
+        normalized.startsWith('20')) {
+      return normalized == canonical ? null : normalized;
+    }
+    return null;
+  }
+
   /// التحقق مما إذا كانت الفاصلة (,) هي فاصلة ألفية (زي 1,000)
   static bool _isThousandSeparator(List<String> chars, int index) {
     var digitsAfter = 0;

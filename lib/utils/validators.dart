@@ -7,21 +7,8 @@ class Validators {
       return 'من فضلك أدخل رقم الموبايل';
     }
     
-    // 1. تحويل الأرقام العربية لإنجليزي وإزالة المسافات
-    var normalized = NumberUtils.normalize(value).trim();
-    
-    // 2. توحيد كود الدولة (لو المستخدم كتب +20 أو 0020 أو 20)
-    if (normalized.startsWith('+20')) {
-      normalized = '0${normalized.substring(3)}';
-    } else if (normalized.startsWith('0020')) {
-      normalized = '0${normalized.substring(4)}';
-    } else if (normalized.startsWith('20') && normalized.length == 12) {
-      normalized = '0${normalized.substring(2)}';
-    }
-
-    // 3. التحقق (بيبدأ بـ 010 أو 011 أو 012 أو 015)
-    final regex = RegExp(r'^01[0125][0-9]{8}$');
-    if (!regex.hasMatch(normalized)) {
+    // توحيد الأرقام العربية وصيغ الاتصال الدولي إلى 01xxxxxxxxx.
+    if (NumberUtils.normalizeEgyptianMobile(value) == null) {
       return 'رقم الموبايل غير صحيح (مثال: 01012345678)';
     }
     return null;

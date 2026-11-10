@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import '../../config/app_config.dart';
 import '../../models/calculator_models.dart';
 import '../../services/calculator_service.dart';
 import '../../utils/safe_parse.dart'; // ✅ لضمان قراءة النصوص بأمان
@@ -30,12 +28,11 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
   }
 
   // ✅ التحقق من صلاحية الأدمن قبل التحميل
-  void _checkAuthAndLoad() {
-    final user = FirebaseAuth.instance.currentUser;
-    final email = user?.email ?? '';
-    
-    // التحقق: هل الإيميل ضمن الليستة؟
-    if (!AppConfig.adminEmails.contains(email)) {
+  Future<void> _checkAuthAndLoad() async {
+    final isAdmin = await CalculatorService.isCurrentUserAdmin();
+    if (!mounted) return;
+
+    if (!isAdmin) {
       setState(() {
         _loading = false;
         _error = 'ليس لديك صلاحية للوصول للوحة التحكم';
@@ -45,7 +42,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
     }
     
     _authorized = true;
-    _loadSections();
+    await _loadSections();
   }
 
   Future<void> _loadSections() async {

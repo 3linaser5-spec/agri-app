@@ -66,8 +66,9 @@ Future<String?> _initFirebase() async {
 
   try {
     await FirebaseAppCheck.instance.activate(
-      androidProvider:
-          kDebugMode ? AndroidProvider.debug : AndroidProvider.playIntegrity,
+      providerAndroid: kDebugMode
+          ? const AndroidDebugProvider()
+          : const AndroidPlayIntegrityProvider(),
     );
   } catch (e) {
     debugPrint("تحذير أثناء تفعيل App Check: $e");
@@ -898,6 +899,27 @@ class _AuthScreenState extends State<AuthScreen> {
                     ),
                   ),
                   const SizedBox(height: 14),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.info_outline, size: 18, color: Colors.orange),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'رقم الهاتف يُستخدم لتسجيل الدخول فقط، ولا يتم التحقق من ملكيته برسالة SMS حاليًا.',
+                            style: TextStyle(fontSize: 11),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
                   TextFormField(
                     controller: _passwordController,
                     obscureText: true,
@@ -1196,10 +1218,12 @@ class _HomeDashboardState extends State<HomeDashboard> {
   bool _weatherPushBusy = false;
   List<MyFarmProgram> _activePrograms = const [];
   StreamSubscription<List<MyFarmProgram>>? _farmProgramsSubscription;
+  late Future<bool> _adminAccess;
 
   @override
   void initState() {
     super.initState();
+    _adminAccess = CalculatorService.isCurrentUserAdmin();
     _loadCachedWeather();
     _loadWeatherPushPreference();
     _listenToFarmPrograms();
@@ -1218,11 +1242,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
         debugPrint('تعذر تحميل البرامج النشطة للإنذار المبكر');
       },
     );
-  }
-
-  bool _isAdmin() {
-    final email = FirebaseAuth.instance.currentUser?.email;
-    return CalculatorService.isAdmin(email);
   }
 
   void _loadGovernorates() {
@@ -2431,18 +2450,23 @@ class _HomeDashboardState extends State<HomeDashboard> {
           ],
         ),
         actions: [
-          if (_isAdmin())
-            IconButton(
-              icon: const Icon(Icons.admin_panel_settings,
-                  color: Colors.amber),
-              tooltip: 'لوحة الأدمن',
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (context) => const AdminPanelScreen()),
-                );
-              },
+          FutureBuilder<bool>(
+            future: _adminAccess,
+            builder: (context, snapshot) {
+              if (snapshot.data != true) return const SizedBox.shrink();
+              return IconButton(
+                icon: const Icon(Icons.admin_panel_settings,
+                    color: Colors.amber),
+                tooltip: 'لوحة الأدمن',
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (context) => const AdminPanelScreen()),
+                  );
+                },
+              );
+            },
             ),
           IconButton(
             icon: const Icon(Icons.bar_chart, color: Colors.white),
