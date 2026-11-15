@@ -27,6 +27,7 @@ class _SatelliteFieldEditorScreenState extends State<SatelliteFieldEditorScreen>
   late List<HlsCoordinate> _points;
   bool _saving = false;
   bool _locating = false;
+  bool _useSatelliteImagery = true;
 
   @override
   void initState() {
@@ -136,6 +137,19 @@ class _SatelliteFieldEditorScreenState extends State<SatelliteFieldEditorScreen>
           title: Text(isEditing ? 'تعديل الحقل' : 'إضافة حقل للمراقبة'),
           backgroundColor: _green,
           foregroundColor: Colors.white,
+          actions: [
+            IconButton(
+              tooltip: _useSatelliteImagery
+                  ? 'التبديل إلى خريطة الشوارع'
+                  : 'التبديل إلى الصور الفضائية',
+              onPressed: () => setState(
+                () => _useSatelliteImagery = !_useSatelliteImagery,
+              ),
+              icon: Icon(
+                _useSatelliteImagery ? Icons.map_outlined : Icons.satellite_alt,
+              ),
+            ),
+          ],
         ),
         body: SafeArea(
           child: Column(
@@ -163,9 +177,11 @@ class _SatelliteFieldEditorScreenState extends State<SatelliteFieldEditorScreen>
                   ),
                   children: [
                     TileLayer(
-                      urlTemplate:
-                          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      urlTemplate: _useSatelliteImagery
+                          ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+                          : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                       userAgentPackageName: 'com.nabati.agri',
+                      maxNativeZoom: _useSatelliteImagery ? 23 : 19,
                     ),
                     if (_points.length >= 3)
                       PolygonLayer(
@@ -209,13 +225,22 @@ class _SatelliteFieldEditorScreenState extends State<SatelliteFieldEditorScreen>
                     ),
                     RichAttributionWidget(
                       attributions: [
-                        TextSourceAttribution(
-                          'OpenStreetMap contributors',
-                          onTap: () => launchUrl(
-                            Uri.parse('https://www.openstreetmap.org/copyright'),
-                            mode: LaunchMode.externalApplication,
+                        if (_useSatelliteImagery)
+                          TextSourceAttribution(
+                            'Source: Esri, Vantor, Earthstar Geographics, and the GIS User Community',
+                            onTap: () => launchUrl(
+                              Uri.parse('https://goto.arcgisonline.com/maps/World_Imagery'),
+                              mode: LaunchMode.externalApplication,
+                            ),
+                          )
+                        else
+                          TextSourceAttribution(
+                            'OpenStreetMap contributors',
+                            onTap: () => launchUrl(
+                              Uri.parse('https://www.openstreetmap.org/copyright'),
+                              mode: LaunchMode.externalApplication,
+                            ),
                           ),
-                        ),
                       ],
                     ),
                   ],
