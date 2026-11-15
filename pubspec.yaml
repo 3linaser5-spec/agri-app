@@ -58,6 +58,8 @@ dependencies:
 
   # ✅ أدوات إضافية
   intl: ^0.20.2
+  flutter_map: ^8.2.1
+  latlong2: ^0.9.1
 
 dev_dependencies:
   flutter_test:

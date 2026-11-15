@@ -324,6 +324,79 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // حدود حقول مراقبة الأقمار مملوكة لصاحب الحساب. العميل لا يكتب نتائج
+    // التحليل؛ Cloud Functions تستخدم Admin SDK بعد التحقق من AppEEARS.
+    match /users/{uid}/satellite_fields/{fieldId} {
+      function ownsFieldAccount() {
+        return signedIn() && request.auth.uid == uid;
+      }
+
+      function validSatelliteField() {
+        return request.resource.data.keys().hasAll([
+            'name', 'crop', 'linked_program_id', 'planting_date', 'polygon',
+            'area_m2', 'created_at', 'updated_at'
+          ])
+          && request.resource.data.keys().hasOnly([
+            'name', 'crop', 'linked_program_id', 'planting_date', 'polygon',
+            'area_m2', 'created_at', 'updated_at'
+          ])
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.name.size() <= 100
+          && request.resource.data.crop is string
+          && request.resource.data.crop.size() > 0
+          && request.resource.data.crop.size() <= 100
+          && (request.resource.data.linked_program_id == null
+            || (request.resource.data.linked_program_id is string
+              && request.resource.data.linked_program_id.size() <= 256))
+          && request.resource.data.planting_date is timestamp
+          && request.resource.data.polygon is list
+          && request.resource.data.polygon.size() >= 3
+          && request.resource.data.polygon.size() <= 25
+          && request.resource.data.area_m2 is number
+          && request.resource.data.area_m2 >= 100
+          && request.resource.data.area_m2 <= 500000000
+          && request.resource.data.created_at is timestamp
+          && request.resource.data.updated_at is timestamp;
+      }
+
+      allow read, delete: if ownsFieldAccount();
+      allow create: if ownsFieldAccount()
+        && validSatelliteField()
+        && request.resource.data.created_at == request.time
+        && request.resource.data.updated_at == request.time;
+      allow update: if ownsFieldAccount()
+        && validSatelliteField()
+        && request.resource.data.created_at == resource.data.created_at
+        && request.resource.data.updated_at == request.time;
+
+      match /analysis_runs/{runId} {
+        allow read, delete: if signedIn() && request.auth.uid == uid;
+        allow create, update: if false;
+
+        match /observations/{observationId} {
+          allow read, delete: if signedIn() && request.auth.uid == uid;
+          allow create, update: if false;
+        }
+      }
+
+      match /field_notes/{noteId} {
+        allow read, delete: if signedIn() && request.auth.uid == uid;
+        allow create: if signedIn()
+          && request.auth.uid == uid
+          && exists(/databases/$(database)/documents/users/$(uid)/satellite_fields/$(fieldId))
+          && request.resource.data.keys().hasOnly(['text', 'category', 'created_at'])
+          && request.resource.data.keys().hasAll(['text', 'category', 'created_at'])
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 2000
+          && request.resource.data.category is string
+          && request.resource.data.category.size() <= 64
+          && request.resource.data.created_at == request.time;
+        allow update: if false;
+      }
+    }
+
     // أي حاجة تانية ممنوعة
     match /{document=**} {
       allow read, write: if false;
