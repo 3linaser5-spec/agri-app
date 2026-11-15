@@ -117,6 +117,21 @@ function validateSecrets(): { username: string; password: string } {
   return { username, password };
 }
 
+async function requireSatelliteAccess(uid: string): Promise<void> {
+  const entitlement = await getFirestore()
+    .collection('service_entitlements')
+    .doc(uid)
+    .collection('services')
+    .doc('satellite_monitoring')
+    .get();
+  if (!entitlement.exists || entitlement.get('status') !== 'active') {
+    throw new HttpsError(
+      'permission-denied',
+      'خدمة مراقبة الأقمار غير مفعّلة لحسابك. أرسل طلبًا إلى الأدمن لتفعيلها.',
+    );
+  }
+}
+
 async function getEarthdataToken(username: string, password: string): Promise<string> {
   const now = Date.now();
   if (earthdataTokenCache && earthdataTokenCache.safeExpiresAt > now) {
@@ -502,6 +517,7 @@ export const requestHlsCropAnalysis = onCall(
   async (request) => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError('unauthenticated', 'سجّل الدخول أولًا.');
+    await requireSatelliteAccess(uid);
     const usernameAndPassword = validateSecrets();
     if (!isRecord(request.data)) {
       throw new HttpsError('invalid-argument', 'بيانات طلب التحليل غير صالحة.');
@@ -599,6 +615,7 @@ export const getHlsCropAnalysisStatus = onCall(
   async (request) => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError('unauthenticated', 'سجّل الدخول أولًا.');
+    await requireSatelliteAccess(uid);
     if (!isRecord(request.data)) {
       throw new HttpsError('invalid-argument', 'بيانات الاستعلام عن التحليل غير صالحة.');
     }
