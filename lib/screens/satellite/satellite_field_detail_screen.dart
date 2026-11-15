@@ -40,6 +40,7 @@ class _SatelliteFieldDetailScreenState extends State<SatelliteFieldDetailScreen>
   String? _activeRunId;
   bool _requesting = false;
   bool _polling = false;
+  bool _useSatelliteImagery = true;
   Timer? _pollTimer;
 
   @override
@@ -589,8 +590,11 @@ class _SatelliteFieldDetailScreenState extends State<SatelliteFieldDetailScreen>
               options: MapOptions(initialCenter: center, initialZoom: 16),
               children: [
                 TileLayer(
-                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  urlTemplate: _useSatelliteImagery
+                      ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+                      : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                   userAgentPackageName: 'com.nabati.agri',
+                  maxNativeZoom: _useSatelliteImagery ? 23 : 19,
                 ),
                 if (polygon.length >= 3)
                   PolygonLayer(
@@ -641,16 +645,45 @@ class _SatelliteFieldDetailScreenState extends State<SatelliteFieldDetailScreen>
                 ),
                 RichAttributionWidget(
                   attributions: [
-                    TextSourceAttribution(
-                      'OpenStreetMap contributors',
-                      onTap: () => launchUrl(
-                        Uri.parse('https://www.openstreetmap.org/copyright'),
-                        mode: LaunchMode.externalApplication,
+                    if (_useSatelliteImagery)
+                      TextSourceAttribution(
+                        'Source: Esri, Vantor, Earthstar Geographics, and the GIS User Community',
+                        onTap: () => launchUrl(
+                          Uri.parse('https://goto.arcgisonline.com/maps/World_Imagery'),
+                          mode: LaunchMode.externalApplication,
+                        ),
+                      )
+                    else
+                      TextSourceAttribution(
+                        'OpenStreetMap contributors',
+                        onTap: () => launchUrl(
+                          Uri.parse('https://www.openstreetmap.org/copyright'),
+                          mode: LaunchMode.externalApplication,
+                        ),
                       ),
-                    ),
                   ],
                 ),
               ],
+            ),
+            Positioned(
+              top: 8,
+              left: 8,
+              child: Material(
+                color: Colors.white.withValues(alpha: .94),
+                borderRadius: BorderRadius.circular(10),
+                child: IconButton(
+                  tooltip: _useSatelliteImagery
+                      ? 'التبديل إلى خريطة الشوارع'
+                      : 'التبديل إلى الصور الفضائية',
+                  onPressed: () => setState(
+                    () => _useSatelliteImagery = !_useSatelliteImagery,
+                  ),
+                  icon: Icon(
+                    _useSatelliteImagery ? Icons.map_outlined : Icons.satellite_alt,
+                    color: _green,
+                  ),
+                ),
+              ),
             ),
             Positioned(
               top: 10,
