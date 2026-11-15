@@ -43,6 +43,7 @@ import 'models/encyclopedia_model.dart';
 import 'screens/admin/admin_panel_screen.dart';
 import 'screens/calculators/calculator_hub_screen.dart';
 import 'screens/farm/my_farm_screen.dart';
+import 'screens/satellite/satellite_monitoring_screen.dart';
 import 'utils/validators.dart';
 import 'utils/color_utils.dart';
 
@@ -1038,6 +1039,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                     _buildActionItem(Icons.agriculture, 'مزرعتي', const Color(0xFF10B981), () {
                       Navigator.pop(context);
                       Navigator.push(context, MaterialPageRoute(builder: (_) => const MyFarmScreen()));
+                    }),
+                    _buildActionItem(Icons.satellite_alt, 'رصد الأقمار', const Color(0xFF0F766E), () {
+                      Navigator.pop(context);
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => const SatelliteMonitoringScreen()));
                     }),
                     _buildActionItem(Icons.calculate, 'الحاسبات', const Color(0xFF047857), () {
                       Navigator.pop(context);
