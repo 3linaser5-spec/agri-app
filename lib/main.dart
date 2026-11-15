@@ -43,7 +43,7 @@ import 'models/encyclopedia_model.dart';
 import 'screens/admin/admin_panel_screen.dart';
 import 'screens/calculators/calculator_hub_screen.dart';
 import 'screens/farm/my_farm_screen.dart';
-import 'screens/satellite/satellite_monitoring_screen.dart';
+import 'screens/satellite/satellite_access_gate_screen.dart';
 import 'utils/validators.dart';
 import 'utils/color_utils.dart';
 

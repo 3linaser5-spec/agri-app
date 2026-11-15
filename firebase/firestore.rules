@@ -19,10 +19,108 @@ service cloud.firestore {
         exists(/databases/$(database)/documents/admins/$(request.auth.uid));
     }
 
+    function hasActiveSatelliteAccess(uid) {
+      return exists(/databases/$(database)/documents/service_entitlements/$(uid)/services/satellite_monitoring)
+        && get(/databases/$(database)/documents/service_entitlements/$(uid)/services/satellite_monitoring).data.status == 'active';
+    }
+
     // لا أحد يكتب هنا من التطبيق
     match /admins/{uid} {
       allow read: if signedIn() && request.auth.uid == uid;
       allow write: if false;
+    }
+
+    // المستخدم يرسل الطلب لنفسه فقط. قرار الموافقة/الرفض للأدمن، ومنح
+    // الاستحقاق لا يتم إلا ضمن batch يوافق فيه الأدمن على الطلب نفسه.
+    match /satellite_access_requests/{uid} {
+      function validNewRequest() {
+        return request.resource.data.keys().hasAll([
+            'uid', 'name', 'phone', 'status', 'created_at', 'updated_at'
+          ])
+          && request.resource.data.keys().hasOnly([
+            'uid', 'name', 'phone', 'status', 'created_at', 'updated_at'
+          ])
+          && request.resource.data.uid == uid
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.name.size() <= 400
+          && request.resource.data.phone is string
+          && request.resource.data.phone.size() <= 32
+          && request.resource.data.status == 'pending'
+          && request.resource.data.created_at == request.time
+          && request.resource.data.updated_at == request.time;
+      }
+
+      function validAdminDecision() {
+        return resource.data.status == 'pending'
+          && request.resource.data.keys().hasAll([
+            'uid', 'name', 'phone', 'status', 'created_at', 'updated_at',
+            'reviewed_at', 'reviewed_by'
+          ])
+          && request.resource.data.keys().hasOnly([
+            'uid', 'name', 'phone', 'status', 'created_at', 'updated_at',
+            'reviewed_at', 'reviewed_by'
+          ])
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status', 'updated_at', 'reviewed_at', 'reviewed_by'
+          ])
+          && request.resource.data.uid == uid
+          && request.resource.data.status in ['approved', 'rejected']
+          && request.resource.data.updated_at == request.time
+          && request.resource.data.reviewed_at == request.time
+          && request.resource.data.reviewed_by == request.auth.uid;
+      }
+
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow create: if signedIn()
+        && request.auth.uid == uid
+        && !hasActiveSatelliteAccess(uid)
+        && validNewRequest();
+      allow update: if (isAdmin() && validAdminDecision())
+        || (signedIn()
+          && request.auth.uid == uid
+          && resource.data.status == 'rejected'
+          && request.resource.data.keys().hasAll([
+            'uid', 'name', 'phone', 'status', 'created_at', 'updated_at'
+          ])
+          && request.resource.data.keys().hasOnly([
+            'uid', 'name', 'phone', 'status', 'created_at', 'updated_at'
+          ])
+          && request.resource.data.uid == uid
+          && request.resource.data.name == resource.data.name
+          && request.resource.data.phone == resource.data.phone
+          && request.resource.data.status == 'pending'
+          && request.resource.data.created_at == request.time
+          && request.resource.data.updated_at == request.time
+          && !hasActiveSatelliteAccess(uid));
+      allow delete: if isAdmin();
+    }
+
+    match /service_entitlements/{uid}/services/{serviceId} {
+      function validSatelliteGrant() {
+        let requestAfter = getAfter(
+          /databases/$(database)/documents/satellite_access_requests/$(uid)
+        );
+        return serviceId == 'satellite_monitoring'
+          && request.resource.data.keys().hasAll([
+            'service', 'status', 'activated_at', 'activated_by', 'updated_at'
+          ])
+          && request.resource.data.keys().hasOnly([
+            'service', 'status', 'activated_at', 'activated_by', 'updated_at'
+          ])
+          && request.resource.data['service'] == 'satellite_monitoring'
+          && request.resource.data.status == 'active'
+          && request.resource.data.activated_at == request.time
+          && request.resource.data.updated_at == request.time
+          && request.resource.data.activated_by == request.auth.uid
+          && requestAfter.data.status == 'approved'
+          && requestAfter.data.reviewed_by == request.auth.uid
+          && requestAfter.data.reviewed_at == request.time;
+      }
+
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow create, update: if isAdmin() && validSatelliteGrant();
+      allow delete: if isAdmin() && serviceId == 'satellite_monitoring';
     }
 
     // ملف المستخدم: صاحبه فقط، وبالحقول التي يكتبها التطبيق حالياً.
@@ -328,7 +426,9 @@ service cloud.firestore {
     // التحليل؛ Cloud Functions تستخدم Admin SDK بعد التحقق من AppEEARS.
     match /users/{uid}/satellite_fields/{fieldId} {
       function ownsFieldAccount() {
-        return signedIn() && request.auth.uid == uid;
+        return signedIn()
+          && request.auth.uid == uid
+          && hasActiveSatelliteAccess(uid);
       }
 
       function validSatelliteField() {
@@ -371,19 +471,18 @@ service cloud.firestore {
         && request.resource.data.updated_at == request.time;
 
       match /analysis_runs/{runId} {
-        allow read, delete: if signedIn() && request.auth.uid == uid;
+        allow read, delete: if ownsFieldAccount();
         allow create, update: if false;
 
         match /observations/{observationId} {
-          allow read, delete: if signedIn() && request.auth.uid == uid;
+          allow read, delete: if ownsFieldAccount();
           allow create, update: if false;
         }
       }
 
       match /field_notes/{noteId} {
-        allow read, delete: if signedIn() && request.auth.uid == uid;
-        allow create: if signedIn()
-          && request.auth.uid == uid
+        allow read, delete: if ownsFieldAccount();
+        allow create: if ownsFieldAccount()
           && exists(/databases/$(database)/documents/users/$(uid)/satellite_fields/$(fieldId))
           && request.resource.data.keys().hasOnly(['text', 'category', 'created_at'])
           && request.resource.data.keys().hasAll(['text', 'category', 'created_at'])

@@ -5,8 +5,8 @@ import '../../services/satellite_monitoring_service.dart';
 import 'satellite_field_detail_screen.dart';
 import 'satellite_field_editor_screen.dart';
 
-class SatelliteMonitoringScreen extends StatelessWidget {
-  const SatelliteMonitoringScreen({super.key});
+class SatelliteFieldsScreen extends StatelessWidget {
+  const SatelliteFieldsScreen({super.key});
 
   static const _green = Color(0xFF047857);
 
