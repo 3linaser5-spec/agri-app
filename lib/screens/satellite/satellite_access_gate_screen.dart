@@ -119,7 +119,7 @@ class _SatelliteAccessPanelState extends State<_SatelliteAccessPanel> {
                   _introCard(),
                   const SizedBox(height: 16),
                   const Text(
-                    'المؤشرات النباتية التسعة من NASA HLS',
+                    'تسعة مؤشرات لمتابعة صحة المحصول',
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 10),
@@ -218,7 +218,7 @@ class _SatelliteAccessPanelState extends State<_SatelliteAccessPanel> {
           ),
           const SizedBox(height: 8),
           const Text(
-            'تابع حقولك عبر مشاهد NASA HLS، واكتشف تغيرات الغطاء النباتي والرطوبة بمرور الوقت قبل أن تقرر الفحص الميداني.',
+            'يجمع التحليل مشاهد متعددة المستشعرات في سجل زمني موحّد لمتابعة نمو النبات ورطوبته والتغيرات في الحقل. دقة التحليل الحالية 30 مترًا، وتعتمد إتاحة كل مشاهدة على صفاء السماء وتوفر البيانات.',
             textAlign: TextAlign.center,
             style: TextStyle(height: 1.5),
           ),
@@ -228,7 +228,7 @@ class _SatelliteAccessPanelState extends State<_SatelliteAccessPanel> {
             spacing: 8,
             runSpacing: 8,
             children: const [
-              _FeaturePill(icon: Icons.show_chart, label: 'منحنى نمو زمني'),
+              _FeaturePill(icon: Icons.show_chart, label: 'سجل زمني موحّد'),
               _FeaturePill(
                 icon: Icons.map_outlined,
                 label: 'متابعة داخل الحقل',
