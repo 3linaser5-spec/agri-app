@@ -14,11 +14,13 @@
 
 تُحفَظ أيضًا طبقة Fmask وأعلامها المنفصلة لكل مصدر، إلى جانب زوايا الشمس والمشاهدة SAA وSZA وVAA وVZA. تعرض صفحة الحقل ملخصًا لأعداد نقاط السحب الرقيقة (Cirrus) والسحب والسحب المجاورة والظلال والثلج/الجليد والماء والهباء الجوي. ويمكن استعراض أعلام كل مستشعر عند فتح تلميح نقطة العينة. نطاقا Landsat الحراريان B10 وB11 يُعرضان بالدرجة المئوية وفق بيانات المنتج الرسمية. تُستبعد قيم الحشو المعروفة ولا يعاد ضرب عامل القياس على القيم الفيزيائية التي يرجعها AppEEARS Point. [1] [2] [3] [6]
 
+إضافة إلى HLS، يجلب الخادم مشاهد Sentinel-2 L2A من Copernicus Data Space عبر Statistical API عند نقاط العينة نفسها، بحجم عينة موضعي يقارب بكسلًا واحدًا وتحليل مضبوط على 10م. يُحسب من نطاقات B02 وB03 وB04 وB08 مؤشرات NDVI وEVI وSAVI وMSAVI2 وNDWI الأخضر/NIR، وتُحفظ انعكاسات النطاقات منفصلة. تُستبعد قراءات SCL المصنفة كغياب بيانات أو خلل أو ظل سحابي أو سحب أو سيرس أو ثلج. لا تُعاد تسمية بيانات HLS على أنها 10م، ولا يعني التكامل مسح كل بكسل في الحقل؛ تظل بقية مؤشرات HLS والنطاقات التي لا تملك قياسًا أصليًا 10م على دقتها الخاصة. تُدمج القراءات في التاريخ نفسه عند توفرها، وتظل تواريخ المشاهد المختلفة مستقلة. [8] [9]
+
 ## حماية الحساب والبيانات
 
 تُخزَّن حدود الحقل في `users/{uid}/satellite_fields`، وسجل كل طلب في `analysis_runs`، ومشاهد النتائج في `observations`، والملاحظات في `field_notes`. كل هذه المسارات مرتبطة بمعرّف المستخدم؛ لا يعتمد القسم على اكتمال مستند الملف الشخصي القديم، ولا يحتاج ترحيل حسابات المستخدمين الحاليين.
 
-لا يحتوي تطبيق Flutter على بيانات اعتماد NASA. يرسل التطبيق طلبًا إلى Callable Functions في `europe-west1`، ويتحقق الخادم من تسجيل الدخول وApp Check وملكية الحقل وصيغة الحدود والفترة الزمنية، ثم يتصل بـ NASA. ولا تسمح قواعد Firestore للعميل بإنشاء نتائج التحليل أو تغييرها. تتضمن حدود التحقق مضلعًا من 3 إلى 25 رأسًا، وحتى 9 نقاط عينة، وفترة تحليل لا تتجاوز 366 يومًا.
+لا يحتوي تطبيق Flutter على بيانات اعتماد NASA أو Copernicus. يرسل التطبيق طلبًا إلى Callable Functions في `europe-west1`، ويتحقق الخادم من تسجيل الدخول وApp Check وملكية الحقل وصيغة الحدود والفترة الزمنية، ثم يتصل بخدمات البيانات. ولا تسمح قواعد Firestore للعميل بإنشاء نتائج التحليل أو تغييرها. تتضمن حدود التحقق مضلعًا من 3 إلى 25 رأسًا، وحتى 9 نقاط عينة، وفترة تحليل لا تتجاوز 366 يومًا. فشل مصدر 10م لا يمحو نتيجة HLS؛ يسجل التشغيل حالة المصدر وسببًا آمنًا للمستخدم.
 
 ## طلب تفعيل الخدمة من الأدمن
 
@@ -43,13 +45,22 @@
 
    يُدخل المالك قيمة كل سر في مطالبة Firebase CLI. يجب أن يكون الحساب قادرًا على الدخول إلى AppEEARS عبر NASA Earthdata Login. المصادقة تتم من الخادم فقط.
 
-4. بعد إعداد الفوترة والأسرار، انشر الوظيفتين أولًا:
+4. أنشئ OAuth Client للخادم من إعدادات المستخدم في [Copernicus Data Space Dashboard](https://dataspace.copernicus.eu/)، وانسخ Client ID وClient Secret مرة واحدة ثم خزنهما كأسرار Firebase. لا تستخدم خيار تطبيق المتصفح/SPA ولا تضع السر داخل Flutter:
+
+   ```sh
+   firebase functions:secrets:set CDSE_OAUTH_CLIENT_ID --project agri-dahshory
+   firebase functions:secrets:set CDSE_OAUTH_CLIENT_SECRET --project agri-dahshory
+   ```
+
+   راجع رصيد حساب Copernicus وحدوده قبل التشغيل الواسع. إذا لم تُضبط بيانات الدخول، يكمل الخادم تحليل HLS ويسجل أن قراءات 10م غير مهيأة.
+
+5. بعد إعداد الفوترة وجميع الأسرار، انشر الوظيفتين أولًا:
 
    ```sh
    firebase deploy --only functions:requestHlsCropAnalysis,functions:getHlsCropAnalysisStatus --project agri-dahshory
    ```
 
-5. انشر قواعد Firestore ثم وزّع إصدار التطبيق الذي يتضمن قسم الأقمار الصناعية:
+6. انشر قواعد Firestore ثم وزّع إصدار التطبيق الذي يتضمن قسم الأقمار الصناعية:
 
    ```sh
    firebase deploy --only firestore:rules --project agri-dahshory
@@ -71,6 +82,10 @@
 
 [7] يشرح دليل NASA/LP DAAC معالجة HLS وقناع الجودة Fmask.
 
+[8] توثيق Copernicus الرسمي يشرح إنشاء OAuth Client وتبادل Client ID/Secret برمز وصول للخادم.
+
+[9] تعرض أمثلة Statistical API الرسمية اختيار المنتج والفترة وEvalscript وتحديد الدقة المكانية 10م.
+
 [1]: https://appeears.earthdatacloud.nasa.gov/api/ "NASA AppEEARS API Documentation"
 [2]: https://appeears.earthdatacloud.nasa.gov/api/product/HLSL30.020 "NASA AppEEARS HLSL30 Product Layers"
 [3]: https://appeears.earthdatacloud.nasa.gov/api/product/HLSS30.020 "NASA AppEEARS HLSS30 Product Layers"
@@ -78,3 +93,5 @@
 [5]: https://appeears.earthdatacloud.nasa.gov/api/product/HLSS30_VI.020 "NASA AppEEARS HLSS30 Vegetation Indices"
 [6]: https://forum.earthdata.nasa.gov/viewtopic.php?t=3136 "NASA Earthdata Forum on AppEEARS Point Scaling"
 [7]: https://lpdaac.usgs.gov/documents/842/HLS_Tutorial.html "NASA LP DAAC HLS Tutorial"
+[8]: https://documentation.dataspace.copernicus.eu/APIs/SentinelHub/Overview/Authentication.html "Copernicus Data Space OAuth Authentication"
+[9]: https://documentation.dataspace.copernicus.eu/APIs/SentinelHub/Statistical/Examples.html "Copernicus Sentinel Hub Statistical API Examples"

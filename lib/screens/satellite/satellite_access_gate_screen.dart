@@ -119,7 +119,7 @@ class _SatelliteAccessPanelState extends State<_SatelliteAccessPanel> {
                   _introCard(),
                   const SizedBox(height: 16),
                   const Text(
-                    'تسعة مؤشرات لمتابعة صحة المحصول',
+                    'مؤشرات نباتية لمتابعة صحة المحصول',
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 10),
@@ -218,7 +218,7 @@ class _SatelliteAccessPanelState extends State<_SatelliteAccessPanel> {
           ),
           const SizedBox(height: 8),
           const Text(
-            'يجمع التحليل مشاهد متعددة المستشعرات في سجل زمني موحّد لمتابعة نمو النبات ورطوبته والتغيرات في الحقل. دقة التحليل الحالية 30 مترًا، وتعتمد إتاحة كل مشاهدة على صفاء السماء وتوفر البيانات.',
+            'يجمع التحليل قراءات متعددة الدقة في سجل زمني موحّد لمتابعة نمو النبات ورطوبته والتغيرات في الحقل، مع عينات موضعية بدقة 10 أمتار وبيانات مساندة بدقة 30 مترًا. يعتمد توفر كل قراءة على صفاء السماء، ويحلل التطبيق نقاطًا داخل الحقل لا كل بكسل فيه.',
             textAlign: TextAlign.center,
             style: TextStyle(height: 1.5),
           ),

@@ -141,7 +141,10 @@ class SatelliteMonitoringService {
     required String runId,
   }) async {
     final result = await _functions
-        .httpsCallable('getHlsCropAnalysisStatus')
+        .httpsCallable(
+          'getHlsCropAnalysisStatus',
+          options: HttpsCallableOptions(timeout: const Duration(seconds: 540)),
+        )
         .call({'fieldId': fieldId, 'runId': runId});
     return Map<String, dynamic>.from(result.data as Map);
   }

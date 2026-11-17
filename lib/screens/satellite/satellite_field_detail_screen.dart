@@ -34,6 +34,11 @@ class _SatelliteFieldDetailScreenState extends State<SatelliteFieldDetailScreen>
     'NBR2': 'NBR2 · رطوبة/احتراق',
     'TVI': 'TVI · مؤشر نباتي',
     'NDRE': 'NDRE · الحافة الحمراء',
+    'NDVI_10M': 'NDVI · 10م',
+    'EVI_10M': 'EVI · 10م',
+    'SAVI_10M': 'SAVI · 10م',
+    'MSAVI2_10M': 'MSAVI2 · 10م',
+    'NDWI_MCF_10M': 'NDWI أخضر/NIR · 10م',
   };
 
   String _selectedLayer = 'NDVI';
@@ -57,7 +62,7 @@ class _SatelliteFieldDetailScreenState extends State<SatelliteFieldDetailScreen>
       firstDate: DateTime(2013, 4, 11),
       lastDate: now,
       initialDateRange: DateTimeRange(start: defaultStart, end: now),
-      helpText: 'الفترة الزمنية لمشاهد HLS',
+      helpText: 'الفترة الزمنية للمشاهد الفضائية',
       confirmText: 'طلب التحليل',
       cancelText: 'إلغاء',
       saveText: 'متابعة',
@@ -81,7 +86,7 @@ class _SatelliteFieldDetailScreenState extends State<SatelliteFieldDetailScreen>
       setState(() => _activeRunId = runId);
       _startPolling(runId);
       _showMessage(
-        'أُرسل الطلب إلى NASA؛ سيتحدث التقدم تلقائيًا عند وصول النتائج.',
+        'أُرسل طلب التحليل؛ ستظهر النتائج تلقائيًا عند اكتمال المعالجة.',
       );
     } catch (error) {
       _showMessage(_friendlyError(error));
@@ -117,7 +122,7 @@ class _SatelliteFieldDetailScreenState extends State<SatelliteFieldDetailScreen>
         _pollTimer = null;
         if (status != 'completed') {
           _showMessage(response['errorMessage']?.toString() ??
-              'تعذر إكمال تحليل NASA؛ حاول لاحقًا.');
+              'تعذر إكمال التحليل؛ حاول لاحقًا.');
         }
       }
     } catch (error) {
@@ -207,7 +212,7 @@ class _SatelliteFieldDetailScreenState extends State<SatelliteFieldDetailScreen>
         child: AlertDialog(
           title: const Text('حذف الحقل؟'),
           content: const Text(
-            'سيُحذف تعريف الحقل وملاحظاته ونتائج HLS المحفوظة له من حسابك.',
+            'سيُحذف تعريف الحقل وملاحظاته ونتائج الأقمار الصناعية المحفوظة له من حسابك.',
           ),
           actions: [
             TextButton(
@@ -365,7 +370,7 @@ class _SatelliteFieldDetailScreenState extends State<SatelliteFieldDetailScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('تحليل بيانات NASA HLS',
+            const Text('تحليل الأقمار الصناعية متعدد الدقة',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             const SizedBox(height: 6),
             Text(
@@ -443,7 +448,7 @@ class _SatelliteFieldDetailScreenState extends State<SatelliteFieldDetailScreen>
       case 'pending':
       case 'queued':
       case 'submitted':
-        return 'في قائمة NASA';
+        return 'في قائمة المعالجة';
       case 'running':
       case 'processing':
       case 'starting':
@@ -461,6 +466,21 @@ class _SatelliteFieldDetailScreenState extends State<SatelliteFieldDetailScreen>
   bool _isActiveStatus(String status) => const {
         'pending', 'queued', 'submitted', 'running', 'processing', 'starting',
       }.contains(status.toLowerCase());
+
+  String _sentinel2StatusMessage(String status) {
+    switch (status) {
+      case 'pending':
+        return 'قراءات 10م قيد التجهيز.';
+      case 'not_configured':
+        return 'لم يضبط مالك التطبيق بيانات المصدر الإضافي بعد؛ نتائج 30م محفوظة.';
+      case 'no_clear_observations':
+        return 'لم تتوفر نقاط صافية بدقة 10م خلال الفترة المحددة.';
+      case 'unavailable':
+        return 'تعذر جلب قراءات 10م؛ نتائج 30م محفوظة.';
+      default:
+        return 'قراءات 10م غير متاحة لهذه المهمة.';
+    }
+  }
 
   Widget _latestRunContent(HlsAnalysisRun run) {
     return StreamBuilder<List<HlsObservation>>(
@@ -502,6 +522,16 @@ class _SatelliteFieldDetailScreenState extends State<SatelliteFieldDetailScreen>
                 color: Colors.amber.shade50,
               )
             else ...[
+              if (run.sentinel2Status != null &&
+                  run.sentinel2Status != 'completed') ...[
+                _infoBanner(
+                  run.sentinel2ErrorMessage?.trim().isNotEmpty == true
+                      ? run.sentinel2ErrorMessage!.trim()
+                      : _sentinel2StatusMessage(run.sentinel2Status!),
+                  color: Colors.amber.shade50,
+                ),
+                const SizedBox(height: 10),
+              ],
               _metricPicker(),
               const SizedBox(height: 10),
               _fieldMap(latest!),
@@ -534,6 +564,7 @@ class _SatelliteFieldDetailScreenState extends State<SatelliteFieldDetailScreen>
   Widget _metricPicker() {
     final options = <String>[
       ..._indexLabels.keys,
+      'S2_10M_B02', 'S2_10M_B03', 'S2_10M_B04', 'S2_10M_B08',
       for (final band in [
         'B01', 'B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B09', 'B10', 'B11',
         'SAA', 'SZA', 'VAA', 'VZA',
@@ -775,6 +806,11 @@ class _SatelliteFieldDetailScreenState extends State<SatelliteFieldDetailScreen>
     final snow = count('snowIcePointCount', 'snow_ice_point_count');
     final water = count('waterPointCount', 'water_point_count');
     final aerosol = count('aerosolPointCount', 'aerosol_point_count');
+    final sentinelClear = observation.quality['sentinel2_10m_clear_point_count'];
+    final sentinelTotal = observation.quality['sentinel2_10m_total_point_count'];
+    final sentinelQuality = sentinelTotal is num && sentinelTotal > 0
+        ? 'قراءات 10م الصافية: ${sentinelClear ?? 0}/${sentinelTotal.toInt()}. '
+        : '';
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -792,6 +828,7 @@ class _SatelliteFieldDetailScreenState extends State<SatelliteFieldDetailScreen>
               'سحب رقيقة (Cirrus): ${cirrus ?? '—'}، سحب: ${cloudy ?? '—'}، سحب مجاورة: ${adjacent ?? '—'}، '
               'ظلال: ${shadows ?? '—'}، ثلج/جليد: ${snow ?? '—'}، ماء: ${water ?? '—'}، '
               'هباء جوي: ${aerosol ?? '—'}. '
+              '$sentinelQuality'
               'القيم مؤشرات استشعار عن بعد وليست تشخيصًا زراعيًا مؤكدًا.',
               style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade800),
             ),
@@ -988,6 +1025,9 @@ class _SatelliteFieldDetailScreenState extends State<SatelliteFieldDetailScreen>
   }
 
   String _bandLabel(String band) {
+    if (band.startsWith('S2_10M_')) {
+      return '${band.replaceFirst('S2_10M_', '')} · انعكاس بدقة 10م';
+    }
     if (band.startsWith('HLSL30_B10') || band.startsWith('HLSL30_B11')) {
       return '${band.replaceFirst('HLSL30_', 'Landsat ')} · حرارة السطح (°C)';
     }
