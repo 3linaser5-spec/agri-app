@@ -238,6 +238,8 @@ class HlsAnalysisRun {
   final int samplePointCount;
   final int observationCount;
   final List<String> sources;
+  final String? sentinel2Status;
+  final String? sentinel2ErrorMessage;
 
   const HlsAnalysisRun({
     required this.id,
@@ -250,6 +252,8 @@ class HlsAnalysisRun {
     this.samplePointCount = 0,
     this.observationCount = 0,
     this.sources = const [],
+    this.sentinel2Status,
+    this.sentinel2ErrorMessage,
   });
 
   factory HlsAnalysisRun.fromFirestore(
@@ -269,6 +273,8 @@ class HlsAnalysisRun {
       sources: data['sources'] is List
           ? (data['sources'] as List).map((value) => value.toString()).toList()
           : const [],
+      sentinel2Status: data['sentinel2_10m_status']?.toString(),
+      sentinel2ErrorMessage: data['sentinel2_10m_error_message']?.toString(),
     );
   }
 }

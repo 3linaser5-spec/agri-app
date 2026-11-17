@@ -8,9 +8,16 @@ import {
   type HlsObservation,
   type HlsPoint,
 } from './hls-analysis';
+import {
+  aggregateSentinel2Samples,
+  fetchSentinel2PointSamples,
+  type Sentinel2Observation,
+} from './sentinel2-monitoring';
 
 const NASA_EARTHDATA_USERNAME = defineSecret('NASA_EARTHDATA_USERNAME');
 const NASA_EARTHDATA_PASSWORD = defineSecret('NASA_EARTHDATA_PASSWORD');
+const CDSE_OAUTH_CLIENT_ID = defineSecret('CDSE_OAUTH_CLIENT_ID');
+const CDSE_OAUTH_CLIENT_SECRET = defineSecret('CDSE_OAUTH_CLIENT_SECRET');
 const APPEEARS_BASE_URL = 'https://appeears.earthdatacloud.nasa.gov/api';
 const MAX_RANGE_DAYS = 366;
 const MAX_BUNDLE_FILES = 20;
@@ -20,6 +27,7 @@ const NASA_TIMEOUT_MS = 30_000;
 const NASA_BUNDLE_TIMEOUT_MS = 20_000;
 const INDEX_METRICS = new Set([
   'EVI', 'MSAVI', 'NBR', 'NBR2', 'NDMI', 'NDVI', 'NDRE', 'NDWI', 'SAVI', 'TVI',
+  'EVI_10M', 'MSAVI2_10M', 'NDVI_10M', 'NDWI_MCF_10M', 'SAVI_10M',
 ]);
 const EARTHDATA_SETUP_ERROR =
   'لم تُضبط أسرار NASA Earthdata. يُرجى من مالك التطبيق إعداد NASA_EARTHDATA_USERNAME وNASA_EARTHDATA_PASSWORD قبل استخدام التحليل.';
@@ -363,15 +371,82 @@ async function writeCompletedObservations(
   fieldId: string,
   runId: string,
   observations: HlsObservation[],
+  sentinel2Observations: Sentinel2Observation[],
 ): Promise<void> {
   const db = getFirestore();
   const observationsRef = db.collection('users').doc(uid)
     .collection('satellite_fields').doc(fieldId)
     .collection('analysis_runs').doc(runId).collection('observations');
-  for (let offset = 0; offset < observations.length; offset += 350) {
+  const hlsByDate = new Map(observations.map((observation) => [observation.date, observation]));
+  const sentinel2ByDate = new Map(sentinel2Observations.map((observation) => [observation.date, observation]));
+  const dates = [...new Set([...hlsByDate.keys(), ...sentinel2ByDate.keys()])].sort();
+  const merged = dates.map((date) => {
+    const hls = hlsByDate.get(date);
+    const sentinel2 = sentinel2ByDate.get(date);
+    const pointMap = new Map<string, {
+      id: string;
+      latitude: number | null;
+      longitude: number | null;
+      metrics: Record<string, number>;
+      qa: Record<string, unknown>;
+    }>();
+    for (const point of hls?.points ?? []) {
+      pointMap.set(point.id, {
+        id: point.id,
+        latitude: point.latitude,
+        longitude: point.longitude,
+        metrics: { ...point.metrics },
+        qa: { ...point.qa },
+      });
+    }
+    for (const point of sentinel2?.points ?? []) {
+      const existing = pointMap.get(point.id);
+      pointMap.set(point.id, {
+        id: point.id,
+        latitude: point.latitude,
+        longitude: point.longitude,
+        metrics: { ...(existing?.metrics ?? {}), ...point.indices, ...point.bands },
+        qa: existing?.qa ?? {},
+      });
+    }
+    const qa = hls?.qa ?? {
+      clearPointCount: 0,
+      flaggedPointCount: 0,
+      cirrusPointCount: 0,
+      cloudPointCount: 0,
+      adjacentPointCount: 0,
+      shadowPointCount: 0,
+      snowIcePointCount: 0,
+      waterPointCount: 0,
+      aerosolPointCount: 0,
+    };
+    const sources = [
+      ...(hls ? ['NASA HLS/AppEEARS'] : []),
+      ...(sentinel2 ? ['Sentinel-2 L2A · 10 m'] : []),
+    ];
+    return {
+      date,
+      metrics: { ...(hls?.metrics ?? {}), ...(sentinel2?.metrics ?? {}) },
+      points: [...pointMap.values()],
+      qa,
+      alerts: hls?.alerts.map((alert) => alert.message) ?? [],
+      alertDetails: hls?.alerts ?? [],
+      validPointCount: [...pointMap.values()].filter((point) => Object.keys(point.metrics).length > 0).length,
+      totalPointCount: Math.max(hls?.totalPointCount ?? 0, sentinel2?.totalPointCount ?? 0),
+      sentinel2ClearPointCount: sentinel2?.validPointCount ?? 0,
+      sentinel2TotalPointCount: sentinel2?.totalPointCount ?? 0,
+      sources,
+      sourceResolutionsM: {
+        ...(hls ? { hls: 30 } : {}),
+        ...(sentinel2 ? { sentinel2: 10 } : {}),
+      },
+    };
+  });
+
+  for (let offset = 0; offset < merged.length; offset += 350) {
     const batch = db.batch();
-    for (const observation of observations.slice(offset, offset + 350)) {
-      const { date, ...data } = observation;
+    for (const observation of merged.slice(offset, offset + 350)) {
+      const { date } = observation;
       const metrics: Record<string, number> = {};
       const bands: Record<string, number> = {};
       const medianMetrics: Record<string, number> = {};
@@ -387,7 +462,8 @@ async function writeCompletedObservations(
           if (INDEX_METRICS.has(name)) indices[name] = value;
           else pointBands[name] = value;
         }
-        const fmask = point.qa['HLSS30']?.raw ?? point.qa['HLSL30']?.raw;
+        const hlsQa = point.qa as Record<string, { raw?: number }>;
+        const fmask = hlsQa['HLSS30']?.raw ?? hlsQa['HLSL30']?.raw;
         return {
           id: point.id,
           latitude: point.latitude,
@@ -399,7 +475,6 @@ async function writeCompletedObservations(
         };
       });
       batch.set(observationsRef.doc(date), {
-        ...data,
         date,
         metrics,
         bands,
@@ -410,10 +485,16 @@ async function writeCompletedObservations(
         total_sample_count: observation.totalPointCount,
         validSampleCount: observation.validPointCount,
         totalSampleCount: observation.totalPointCount,
-        sources: ['NASA HLS/AppEEARS'],
-        quality: observation.qa,
-        alerts: observation.alerts.map((alert) => alert.message),
-        alert_details: observation.alerts,
+        sources: observation.sources,
+        source_resolutions_m: observation.sourceResolutionsM,
+        source_resolutions: observation.sourceResolutionsM,
+        quality: {
+          ...observation.qa,
+          sentinel2_10m_clear_point_count: observation.sentinel2ClearPointCount,
+          sentinel2_10m_total_point_count: observation.sentinel2TotalPointCount,
+        },
+        alerts: observation.alerts,
+        alert_details: observation.alertDetails,
         // Retain explicit camelCase aliases for the public callable/schema contract.
         validPointCount: observation.validPointCount,
         totalPointCount: observation.totalPointCount,
@@ -433,7 +514,9 @@ async function finishTask(
   samplePoints: HlsPoint[],
   taskId: string,
   token: string,
-): Promise<{ runId: string; status: string }> {
+  startDate: Date,
+  endDate: Date,
+): Promise<{ runId: string; status: string; sentinel2Status?: string }> {
   const db = getFirestore();
   const jobRef = db.collection('hls_analysis_jobs').doc(runId);
   const runRef = db.collection('users').doc(uid)
@@ -448,6 +531,9 @@ async function finishTask(
       status: latestStatus === 'completed' || latestStatus === 'failed'
         ? latestStatus
         : 'pending',
+      sentinel2Status: typeof latest.get('sentinel2_10m_status') === 'string'
+        ? latest.get('sentinel2_10m_status') as string
+        : undefined,
     };
   }
 
@@ -474,19 +560,76 @@ async function finishTask(
     const csvFiles = await downloadCsvBundle(bundleId, token);
     const samples = csvFiles.flatMap((csv) => parseHlsSamples(csv));
     const observations = aggregateHlsSamples(samples, samplePoints);
-    await writeCompletedObservations(uid, fieldId, runId, observations);
+    let sentinel2Observations: Sentinel2Observation[] = [];
+    let sentinel2Status = 'not_configured';
+    let sentinel2ErrorArabic = 'لم تُضبط بيانات ربط مصدر 10م بعد.';
+    try {
+      const clientId = CDSE_OAUTH_CLIENT_ID.value().trim();
+      const clientSecret = CDSE_OAUTH_CLIENT_SECRET.value();
+      if (clientId && clientSecret) {
+        const sentinel2Samples = await fetchSentinel2PointSamples(
+          samplePoints,
+          startDate,
+          endDate,
+          clientId,
+          clientSecret,
+        );
+        sentinel2Observations = aggregateSentinel2Samples(sentinel2Samples, samplePoints);
+        sentinel2Status = sentinel2Observations.length > 0
+          ? 'completed'
+          : 'no_clear_observations';
+        sentinel2ErrorArabic = sentinel2Status === 'no_clear_observations'
+          ? 'لم تتوفر نقاط صافية بدقة 10م ضمن الفترة المختارة.'
+          : '';
+      }
+    } catch {
+      sentinel2Status = 'unavailable';
+      sentinel2ErrorArabic = 'تعذر جلب قراءات الدقة 10م الآن؛ حُفظت نتائج التحليل الأخرى ويمكن إعادة المحاولة لاحقًا.';
+    }
+    await writeCompletedObservations(
+      uid,
+      fieldId,
+      runId,
+      observations,
+      sentinel2Observations,
+    );
     const alertCount = observations.reduce((sum, observation) => sum + observation.alerts.length, 0);
+    const mergedDates = [...new Set([
+      ...observations.map((observation) => observation.date),
+      ...sentinel2Observations.map((observation) => observation.date),
+    ])].sort();
+    const hlsByDate = new Map(observations.map((observation) => [observation.date, observation]));
+    const sentinel2ByDate = new Map(sentinel2Observations.map((observation) => [observation.date, observation]));
+    const mergedValidPointCount = mergedDates.reduce((sum, date) => {
+      const validIds = new Set<string>();
+      for (const point of hlsByDate.get(date)?.points ?? []) {
+        if (Object.keys(point.metrics).length > 0) validIds.add(point.id);
+      }
+      for (const point of sentinel2ByDate.get(date)?.points ?? []) {
+        if (Object.keys(point.indices).length > 0) validIds.add(point.id);
+      }
+      return sum + validIds.size;
+    }, 0);
     await Promise.all([
       runRef.set({
         status: 'completed',
+        sentinel2_10m_status: sentinel2Status,
+        sentinel2_10m_error_message: sentinel2ErrorArabic,
         summary: {
-          observationCount: observations.length,
-          validPointCount: observations.reduce((sum, item) => sum + item.validPointCount, 0),
-          latestObservationDate: observations.at(-1)?.date ?? null,
+          observationCount: mergedDates.length,
+          validPointCount: mergedValidPointCount,
+          latestObservationDate: mergedDates.at(-1) ?? null,
           alertCount,
         },
-        observation_count: observations.length,
-        sources: ['NASA HLS/AppEEARS'],
+        observation_count: mergedDates.length,
+        sources: [
+          'NASA HLS/AppEEARS',
+          ...(sentinel2Observations.length > 0 ? ['Sentinel-2 L2A · 10 m'] : []),
+        ],
+        source_resolutions_m: {
+          hls: 30,
+          ...(sentinel2Observations.length > 0 ? { sentinel2: 10 } : {}),
+        },
         completedAt: FieldValue.serverTimestamp(),
         completed_at: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
@@ -499,7 +642,7 @@ async function finishTask(
         updatedAt: FieldValue.serverTimestamp(),
       }, { merge: true }),
     ]);
-    return { runId, status: 'completed' };
+    return { runId, status: 'completed', sentinel2Status };
   } catch (error) {
     await markRunFailed(uid, fieldId, runId);
     if (error instanceof HttpsError) throw error;
@@ -512,7 +655,12 @@ export const requestHlsCropAnalysis = onCall(
     region: 'europe-west1',
     enforceAppCheck: true,
     timeoutSeconds: 540,
-    secrets: [NASA_EARTHDATA_USERNAME, NASA_EARTHDATA_PASSWORD],
+    secrets: [
+      NASA_EARTHDATA_USERNAME,
+      NASA_EARTHDATA_PASSWORD,
+      CDSE_OAUTH_CLIENT_ID,
+      CDSE_OAUTH_CLIENT_SECRET,
+    ],
   },
   async (request) => {
     const uid = request.auth?.uid;
@@ -557,6 +705,7 @@ export const requestHlsCropAnalysis = onCall(
     await Promise.all([
       runRef.create({
         status: 'pending',
+        sentinel2_10m_status: 'pending',
         requestedStartDate: request.data['startDate'],
         requestedEndDate: request.data['endDate'],
         samplePointCount: samplePoints.length,
@@ -566,7 +715,7 @@ export const requestHlsCropAnalysis = onCall(
         start_date: request.data['startDate'],
         end_date: request.data['endDate'],
         sample_point_count: samplePoints.length,
-        sources: ['NASA HLS/AppEEARS'],
+        sources: ['NASA HLS/AppEEARS', 'Sentinel-2 L2A · 10 m'],
         created_at: FieldValue.serverTimestamp(),
       }),
       jobRef.create({
@@ -610,7 +759,12 @@ export const getHlsCropAnalysisStatus = onCall(
     region: 'europe-west1',
     enforceAppCheck: true,
     timeoutSeconds: 540,
-    secrets: [NASA_EARTHDATA_USERNAME, NASA_EARTHDATA_PASSWORD],
+    secrets: [
+      NASA_EARTHDATA_USERNAME,
+      NASA_EARTHDATA_PASSWORD,
+      CDSE_OAUTH_CLIENT_ID,
+      CDSE_OAUTH_CLIENT_SECRET,
+    ],
   },
   async (request) => {
     const uid = request.auth?.uid;
@@ -635,7 +789,11 @@ export const getHlsCropAnalysisStatus = onCall(
     if (!runSnapshot.exists) throw new HttpsError('not-found', 'طلب التحليل غير موجود.');
     const visibleStatus = safeRunStatus(runSnapshot.get('status'));
     if (visibleStatus === 'completed' || visibleStatus === 'failed') {
-      return { runId, status: visibleStatus };
+      return {
+        runId,
+        status: visibleStatus,
+        sentinel2Status: safeRunStatus(runSnapshot.get('sentinel2_10m_status')),
+      };
     }
 
     const jobRef = db.collection('hls_analysis_jobs').doc(runId);
@@ -652,6 +810,24 @@ export const getHlsCropAnalysisStatus = onCall(
       await markRunFailed(uid, fieldId, runId);
       throw new HttpsError('unavailable', SAFE_FAILURE_ARABIC);
     }
-    return finishTask(uid, fieldId, runId, job.samplePoints, job.nasaTaskId, token);
+    const startDate = parseIsoDate(
+      runSnapshot.get('requestedStartDate') ?? runSnapshot.get('start_date'),
+    );
+    const endDate = parseIsoDate(
+      runSnapshot.get('requestedEndDate') ?? runSnapshot.get('end_date'),
+    );
+    if (!startDate || !endDate) {
+      throw new HttpsError('failed-precondition', 'نطاق تواريخ التحليل المخزن غير صالح.');
+    }
+    return finishTask(
+      uid,
+      fieldId,
+      runId,
+      job.samplePoints,
+      job.nasaTaskId,
+      token,
+      startDate,
+      endDate,
+    );
   },
 );
