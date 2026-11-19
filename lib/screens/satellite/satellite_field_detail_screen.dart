@@ -8,8 +8,10 @@ import 'package:intl/intl.dart' show DateFormat;
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../models/satellite_monitoring_model.dart';
+import '../../services/pdf_service.dart';
 import '../../services/satellite_monitoring_service.dart';
 import 'satellite_field_editor_screen.dart';
+import 'map_alerts_screen.dart';
 
 class SatelliteFieldDetailScreen extends StatefulWidget {
   final HlsField field;
@@ -136,7 +138,7 @@ class _SatelliteFieldDetailScreenState extends State<SatelliteFieldDetailScreen>
   String _friendlyError(Object error) {
     final raw = error.toString();
     if (raw.contains('failed-precondition') || raw.contains('Earthdata')) {
-      return 'تكامل NASA لم يُعدّ بعد. يلزم أن يضبط مالك التطبيق أسرار NASA Earthdata على الخادم ثم ينشر وظائف التحليل.';
+      return 'خدمة التحليل لم تُعدّ بعد على الخادم. تواصل مع الدعم أو حاول لاحقًا.';
     }
     if (raw.contains('unauthenticated')) return 'انتهت جلسة الدخول؛ سجّل الدخول مجددًا.';
     return raw.replaceFirst('Bad state: ', '').replaceFirst('Exception: ', '');
@@ -204,6 +206,33 @@ class _SatelliteFieldDetailScreenState extends State<SatelliteFieldDetailScreen>
     if (mounted) Navigator.pop(context, true);
   }
 
+  Future<void> _shareSatelliteReport(
+    List<HlsObservation> observations,
+  ) async {
+    final alerts = <String>{
+      for (final observation in observations) ...observation.alerts,
+    }.toList();
+    try {
+      await PdfService.generateAndShareSatellitePdf(
+        fieldName: widget.field.name,
+        crop: widget.field.crop,
+        areaFeddans: widget.field.areaFeddans,
+        observations: [
+          for (final observation in observations)
+            {
+              'date': DateFormat('yyyy/MM/dd').format(observation.date),
+              'summary': observation.metrics.entries
+                  .map((entry) => '${entry.key}: ${entry.value.toStringAsFixed(3)}')
+                  .join(' · '),
+            },
+        ],
+        alerts: alerts,
+      );
+    } catch (error) {
+      _showMessage('تعذر إنشاء التقرير: ${_friendlyError(error)}');
+    }
+  }
+
   Future<void> _deleteField() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -246,7 +275,12 @@ class _SatelliteFieldDetailScreenState extends State<SatelliteFieldDetailScreen>
           title: Text(widget.field.name),
           backgroundColor: _green,
           foregroundColor: Colors.white,
-          actions: [
+            actions: [
+            IconButton(
+              tooltip: 'تنبيهات الخريطة',
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => MapAlertsScreen(fieldId: widget.field.id))),
+              icon: const Icon(Icons.location_on_outlined),
+            ),
             IconButton(
               tooltip: 'تعديل الحقل',
               onPressed: _editField,
@@ -307,7 +341,7 @@ class _SatelliteFieldDetailScreenState extends State<SatelliteFieldDetailScreen>
                 const SizedBox(height: 14),
                 _notesSection(),
                 const SizedBox(height: 14),
-                _operaSourcesCard(),
+                _analysisInfoCard(),
                 const SizedBox(height: 24),
               ],
             );
@@ -506,6 +540,12 @@ class _SatelliteFieldDetailScreenState extends State<SatelliteFieldDetailScreen>
                   child: Text('نتائج آخر تحليل',
                       style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
                 ),
+                if (observations.isNotEmpty)
+                  IconButton(
+                    tooltip: 'مشاركة تقرير PDF',
+                    onPressed: () => _shareSatelliteReport(observations),
+                    icon: const Icon(Icons.picture_as_pdf_outlined, color: _green),
+                  ),
                 if (run.completedAt != null)
                   Text(
                     DateFormat('yyyy/MM/dd').format(run.completedAt!),
@@ -904,7 +944,7 @@ class _SatelliteFieldDetailScreenState extends State<SatelliteFieldDetailScreen>
         },
       );
 
-  Widget _operaSourcesCard() => Card(
+  Widget _analysisInfoCard() => Card(
         elevation: 0,
         color: const Color(0xFFF3F4F6),
         child: Padding(
@@ -912,20 +952,12 @@ class _SatelliteFieldDetailScreenState extends State<SatelliteFieldDetailScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('مصادر NASA الإضافية',
+              const Text('مصادر التحليل الإضافية',
                   style: TextStyle(fontWeight: FontWeight.bold)),
               const SizedBox(height: 4),
               Text(
-                'منتجات OPERA المشتقة من HLS (التغيرات السنوية، التنبيه للتغير، والمياه السطحية) لا تظهر في واجهة AppEEARS المستخدمة للتحليل هنا؛ هذه روابط سجلاتها الرسمية لحين إضافة موصل NASA منفصل لها.',
+                'قد تتوفر طبقات إضافية للتحليل لاحقًا. النتائج المعروضة مؤشرات استشعار عن بعد وليست تشخيصًا نهائيًا.',
                 style: TextStyle(color: Colors.grey.shade700, fontSize: 11),
-              ),
-              Wrap(
-                spacing: 4,
-                children: [
-                  _sourceLink('DIST-ALERT', 'https://www.earthdata.nasa.gov/data/catalog/lpcloud-opera-l3-dist-alert-hls-v1-1'),
-                  _sourceLink('DIST-ANN', 'https://www.earthdata.nasa.gov/data/catalog/lpcloud-opera-l3-dist-ann-hls-v1-1'),
-                  _sourceLink('DSWx-HLS', 'https://www.earthdata.nasa.gov/data/catalog/pocloud-opera-l3-dswx-hls-v1-1.0'),
-                ],
               ),
             ],
           ),
@@ -967,7 +999,7 @@ class _SatelliteFieldDetailScreenState extends State<SatelliteFieldDetailScreen>
     for (final source in const ['HLSS30', 'HLSL30']) {
       final qa = sample.qa[source];
       if (qa == null) continue;
-      final label = source == 'HLSS30' ? 'Sentinel-2 Fmask' : 'Landsat Fmask';
+      final label = source == 'HLSS30' ? 'جودة المشاهدة (أ)' : 'جودة المشاهدة (ب)';
       lines.add('$label: ${_qaDescription(qa)}');
     }
     if (sample.qa.isEmpty && sample.fmask != null) {
@@ -1028,11 +1060,8 @@ class _SatelliteFieldDetailScreenState extends State<SatelliteFieldDetailScreen>
     if (band.startsWith('S2_10M_')) {
       return '${band.replaceFirst('S2_10M_', '')} · انعكاس بدقة 10م';
     }
-    if (band.startsWith('HLSL30_B10') || band.startsWith('HLSL30_B11')) {
-      return '${band.replaceFirst('HLSL30_', 'Landsat ')} · حرارة السطح (°C)';
-    }
-    if (band.startsWith('HLSL30_')) return '${band.replaceFirst('HLSL30_', 'Landsat ')} · انعكاس/زاوية';
-    if (band.startsWith('HLSS30_')) return '${band.replaceFirst('HLSS30_', 'Sentinel-2 ')} · انعكاس/زاوية';
+    if (band.startsWith('HLSL30_B10') || band.startsWith('HLSL30_B11')) return 'حرارة السطح (°C)';
+    if (band.startsWith('HLSL30_') || band.startsWith('HLSS30_')) return 'قناة طيفية · انعكاس/زاوية';
     return '$band · قناة طيفية';
   }
 

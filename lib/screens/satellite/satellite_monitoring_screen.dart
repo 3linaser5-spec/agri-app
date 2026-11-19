@@ -118,7 +118,7 @@ class SatelliteFieldsScreen extends StatelessWidget {
                     ),
                     SizedBox(height: 5),
                     Text(
-                      'ارسم الحدود مرة واحدة، ثم استخرج مؤشرات الغطاء النباتي والرطوبة والطيف والجودة من منتجات NASA HLS بدقة 30 مترًا.',
+                      'ارسم الحدود مرة واحدة، ثم استخرج مؤشرات الغطاء النباتي والرطوبة والطيف والجودة من المشاهد المتاحة بدقة مناسبة.',
                       style: TextStyle(fontSize: 12, height: 1.4),
                     ),
                     SizedBox(height: 7),
@@ -180,7 +180,7 @@ class _FieldCard extends StatelessWidget {
                       Text(
                         field.polygon.length < 3
                             ? 'الحدود تحتاج إلى مراجعة'
-                            : 'الحدود محفوظة · جاهز لطلب تحليل NASA',
+                            : 'الحدود محفوظة · جاهز لطلب التحليل',
                         style: TextStyle(
                           color: field.polygon.length < 3
                               ? Colors.orange.shade800
@@ -218,7 +218,7 @@ class _EmptyState extends StatelessWidget {
               ),
               const SizedBox(height: 7),
               Text(
-                'أضف اسم الحقل والمحصول وتاريخ الزراعة، ثم ارسم حدوده على الخريطة. بعد ذلك يمكنك طلب مشاهد HLS ومتابعة المؤشرات عبر الزمن.',
+                'أضف اسم الحقل والمحصول وتاريخ الزراعة، ثم ارسم حدوده على الخريطة. بعد ذلك يمكنك طلب المشاهد ومتابعة المؤشرات عبر الزمن.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: Colors.grey.shade700, height: 1.45),
               ),

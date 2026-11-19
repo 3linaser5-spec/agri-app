@@ -5,6 +5,7 @@ import {
   aggregateHlsSamples,
   parseHlsSamples,
   sampleHlsPoints,
+  validateHlsPolygon,
   type HlsObservation,
   type HlsPoint,
 } from './hls-analysis';
@@ -13,6 +14,10 @@ import {
   fetchSentinel2PointSamples,
   type Sentinel2Observation,
 } from './sentinel2-monitoring';
+import {
+  areaFeddanFromSquareMeters, auditEntry, internalProvenance, publicSourceRefs,
+  readAreaAccount, releaseArea, reserveArea,
+} from './domain';
 
 const NASA_EARTHDATA_USERNAME = defineSecret('NASA_EARTHDATA_USERNAME');
 const NASA_EARTHDATA_PASSWORD = defineSecret('NASA_EARTHDATA_PASSWORD');
@@ -139,6 +144,89 @@ async function requireSatelliteAccess(uid: string): Promise<void> {
     );
   }
 }
+
+function polygonAreaM2(polygon: unknown): number {
+  const points = validateHlsPolygon(polygon);
+  const meanLatitude = points.reduce((sum, point) => sum + point.latitude, 0) / points.length;
+  const ring = [...points, points[0]!];
+  const shoelace = ring.slice(0, -1).reduce((sum, point, index) => {
+    const next = ring[index + 1]!;
+    return sum + point.longitude * next.latitude - next.longitude * point.latitude;
+  }, 0);
+  return Math.abs(shoelace) / 2 * 111_320 ** 2 * Math.max(0, Math.cos(meanLatitude * Math.PI / 180));
+}
+
+export const saveSatelliteField = onCall(
+  { region: 'europe-west1', enforceAppCheck: true },
+  async (request) => {
+    const uid = request.auth?.uid;
+    if (!uid || !isRecord(request.data)) throw new HttpsError('unauthenticated', 'سجّل الدخول أولًا.');
+    const fieldId = request.data['fieldId']; const field = request.data['field'];
+    if (!safeFieldId(fieldId) || !isRecord(field)) throw new HttpsError('invalid-argument', 'بيانات الحقل غير صالحة.');
+    let areaM2: number;
+    try { areaM2 = polygonAreaM2(getFieldPolygon(field)); } catch { throw new HttpsError('invalid-argument', 'حدود الحقل غير صالحة.'); }
+    const db = getFirestore(); const userRef = db.collection('users').doc(uid); const fieldRef = userRef.collection('satellite_fields').doc(fieldId);
+    await db.runTransaction(async (transaction) => {
+      const userSnapshot = await transaction.get(userRef); const oldField = await transaction.get(fieldRef);
+      const account = readAreaAccount(userSnapshot.data() ?? {});
+      const oldArea = oldField.exists && typeof oldField.get('area_m2') === 'number' ? areaFeddanFromSquareMeters(oldField.get('area_m2')) : 0;
+      let decision;
+      try { decision = reserveArea({ ...account, usedAreaFeddan: releaseArea(account, oldArea) }, areaFeddanFromSquareMeters(areaM2)); }
+      catch (error) { if (error instanceof Error && error.message === 'AREA_LIMIT_EXCEEDED') throw new HttpsError('resource-exhausted', 'تجاوز الحقل الحد المتاح لمساحة الحساب.'); throw new HttpsError('invalid-argument', 'مساحة الحقل غير صالحة.'); }
+      transaction.set(fieldRef, { name: typeof field['name'] === 'string' ? field['name'].trim() : '', crop: typeof field['crop'] === 'string' ? field['crop'].trim() : '', linked_program_id: field['linked_program_id'] ?? null, planting_date: typeof field['planting_date'] === 'string' ? new Date(field['planting_date']) : field['planting_date'] ?? FieldValue.serverTimestamp(), polygon: getFieldPolygon(field), area_m2: areaM2, created_at: oldField.exists ? oldField.get('created_at') : FieldValue.serverTimestamp(), updated_at: FieldValue.serverTimestamp() });
+      transaction.set(userRef, { max_area_feddan: account.maxAreaFeddan, used_area_feddan: decision.nextUsedAreaFeddan, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      transaction.create(db.collection('admin_audit_logs').doc(), { ...auditEntry(oldField.exists ? 'satellite_field_updated' : 'satellite_field_created', uid, fieldId, { area_feddan: areaFeddanFromSquareMeters(areaM2), used_area_feddan: decision.nextUsedAreaFeddan }), createdAt: FieldValue.serverTimestamp() });
+    });
+    return { saved: true, area_m2: areaM2, area_feddan: areaFeddanFromSquareMeters(areaM2) };
+  },
+);
+
+export const setSatelliteSubscriberQuota = onCall(
+  { region: 'europe-west1', enforceAppCheck: true },
+  async (request) => {
+    const adminUid = request.auth?.uid;
+    if (!adminUid || !isRecord(request.data)) {
+      throw new HttpsError('unauthenticated', 'سجّل الدخول بحساب الأدمن.');
+    }
+    const db = getFirestore();
+    const adminSnapshot = await db.collection('admins').doc(adminUid).get();
+    if (!adminSnapshot.exists) throw new HttpsError('permission-denied', 'هذه العملية متاحة للأدمن فقط.');
+    const uid = request.data['uid'];
+    const maxAreaFeddan = request.data['maxAreaFeddan'];
+    if (typeof uid !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(uid) ||
+        typeof maxAreaFeddan !== 'number' || !Number.isFinite(maxAreaFeddan) ||
+        maxAreaFeddan <= 0 || maxAreaFeddan > 1_000_000) {
+      throw new HttpsError('invalid-argument', 'حد المساحة بالفدان غير صالح.');
+    }
+    const userRef = db.collection('users').doc(uid);
+    const entitlementRef = db.collection('service_entitlements').doc(uid)
+      .collection('services').doc('satellite_monitoring');
+    await db.runTransaction(async (transaction) => {
+      const userSnapshot = await transaction.get(userRef);
+      const used = readAreaAccount(userSnapshot.data() ?? {}).usedAreaFeddan;
+      if (maxAreaFeddan + 1e-9 < used) {
+        throw new HttpsError('failed-precondition', 'الحد الجديد أقل من المساحة المستخدمة حاليًا.');
+      }
+      transaction.set(userRef, {
+        max_area_feddan: maxAreaFeddan,
+        used_area_feddan: used,
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+      transaction.set(entitlementRef, {
+        max_area_feddan: maxAreaFeddan,
+        updated_at: FieldValue.serverTimestamp(),
+      }, { merge: true });
+      transaction.create(db.collection('admin_audit_logs').doc(), {
+        ...auditEntry('satellite_quota_updated', adminUid, uid, {
+          max_area_feddan: maxAreaFeddan,
+          used_area_feddan: used,
+        }),
+        createdAt: FieldValue.serverTimestamp(),
+      });
+    });
+    return { updated: true, uid, maxAreaFeddan };
+  },
+);
 
 async function getEarthdataToken(username: string, password: string): Promise<string> {
   const now = Date.now();
@@ -435,11 +523,8 @@ async function writeCompletedObservations(
       totalPointCount: Math.max(hls?.totalPointCount ?? 0, sentinel2?.totalPointCount ?? 0),
       sentinel2ClearPointCount: sentinel2?.validPointCount ?? 0,
       sentinel2TotalPointCount: sentinel2?.totalPointCount ?? 0,
-      sources,
-      sourceResolutionsM: {
-        ...(hls ? { hls: 30 } : {}),
-        ...(sentinel2 ? { sentinel2: 10 } : {}),
-      },
+      sources: publicSourceRefs(Boolean(hls), Boolean(sentinel2)).map((source) => source.key),
+      sourceResolutionsM: Object.fromEntries(publicSourceRefs(Boolean(hls), Boolean(sentinel2)).map((source) => [source.key, source.resolutionM])),
     };
   });
 
@@ -502,6 +587,25 @@ async function writeCompletedObservations(
         createdAt: FieldValue.serverTimestamp(),
         created_at: FieldValue.serverTimestamp(),
       });
+      for (const alert of observation.alertDetails) {
+        if (alert.latitude === null || alert.longitude === null) continue;
+        const alertId = `${runId}_${date}_${alert.code}`.replace(/[^A-Za-z0-9_-]/g, '_');
+        batch.set(db.collection('users').doc(uid).collection('map_alerts').doc(alertId), {
+          field_id: fieldId,
+          run_id: runId,
+          date,
+          title: 'منطقة تستحق الفحص الميداني',
+          message: alert.message,
+          reason: alert.reason,
+          field_check: alert.fieldCheck,
+          latitude: alert.latitude,
+          longitude: alert.longitude,
+          severity: alert.severity,
+          resolved: false,
+          created_at: FieldValue.serverTimestamp(),
+          updated_at: FieldValue.serverTimestamp(),
+        }, { merge: true });
+      }
     }
     await batch.commit();
   }
@@ -622,10 +726,7 @@ async function finishTask(
           alertCount,
         },
         observation_count: mergedDates.length,
-        sources: [
-          'NASA HLS/AppEEARS',
-          ...(sentinel2Observations.length > 0 ? ['Sentinel-2 L2A · 10 m'] : []),
-        ],
+        sources: publicSourceRefs(true, sentinel2Observations.length > 0).map((source) => source.key),
         source_resolutions_m: {
           hls: 30,
           ...(sentinel2Observations.length > 0 ? { sentinel2: 10 } : {}),
@@ -635,6 +736,7 @@ async function finishTask(
         updatedAt: FieldValue.serverTimestamp(),
         updated_at: FieldValue.serverTimestamp(),
       }, { merge: true }),
+      db.collection('admin_analysis_provenance').doc(runId).set({ uid, fieldId, runId, providers: internalProvenance(true, sentinel2Observations.length > 0), updatedAt: FieldValue.serverTimestamp() }, { merge: true }),
       jobRef.set({
         status: 'completed',
         lockUntil: 0,
@@ -710,12 +812,12 @@ export const requestHlsCropAnalysis = onCall(
         requestedEndDate: request.data['endDate'],
         samplePointCount: samplePoints.length,
         createdAt: FieldValue.serverTimestamp(),
-        source: 'NASA HLS/AppEEARS',
+        source: 'hls',
         requested_at: FieldValue.serverTimestamp(),
         start_date: request.data['startDate'],
         end_date: request.data['endDate'],
         sample_point_count: samplePoints.length,
-        sources: ['NASA HLS/AppEEARS', 'Sentinel-2 L2A · 10 m'],
+        sources: ['hls', 'sentinel2'],
         created_at: FieldValue.serverTimestamp(),
       }),
       jobRef.create({

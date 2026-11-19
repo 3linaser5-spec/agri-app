@@ -5,6 +5,40 @@ import '../utils/safe_parse.dart';
 import '../config/app_config.dart';
 
 class PdfService {
+  static Future<void> generateAndShareSatellitePdf({
+    required String fieldName,
+    required String crop,
+    required double areaFeddans,
+    required List<Map<String, dynamic>> observations,
+    required List<String> alerts,
+  }) async {
+    final sections = <PdfSection>[
+      PdfSection.h1('نباتي - تقرير متابعة الحقل'),
+      PdfSection.h2(fieldName),
+      PdfSection.paragraph('المحصول: $crop'),
+      PdfSection.paragraph('المساحة: ${areaFeddans.toStringAsFixed(2)} فدان'),
+      PdfSection.paragraph('تاريخ التقرير: ${_formatDate(DateTime.now())}'),
+      PdfSection.divider(),
+      PdfSection.h2('سجل التحليلات والمقارنة'),
+    ];
+    if (observations.isEmpty) {
+      sections.add(PdfSection.paragraph('لا توجد قراءات محفوظة لهذا التقرير.'));
+    } else {
+      for (final item in observations) {
+        sections.add(PdfSection.paragraph('${item['date'] ?? 'تاريخ غير محدد'}: ${item['summary'] ?? 'قراءة محفوظة'}'));
+      }
+    }
+    if (alerts.isNotEmpty) {
+      sections.add(PdfSection.divider());
+      sections.add(PdfSection.h2('تنبيهات تستحق الفحص'));
+      for (final alert in alerts) sections.add(PdfSection.paragraph('• $alert'));
+    }
+    sections.add(PdfSection.divider());
+    sections.add(PdfSection.paragraph('هذا التقرير استرشادي ويجب ربطه بالفحص الميداني قبل اتخاذ القرار.'));
+    final file = await PdfBuilder.generate(PdfDocumentData(title: 'تقرير متابعة $fieldName', sections: sections));
+    await SharePlus.instance.share(ShareParams(files: [XFile(file.path)], subject: 'تقرير متابعة $fieldName'));
+  }
+
   static Future<void> generateAndSharePdf({
     required String programTitle,
     required String programEmoji,

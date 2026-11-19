@@ -7,6 +7,7 @@ import 'json_import_screen.dart';
 import 'encyclopedia_admin_screen.dart';
 import 'training_data_admin_screen.dart';
 import 'satellite_access_admin_screen.dart';
+import 'active_subscribers_screen.dart';
 
 // ================== لوحة الأدمن الرئيسية ==================
 class AdminPanelScreen extends StatefulWidget {
@@ -197,6 +198,13 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                             ),
                           );
                         },
+                      ),
+                      _buildAdminActionCard(
+                        icon: Icons.groups_outlined,
+                        color: const Color(0xFF7C3AED),
+                        title: 'المشتركون النشطون',
+                        subtitle: 'حد المساحة، الاستخدام، المتبقي وتاريخ الانتهاء',
+                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ActiveSubscribersScreen())),
                       ),
 
                       const SizedBox(height: 24),

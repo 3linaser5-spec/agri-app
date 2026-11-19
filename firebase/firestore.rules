@@ -176,6 +176,27 @@ service cloud.firestore {
             .hasOnly(['name']);
 
       allow delete: if false;
+
+      // تنبيهات الخريطة تُنشأ من الخادم فقط، ويقرأها صاحب الاشتراك النشط.
+      match /map_alerts/{alertId} {
+        allow read: if signedIn()
+          && request.auth.uid == uid
+          && hasActiveSatelliteAccess(uid);
+        allow create, update, delete: if false;
+
+        match /inspection_notes/{noteId} {
+          allow read: if signedIn() && request.auth.uid == uid;
+          allow create: if signedIn()
+            && request.auth.uid == uid
+            && request.resource.data.keys().hasOnly(['text', 'created_at'])
+            && request.resource.data.keys().hasAll(['text', 'created_at'])
+            && request.resource.data.text is string
+            && request.resource.data.text.size() > 0
+            && request.resource.data.text.size() <= 2000
+            && request.resource.data.created_at == request.time;
+          allow update, delete: if false;
+        }
+      }
     }
 
     // التشخيصات: صاحبها يكتب (create) ويقرأ، الأدمن يقرأ
@@ -460,15 +481,9 @@ service cloud.firestore {
           && request.resource.data.updated_at is timestamp;
       }
 
+      // الإنشاء والتعديل يمران عبر saveSatelliteField حتى تُحدّث used_area_feddan ذريًا.
       allow read, delete: if ownsFieldAccount();
-      allow create: if ownsFieldAccount()
-        && validSatelliteField()
-        && request.resource.data.created_at == request.time
-        && request.resource.data.updated_at == request.time;
-      allow update: if ownsFieldAccount()
-        && validSatelliteField()
-        && request.resource.data.created_at == resource.data.created_at
-        && request.resource.data.updated_at == request.time;
+      allow create, update: if false;
 
       match /analysis_runs/{runId} {
         allow read, delete: if ownsFieldAccount();
@@ -494,6 +509,16 @@ service cloud.firestore {
           && request.resource.data.created_at == request.time;
         allow update: if false;
       }
+    }
+
+    // provenance وأحداث التدقيق لا تظهر إلا للأدمن.
+    match /admin_analysis_provenance/{runId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+    match /admin_audit_logs/{logId} {
+      allow read: if isAdmin();
+      allow write: if false;
     }
 
     // أي حاجة تانية ممنوعة

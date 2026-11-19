@@ -57,11 +57,19 @@ class SatelliteMonitoringService {
     final uid = _uid;
     if (uid == null) throw StateError('سجّل الدخول لحفظ الحقل.');
     _validateField(field);
-    final collection = _fields(uid);
-    final reference = field.id.isEmpty ? collection.doc() : collection.doc(field.id);
-    final exists = field.id.isNotEmpty && (await reference.get()).exists;
-    await reference.set(field.toFirestore(creating: !exists), SetOptions(merge: true));
-    return reference.id;
+    final fieldId = field.id.isEmpty ? _fields(uid).doc().id : field.id;
+    final payload = <String, dynamic>{
+      'name': field.name.trim(),
+      'crop': field.crop.trim(),
+      'linked_program_id': field.linkedProgramId,
+      'planting_date': field.plantingDate.toIso8601String(),
+      'polygon': field.polygon.map((point) => point.toMap()).toList(),
+    };
+    await _functions.httpsCallable('saveSatelliteField').call({
+      'fieldId': fieldId,
+      'field': payload,
+    });
+    return fieldId;
   }
 
   static Future<void> addNote({
