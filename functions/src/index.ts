@@ -7,9 +7,19 @@ import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { buildWeatherPushAlerts, type WeatherPushAlert } from './weather-alerts';
 import { parseWeatherDeviceRegistration } from './weather-device';
-import { getHlsCropAnalysisStatus, requestHlsCropAnalysis } from './hls-monitoring';
+import {
+  getHlsCropAnalysisStatus,
+  requestHlsCropAnalysis,
+  saveSatelliteField,
+  setSatelliteSubscriberQuota,
+} from './hls-monitoring';
 
-export { getHlsCropAnalysisStatus, requestHlsCropAnalysis };
+export {
+  getHlsCropAnalysisStatus,
+  requestHlsCropAnalysis,
+  saveSatelliteField,
+  setSatelliteSubscriberQuota,
+};
 
 initializeApp();
 

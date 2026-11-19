@@ -43,6 +43,16 @@ export interface HlsMetricSummary {
   count: number;
 }
 
+export interface HlsAlert {
+  code: string;
+  severity: 'high' | 'medium';
+  reason: string;
+  message: string;
+  latitude: number | null;
+  longitude: number | null;
+  fieldCheck: string;
+}
+
 export interface HlsObservation {
   date: string;
   validPointCount: number;
@@ -66,7 +76,7 @@ export interface HlsObservation {
     metrics: Record<string, number>;
     qa: Record<string, HlsQaMask>;
   }>;
-  alerts: Array<{ code: string; message: string }>;
+  alerts: HlsAlert[];
 }
 
 const MAX_POLYGON_VERTICES = 25;
@@ -648,9 +658,11 @@ export function aggregateHlsSamples(
 
 /** Adds cautious field-check alerts only when successive valid observations decline. */
 export function buildHlsAlerts(
-  observations: readonly Pick<HlsObservation, 'date' | 'validPointCount' | 'metrics'>[],
-): Map<string, Array<{ code: string; message: string }>> {
-  const alertsByDate = new Map<string, Array<{ code: string; message: string }>>();
+  observations: readonly (Pick<HlsObservation, 'date' | 'validPointCount' | 'metrics'> & {
+    points?: HlsObservation['points'];
+  })[],
+): Map<string, HlsAlert[]> {
+  const alertsByDate = new Map<string, HlsAlert[]>();
   const valid = observations
     .filter((item) => item.validPointCount > 0 && /^\d{4}-\d{2}-\d{2}$/.test(item.date))
     .slice()
@@ -660,7 +672,7 @@ export function buildHlsAlerts(
     const previous = valid.slice(Math.max(0, index - 3), index)
       .filter((item) => item.validPointCount > 0);
     if (previous.length === 0) continue;
-    const alerts: Array<{ code: string; message: string }> = [];
+    const alerts: HlsAlert[] = [];
     for (const metric of ['NDVI', 'NDMI']) {
       const currentValue = current.metrics[metric]?.mean;
       const baselineValues = previous
@@ -672,9 +684,21 @@ export function buildHlsAlerts(
       const baseline = baselineValues.reduce((sum, value) => sum + value, 0) / baselineValues.length;
       const decline = baseline - currentValue;
       if (decline >= 0.15) {
+        const points = current.points ?? [];
+        const located = points.find((point) =>
+          typeof point.latitude === 'number' && typeof point.longitude === 'number' &&
+          Number.isFinite(point.latitude) && Number.isFinite(point.longitude) &&
+          Number.isFinite(point.metrics[metric]),
+        );
+        const reason = `انخفاض ${metric} بمقدار ${decline.toFixed(2)} مقارنة بخط الأساس السابق`;
         alerts.push({
           code: `${metric.toLowerCase()}_decline`,
+          severity: decline >= 0.25 ? 'high' : 'medium',
+          reason,
           message: `لوحظ انخفاض ملحوظ في ${metric} مقارنة بالعينات السابقة؛ يُستحسن فحص الحقل ميدانيًا. هذا مؤشر متابعة وليس تشخيصًا لحالة المحصول.`,
+          latitude: located?.latitude ?? null,
+          longitude: located?.longitude ?? null,
+          fieldCheck: 'يُرجى إجراء فحص ميداني للنباتات والري والآفات في نقطة التنبيه قبل اتخاذ قرار علاجي.',
         });
       }
     }
