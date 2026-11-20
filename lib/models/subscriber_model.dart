@@ -25,7 +25,7 @@ class ActiveSubscriber {
   double get usageRatio => areaLimitFeddans <= 0 ? 0 : (usedAreaFeddans / areaLimitFeddans).clamp(0, 1);
 
   factory ActiveSubscriber.fromDocument(DocumentSnapshot<Map<String, dynamic>> doc) {
-    return fromData(doc.id, doc.data() ?? const <String, dynamic>{});
+    return ActiveSubscriber.fromData(doc.id, doc.data() ?? const <String, dynamic>{});
   }
 
   factory ActiveSubscriber.fromData(String uid, Map<String, dynamic> data) {
