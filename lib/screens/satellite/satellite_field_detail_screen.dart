@@ -964,14 +964,6 @@ class _SatelliteFieldDetailScreenState extends State<SatelliteFieldDetailScreen>
         ),
       );
 
-  Widget _sourceLink(String label, String url) => TextButton(
-        onPressed: () => launchUrl(
-          Uri.parse(url),
-          mode: LaunchMode.externalApplication,
-        ),
-        child: Text(label),
-      );
-
   Widget _infoBanner(String message, {required Color color}) => Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
