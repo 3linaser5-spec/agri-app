@@ -117,10 +117,17 @@ service cloud.firestore {
           && requestAfter.data.reviewed_by == request.auth.uid
           && requestAfter.data.reviewed_at == request.time;
       }
+      function validLandscapeGrant() {
+        return serviceId == 'irrigation_landscape_satellite'
+          && request.resource.data.service == serviceId
+          && request.resource.data.status in ['active', 'revoked']
+          && request.resource.data.activated_by == request.auth.uid
+          && request.resource.data.updated_at == request.time;
+      }
 
       allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
-      allow create, update: if isAdmin() && validSatelliteGrant();
-      allow delete: if isAdmin() && serviceId == 'satellite_monitoring';
+      allow create, update: if isAdmin() && (validSatelliteGrant() || validLandscapeGrant());
+      allow delete: if isAdmin() && serviceId in ['satellite_monitoring', 'irrigation_landscape_satellite'];
     }
 
     // ملف المستخدم: صاحبه فقط، وبالحقول التي يكتبها التطبيق حالياً.
@@ -538,6 +545,20 @@ service cloud.firestore {
           && (request.auth.uid == resource.data.owner_id
             && request.resource.data.owner_id == resource.data.owner_id || isAdmin());
       }
+      match /satelliteLinks/{zoneId} {
+        allow read, delete: if signedIn()
+          && (request.auth.uid == resource.data.owner_id || isAdmin());
+        allow create: if signedIn()
+          && (request.auth.uid == request.resource.data.owner_id || isAdmin());
+        allow update: if signedIn()
+          && (request.auth.uid == resource.data.owner_id
+            && request.resource.data.owner_id == resource.data.owner_id || isAdmin());
+      }
+    }
+
+    match /irrigationCatalog/{itemId} {
+      allow read: if signedIn();
+      allow create, update, delete: if isAdmin();
     }
 
     // أي حاجة تانية ممنوعة

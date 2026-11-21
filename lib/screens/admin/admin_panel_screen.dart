@@ -8,6 +8,8 @@ import 'encyclopedia_admin_screen.dart';
 import 'training_data_admin_screen.dart';
 import 'satellite_access_admin_screen.dart';
 import 'active_subscribers_screen.dart';
+import 'irrigation_catalog_admin_screen.dart';
+import 'landscape_satellite_access_admin_screen.dart';
 
 // ================== لوحة الأدمن الرئيسية ==================
 class AdminPanelScreen extends StatefulWidget {
@@ -205,6 +207,20 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                         title: 'المشتركون النشطون',
                         subtitle: 'حد المساحة، الاستخدام، المتبقي وتاريخ الانتهاء',
                         onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ActiveSubscribersScreen())),
+                      ),
+                      _buildAdminActionCard(
+                        icon: Icons.water_drop_outlined,
+                        color: const Color(0xFF2563EB),
+                        title: 'مكتبة النباتات والمعدات والري',
+                        subtitle: 'راجع العناصر المستخدمة في تصميم شبكات الري',
+                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const IrrigationCatalogAdminScreen())),
+                      ),
+                      _buildAdminActionCard(
+                        icon: Icons.satellite_alt,
+                        color: const Color(0xFF0E7490),
+                        title: 'تفعيل أقمار اللاندسكيب',
+                        subtitle: 'فعّل أو أوقف الخدمة لكل مستخدم باستخدام UID',
+                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LandscapeSatelliteAccessAdminScreen())),
                       ),
 
                       const SizedBox(height: 24),
