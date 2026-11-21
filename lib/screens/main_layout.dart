@@ -7,6 +7,7 @@ import 'admin/admin_panel_screen.dart';
 
 // استيراد شاشة حاسبة شبكات الري وتصدير الكاد التي أعددناها
 import 'calculators/irrigation_calculator_screen.dart';
+import 'irrigation/irrigation_designer_screen.dart';
 
 class MainDashboardScreen extends StatefulWidget {
   final String userName;
@@ -98,6 +99,13 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                       Navigator.push(
                         context, 
                         MaterialPageRoute(builder: (_) => const IrrigationCalculatorScreen()),
+                      );
+                    }),
+                    _buildServiceItem(Icons.water_drop, 'مصمم شبكة الري', Colors.indigo, () {
+                      Navigator.pop(context);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const IrrigationDesignerScreen()),
                       );
                     }),
                     _buildServiceItem(Icons.menu_book, 'الموسوعة', Colors.blue, () {

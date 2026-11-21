@@ -521,6 +521,25 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    match /irrigationDesignProjects/{projectId} {
+      allow read, delete: if signedIn()
+        && (request.auth.uid == resource.data.owner_id || isAdmin());
+      allow create: if signedIn()
+        && (request.auth.uid == request.resource.data.owner_id || isAdmin());
+      allow update: if signedIn()
+        && (request.auth.uid == resource.data.owner_id
+          && request.resource.data.owner_id == resource.data.owner_id || isAdmin());
+      match /versions/{versionId} {
+        allow read, delete: if signedIn()
+          && (request.auth.uid == resource.data.owner_id || isAdmin());
+        allow create: if signedIn()
+          && (request.auth.uid == request.resource.data.owner_id || isAdmin());
+        allow update: if signedIn()
+          && (request.auth.uid == resource.data.owner_id
+            && request.resource.data.owner_id == resource.data.owner_id || isAdmin());
+      }
+    }
+
     // أي حاجة تانية ممنوعة
     match /{document=**} {
       allow read, write: if false;
