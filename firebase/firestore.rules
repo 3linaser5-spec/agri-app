@@ -538,6 +538,20 @@ service cloud.firestore {
           && (request.auth.uid == resource.data.owner_id
             && request.resource.data.owner_id == resource.data.owner_id || isAdmin());
       }
+      match /satelliteLinks/{zoneId} {
+        allow read, delete: if signedIn()
+          && (request.auth.uid == resource.data.owner_id || isAdmin());
+        allow create: if signedIn()
+          && (request.auth.uid == request.resource.data.owner_id || isAdmin());
+        allow update: if signedIn()
+          && (request.auth.uid == resource.data.owner_id
+            && request.resource.data.owner_id == resource.data.owner_id || isAdmin());
+      }
+    }
+
+    match /irrigationCatalog/{itemId} {
+      allow read: if signedIn();
+      allow create, update, delete: if isAdmin();
     }
 
     // أي حاجة تانية ممنوعة
