@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../models/irrigation_design_models.dart';
 import '../../services/irrigation_export_service.dart';
 import '../../services/irrigation_design_analysis_service.dart';
+import '../../services/landscape_satellite_access_service.dart';
 
 class IrrigationDesignerScreen extends StatefulWidget {
   const IrrigationDesignerScreen({super.key});
@@ -22,14 +23,19 @@ class _IrrigationDesignerScreenState extends State<IrrigationDesignerScreen> {
     textDirection: TextDirection.rtl,
     child: Scaffold(
       appBar: AppBar(title: const Text('مصمم شبكة الري واللاندسكيب')),
-      body: Column(children: [
-        Stepper(currentStep: step, onStepTapped: (i) => setState(() => step=i), controlsBuilder: (_,__) => const SizedBox.shrink(), steps: [for (var i=0;i<steps.length;i++) Step(title: Text(steps[i]), content: _stepContent(i), isActive: step >= i, state: step > i ? StepState.complete : StepState.indexed)]),
-        if (step == steps.length - 1) Expanded(child: _review()),
-      ]),
+      body: StreamBuilder<bool>(stream: LandscapeSatelliteAccessService.watchAccess(), builder: (context, access) {
+        if (access.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+        if (access.data != true) return _accessRequired();
+        return Column(children: [
+          Stepper(currentStep: step, onStepTapped: (i) => setState(() => step=i), controlsBuilder: (_,__) => const SizedBox.shrink(), steps: [for (var i=0;i<steps.length;i++) Step(title: Text(steps[i]), content: _stepContent(i), isActive: step >= i, state: step > i ? StepState.complete : StepState.indexed)]),
+          if (step == steps.length - 1) Expanded(child: _review()),
+        ]);
+      }),
     ),
   );
 
   Widget _stepContent(int i) => Card(child: Padding(padding: const EdgeInsets.all(12), child: Text(switch(i) { 0 => 'حدود الموقع: ${project.siteBoundary.points.length} نقاط — المساحة ${project.siteBoundary.areaUnit}', 1 => 'عدد النباتات: ${project.plants.length} — Kc: ${project.plants.first.kc}', 2 => 'المناطق: ${project.zones.length} — التصرف التصميمي: ${project.zones.first.designFlowLpm} L/min', 3 => 'المضخة: ${project.pump.nameAr} — ${project.pump.headM} m TDH', _ => 'شغّل الفحص ثم صدّر DXF وBOQ وجدول التشغيل.'})));
+  Widget _accessRequired() => Center(child: Padding(padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [const Icon(Icons.lock_outline, size: 64, color: Colors.blueGrey), const SizedBox(height: 12), const Text('خدمة أقمار اللاندسكيب غير مفعّلة لهذا الحساب.', textAlign: TextAlign.center), const SizedBox(height: 8), const Text('اطلب من الأدمن تفعيل الخدمة قبل استخدام مصمم الري المرتبط بالأقمار.', textAlign: TextAlign.center)])));
   Widget _review() => ListView(padding: const EdgeInsets.all(16), children: [
     Card(child: ListTile(leading: const Icon(Icons.check_circle, color: Colors.green), title: const Text('المشروع صالح للتصدير'), subtitle: Text('${project.zones.length} Zones • ${project.equipment.length} معدات • الإصدار ${project.version}'))),
     ElevatedButton.icon(onPressed: exportProject, icon: const Icon(Icons.file_download), label: const Text('إنشاء DXF وBOQ وجدول التشغيل')),
