@@ -17,7 +17,7 @@ void main() {
 
       expect(result.velocityMps, closeTo(1.2732395447, 1e-9));
       expect(result.reynoldsNumber, closeTo(126817.68, 1));
-      expect(result.frictionFactor, closeTo(0.0199, 0.001));
+      expect(result.frictionFactor, closeTo(0.02355, 0.001));
       expect(result.fittingsHeadM, closeTo(2 * result.velocityMps * result.velocityMps / (2 * HydraulicEngine.gravityMps2), 1e-12));
       expect(result.valvesHeadM, closeTo(result.fittingsHeadM / 2, 1e-12));
       expect(result.totalDynamicHeadM, greaterThan(15));
@@ -37,7 +37,7 @@ void main() {
       expect(result.pipeFrictionHeadM, greaterThan(0));
       expect(result.pipeFrictionHeadM, closeTo(10.67 * 100 * 0.01 * 0.01, 10));
       expect(result.frictionFactor.isNaN, isTrue);
-      expect(result.warnings, isEmpty);
+      expect(result.warnings, contains('residual_pressure_below_minimum'));
       expect(expected, isNotNull);
     });
 

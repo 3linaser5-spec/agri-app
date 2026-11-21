@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 class PumpCurvePoint {
   final double flowLpm;
   final double headM;
@@ -46,7 +44,11 @@ class PumpCoverageEngine {
     final dry = coveredSampleFractions.where((x) => x <= 0).length / sampleCount * areaM2;
     final covered = areaM2 - dry;
     final overlap = coveredSampleFractions.where((x) => x > 1).fold<double>(0, (s,x)=>s+(x-1))/sampleCount*areaM2;
-    return CoverageResult(coveredAreaM2: covered, dryAreaM2: dry, overlapAreaM2: overlap, conflicts: List.unmodifiable(conflicts.map((e)=>e?'obstacle_or_plant_conflict':'').where((e)=>e.isNotEmpty))));
+    final conflictCodes = conflicts
+        .map((e) => e ? 'obstacle_or_plant_conflict' : '')
+        .where((e) => e.isNotEmpty)
+        .toList(growable: false);
+    return CoverageResult(coveredAreaM2: covered, dryAreaM2: dry, overlapAreaM2: overlap, conflicts: List.unmodifiable(conflictCodes));
   }
   static void _positive(num x,String n){if(!x.isFinite||x<=0)throw ArgumentError.value(x,n,'must be positive');}
   static void _range(num x,String n,double a,double b){if(!x.isFinite||x<a||x>b)throw ArgumentError.value(x,n,'out of range');}
