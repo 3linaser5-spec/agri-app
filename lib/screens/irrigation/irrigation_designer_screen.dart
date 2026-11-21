@@ -1,0 +1,43 @@
+import 'package:flutter/material.dart';
+import '../../models/irrigation_design_models.dart';
+import '../../services/irrigation_export_service.dart';
+
+class IrrigationDesignerScreen extends StatefulWidget {
+  const IrrigationDesignerScreen({super.key});
+  @override State<IrrigationDesignerScreen> createState() => _IrrigationDesignerScreenState();
+}
+
+class _IrrigationDesignerScreenState extends State<IrrigationDesignerScreen> {
+  int step = 0;
+  late IrrigationDesignProject project;
+  IrrigationExportBundle? bundle;
+  final steps = const ['الموقع', 'النباتات', 'المعدات والمناطق', 'المضخة', 'الفحص والتصدير'];
+
+  @override void initState() { super.initState(); project = _demoProject(); }
+  void exportProject() { try { setState(() => bundle = const IrrigationExportService().export(project)); } catch (e) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('لا يمكن التصدير: $e'))); } }
+
+  @override Widget build(BuildContext context) => Directionality(
+    textDirection: TextDirection.rtl,
+    child: Scaffold(
+      appBar: AppBar(title: const Text('مصمم شبكة الري واللاندسكيب')),
+      body: Column(children: [
+        Stepper(currentStep: step, onStepTapped: (i) => setState(() => step=i), controlsBuilder: (_,__) => const SizedBox.shrink(), steps: [for (var i=0;i<steps.length;i++) Step(title: Text(steps[i]), content: _stepContent(i), isActive: step >= i, state: step > i ? StepState.complete : StepState.indexed)]),
+        if (step == steps.length - 1) Expanded(child: _review()),
+      ]),
+    ),
+  );
+
+  Widget _stepContent(int i) => Card(child: Padding(padding: const EdgeInsets.all(12), child: Text(switch(i) { 0 => 'حدود الموقع: ${project.siteBoundary.points.length} نقاط — المساحة ${project.siteBoundary.areaUnit}', 1 => 'عدد النباتات: ${project.plants.length} — Kc: ${project.plants.first.kc}', 2 => 'المناطق: ${project.zones.length} — التصرف التصميمي: ${project.zones.first.designFlowLpm} L/min', 3 => 'المضخة: ${project.pump.nameAr} — ${project.pump.headM} m TDH', _ => 'شغّل الفحص ثم صدّر DXF وBOQ وجدول التشغيل.'})));
+  Widget _review() => ListView(padding: const EdgeInsets.all(16), children: [
+    Card(child: ListTile(leading: const Icon(Icons.check_circle, color: Colors.green), title: const Text('المشروع صالح للتصدير'), subtitle: Text('${project.zones.length} Zones • ${project.equipment.length} معدات • الإصدار ${project.version}'))),
+    ElevatedButton.icon(onPressed: exportProject, icon: const Icon(Icons.file_download), label: const Text('إنشاء DXF وBOQ وجدول التشغيل')),
+    if (bundle != null) ...[Text('DXF: ${bundle!.dxf.length} حرف'), Text('بنود BOQ: ${bundle!.boq.length}'), ...bundle!.schedule.map((x) => ListTile(title: Text(x.zoneName), subtitle: Text('${x.runtimeMinutes.toStringAsFixed(1)} دقيقة تشغيل')))],
+  ]);
+
+  IrrigationDesignProject _demoProject() {
+    final points = const [GeoCoordinate(latitude: 30, longitude: 31), GeoCoordinate(latitude: 30, longitude: 31.001), GeoCoordinate(latitude: 30.001, longitude: 31.001)];
+    final plant = PlantSpecies(id: 'plant-1', nameAr: 'زيتون', kc: .85, salinityResistance: .7, droughtResistance: .8);
+    final equipment = IrrigationEquipment(id: 'rotor-1', nameAr: 'رشاش دوار', type: 'rotor', flowRateLpm: 12, operatingPressureBar: 2.5, quantity: 3);
+    return IrrigationDesignProject(id: 'demo-project', nameAr: 'مشروع تجريبي', siteBoundary: SiteBoundary(id: 'boundary', points: points), plants: [plant], equipment: [equipment], zones: [IrrigationZone(id: 'zone-1', nameAr: 'المنطقة الأولى', method: 'rotor', plantId: plant.id, equipmentIds: [equipment.id], areaM2: 180, designFlowLpm: 36, applicationRateMmH: 8)], pump: Pump(id: 'pump-1', nameAr: 'مضخة رئيسية', type: 'centrifugal', flowRateLpm: 36, headM: 32, powerKw: 2.2, efficiency: .72), version: DesignVersion(major: 1, minor: 0, patch: 0, label: 'draft', createdAt: DateTime.now()));
+  }
+}
