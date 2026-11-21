@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/irrigation_design_models.dart';
 import '../../services/irrigation_export_service.dart';
+import '../../services/irrigation_design_analysis_service.dart';
 
 class IrrigationDesignerScreen extends StatefulWidget {
   const IrrigationDesignerScreen({super.key});
@@ -11,10 +12,11 @@ class _IrrigationDesignerScreenState extends State<IrrigationDesignerScreen> {
   int step = 0;
   late IrrigationDesignProject project;
   IrrigationExportBundle? bundle;
+  IrrigationDesignAnalysis? analysis;
   final steps = const ['الموقع', 'النباتات', 'المعدات والمناطق', 'المضخة', 'الفحص والتصدير'];
 
   @override void initState() { super.initState(); project = _demoProject(); }
-  void exportProject() { try { setState(() => bundle = const IrrigationExportService().export(project)); } catch (e) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('لا يمكن التصدير: $e'))); } }
+  void exportProject() { try { setState(() { bundle = const IrrigationExportService().export(project); analysis = const IrrigationDesignAnalysisService().analyze(project); }); } catch (e) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('لا يمكن التصدير: $e'))); } }
 
   @override Widget build(BuildContext context) => Directionality(
     textDirection: TextDirection.rtl,
@@ -32,6 +34,12 @@ class _IrrigationDesignerScreenState extends State<IrrigationDesignerScreen> {
     Card(child: ListTile(leading: const Icon(Icons.check_circle, color: Colors.green), title: const Text('المشروع صالح للتصدير'), subtitle: Text('${project.zones.length} Zones • ${project.equipment.length} معدات • الإصدار ${project.version}'))),
     ElevatedButton.icon(onPressed: exportProject, icon: const Icon(Icons.file_download), label: const Text('إنشاء DXF وBOQ وجدول التشغيل')),
     if (bundle != null) ...[Text('DXF: ${bundle!.dxf.length} حرف'), Text('بنود BOQ: ${bundle!.boq.length}'), ...bundle!.schedule.map((x) => ListTile(title: Text(x.zoneName), subtitle: Text('${x.runtimeMinutes.toStringAsFixed(1)} دقيقة تشغيل')))],
+    if (analysis != null) ...[
+      ListTile(title: const Text('تكلفة تقديرية'), trailing: Text('${analysis!.totalCost.toStringAsFixed(2)}')),
+      ListTile(title: const Text('حالة الفحص'), trailing: Text(analysis!.valid ? 'صالح' : 'يحتاج مراجعة')),
+      ...analysis!.issues.map((x) => ListTile(leading: const Icon(Icons.warning, color: Colors.orange), title: Text(x.message), subtitle: Text(x.subjectId))),
+      ListTile(title: const Text('مهام الصيانة المبدئية'), trailing: Text('${const IrrigationDesignAnalysisService().buildMaintenancePlan(project, startAt: DateTime(2026, 1, 1)).length}')),
+    ],
   ]);
 
   IrrigationDesignProject _demoProject() {
