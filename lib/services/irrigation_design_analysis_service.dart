@@ -37,8 +37,8 @@ class IrrigationDesignAnalysisService {
     for (final e in project.equipment) lines.add(IrrigationCostLine(id:e.id, category:'equipment', description:e.nameAr.isEmpty ? e.type : e.nameAr, unit:'ea', quantity:e.quantity.toDouble(), unitCost:unitCosts[e.type] ?? 0));
     final energy = pumpPowerKw * operatingHoursWeek;
     final scenarios = [
-      IrrigationScenario(id:'baseline', name:'التصميم الأساسي', waterVolumeM3Week:weeklyWaterM3, energyKwhWeek:energy, estimatedCost:lines.fold(0,(s,x)=>s+x.total)),
-      IrrigationScenario(id:'water_saving', name:'توفير المياه', waterVolumeM3Week:weeklyWaterM3*.85, energyKwhWeek:energy*.9, estimatedCost:lines.fold(0,(s,x)=>s+x.total)*1.08, warnings: const ['يحتاج تحققًا ميدانيًا من التغطية']),
+      IrrigationScenario(id:'baseline', name:'التصميم الأساسي', waterVolumeM3Week:weeklyWaterM3, energyKwhWeek:energy, estimatedCost:lines.fold<double>(0,(s,x)=>s+x.total)),
+      IrrigationScenario(id:'water_saving', name:'توفير المياه', waterVolumeM3Week:weeklyWaterM3*.85, energyKwhWeek:energy*.9, estimatedCost:lines.fold<double>(0,(s,x)=>s+x.total)*1.08, warnings: const ['يحتاج تحققًا ميدانيًا من التغطية']),
     ];
     return IrrigationDesignAnalysis(issues:List.unmodifiable(issues), costLines:List.unmodifiable(lines), scenarios:List.unmodifiable(scenarios));
   }

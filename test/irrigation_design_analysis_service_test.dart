@@ -9,7 +9,7 @@ void main() {
     expect(result.valid, isTrue);
     expect(result.totalCost, 180);
     expect(result.scenarios, hasLength(2));
-    expect(const IrrigationDesignAnalysisService().buildMaintenancePlan(project: p, startAt: DateTime(2026, 1, 1)), hasLength(2));
+    expect(const IrrigationDesignAnalysisService().buildMaintenancePlan(p, startAt: DateTime(2026, 1, 1)), hasLength(2));
   });
 
   test('reports missing zone references', () {
