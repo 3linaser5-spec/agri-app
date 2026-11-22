@@ -10,7 +10,9 @@ class LandscapeSatelliteAccessAdminScreen extends StatefulWidget {
 
 class _LandscapeSatelliteAccessAdminScreenState extends State<LandscapeSatelliteAccessAdminScreen> {
   final uidController = TextEditingController();
+  final maxFeddanController = TextEditingController(text: '1');
   bool checking = true, admin = false, enabled = false, busy = false;
+  double maxFeddan = 1;
 
   @override
   void initState() {
@@ -21,15 +23,19 @@ class _LandscapeSatelliteAccessAdminScreenState extends State<LandscapeSatellite
   }
 
   @override
-  void dispose() { uidController.dispose(); super.dispose(); }
+  void dispose() { uidController.dispose(); maxFeddanController.dispose(); super.dispose(); }
 
   Future<void> lookup() async {
     final uid = uidController.text.trim();
     if (uid.isEmpty) return;
     setState(() => busy = true);
     try {
-      final value = await LandscapeSatelliteAccessService.hasAccess(uid);
-      if (mounted) setState(() => enabled = value);
+      final value = await LandscapeSatelliteAccessService.getEntitlement(uid);
+      if (mounted) setState(() {
+        enabled = value.active;
+        maxFeddan = value.maxFeddan;
+        maxFeddanController.text = value.maxFeddan.toString();
+      });
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -40,7 +46,9 @@ class _LandscapeSatelliteAccessAdminScreenState extends State<LandscapeSatellite
     if (uid.isEmpty) return;
     setState(() => busy = true);
     try {
-      await LandscapeSatelliteAccessService.setAccess(uid: uid, enabled: enabled);
+      final parsedMax = double.tryParse(maxFeddanController.text.trim());
+      if (parsedMax == null || parsedMax < 0) throw ArgumentError('أدخل مساحة فدان صحيحة');
+      await LandscapeSatelliteAccessService.setAccess(uid: uid, enabled: enabled, maxFeddan: parsedMax);
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(enabled ? 'تم تفعيل خدمة أقمار اللاندسكيب' : 'تم إيقاف خدمة أقمار اللاندسكيب')));
     } finally {
       if (mounted) setState(() => busy = false);
@@ -59,6 +67,8 @@ class _LandscapeSatelliteAccessAdminScreenState extends State<LandscapeSatellite
         padding: const EdgeInsets.all(20),
         child: Column(children: [
           TextField(controller: uidController, decoration: const InputDecoration(labelText: 'UID المستخدم', hintText: 'أدخل UID ثم اضغط فحص')),
+          const SizedBox(height: 12),
+          TextField(controller: maxFeddanController, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'الحد الأقصى للمساحة (فدان)')),
           const SizedBox(height: 12),
           Row(children: [
             Expanded(child: OutlinedButton(onPressed: busy ? null : lookup, child: const Text('فحص الحالة'))),
