@@ -6,6 +6,7 @@ import '../../services/landscape_satellite_access_service.dart';
 import '../../services/irrigation_map_validation_service.dart';
 import 'irrigation_map_editor_screen.dart';
 import 'irrigation_network_map_screen.dart';
+import 'irrigation_pipe_route_editor_screen.dart';
 
 class IrrigationDesignerScreen extends StatefulWidget {
   const IrrigationDesignerScreen({super.key});
@@ -101,6 +102,36 @@ class _IrrigationDesignerScreenState extends State<IrrigationDesignerScreen> {
     });
   }
 
+  Future<void> _addPipeRoute() async {
+    final result = await Navigator.push<IrrigationPipeRoute>(
+      context,
+      MaterialPageRoute(builder: (_) => const IrrigationPipeRouteEditorScreen()),
+    );
+    if (!mounted || result == null) return;
+    setState(() {
+      project = IrrigationDesignProject(
+        id: project.id,
+        nameAr: project.nameAr,
+        nameEn: project.nameEn,
+        description: project.description,
+        siteBoundary: project.siteBoundary,
+        plants: project.plants,
+        equipment: project.equipment,
+        pipes: project.pipes,
+        valves: project.valves,
+        zones: project.zones,
+        pump: project.pump,
+        elevationPoints: project.elevationPoints,
+        placements: project.placements,
+        pipeRoutes: [...project.pipeRoutes, result],
+        version: project.version,
+      );
+      bundle = null;
+      analysis = null;
+      mapIssues = const [];
+    });
+  }
+
   @override Widget build(BuildContext context) => Directionality(
     textDirection: TextDirection.rtl,
     child: Scaffold(
@@ -118,7 +149,7 @@ class _IrrigationDesignerScreenState extends State<IrrigationDesignerScreen> {
     ),
   );
 
-  Widget _stepContent(int i) => Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(switch(i) { 0 => 'حدود الموقع: ${project.siteBoundary.points.length} نقاط — المساحة ${project.siteBoundary.declaredArea?.toStringAsFixed(3) ?? '-'} فدان', 1 => 'عدد النباتات: ${project.plants.length} — Kc: ${project.plants.isEmpty ? '-' : project.plants.first.kc}', 2 => 'المناطق: ${project.zones.length} — التصرف التصميمي: ${project.zones.isEmpty ? '-' : '${project.zones.first.designFlowLpm} L/min'} — عناصر الخريطة: ${project.placements.length}', 3 => 'المضخة: ${project.pump.nameAr} — ${project.pump.headM} m TDH', _ => 'شغّل الفحص ثم صدّر DXF وBOQ وجدول التشغيل.'}), if (i == 0) Align(alignment: Alignment.centerRight, child: OutlinedButton.icon(onPressed: _editBoundary, icon: const Icon(Icons.map), label: const Text('فتح محرر الخريطة'))), if (i == 2) Align(alignment: Alignment.centerRight, child: OutlinedButton.icon(onPressed: _editPlacements, icon: const Icon(Icons.water_drop), label: const Text('إضافة عناصر الشبكة على الخريطة')))])));
+  Widget _stepContent(int i) => Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(switch(i) { 0 => 'حدود الموقع: ${project.siteBoundary.points.length} نقاط — المساحة ${project.siteBoundary.declaredArea?.toStringAsFixed(3) ?? '-'} فدان', 1 => 'عدد النباتات: ${project.plants.length} — Kc: ${project.plants.isEmpty ? '-' : project.plants.first.kc}', 2 => 'المناطق: ${project.zones.length} — عناصر الخريطة: ${project.placements.length} — مسارات المواسير: ${project.pipeRoutes.length}', 3 => 'المضخة: ${project.pump.nameAr} — ${project.pump.headM} m TDH', _ => 'شغّل الفحص ثم صدّر DXF وBOQ وجدول التشغيل.'}), if (i == 0) Align(alignment: Alignment.centerRight, child: OutlinedButton.icon(onPressed: _editBoundary, icon: const Icon(Icons.map), label: const Text('فتح محرر الخريطة'))), if (i == 2) Wrap(spacing: 8, children: [OutlinedButton.icon(onPressed: _editPlacements, icon: const Icon(Icons.water_drop), label: const Text('عناصر الشبكة')), OutlinedButton.icon(onPressed: _addPipeRoute, icon: const Icon(Icons.alt_route), label: const Text('رسم مسار ماسورة'))])] )));
   Widget _accessRequired([String message = 'خدمة أقمار اللاندسكيب غير مفعّلة لهذا الحساب.']) => Center(child: Padding(padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [const Icon(Icons.lock_outline, size: 64, color: Colors.blueGrey), const SizedBox(height: 12), Text(message, textAlign: TextAlign.center), const SizedBox(height: 8), const Text('اطلب من الأدمن تفعيل الخدمة وتحديد المساحة قبل استخدام المصمم.', textAlign: TextAlign.center)])));
   Widget _review() => ListView(padding: const EdgeInsets.all(16), children: [
     Card(child: ListTile(leading: const Icon(Icons.check_circle, color: Colors.green), title: const Text('المشروع صالح للتصدير'), subtitle: Text('${project.zones.length} Zones • ${project.equipment.length} معدات • الإصدار ${project.version}'))),
