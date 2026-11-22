@@ -10,7 +10,8 @@ class LandscapeSatelliteEntitlement {
     required this.maxFeddan,
   });
 
-  bool allows(double feddan) => active && feddan <= maxFeddan;
+  bool allows(double feddan) =>
+      active && feddan.isFinite && feddan > 0 && feddan <= maxFeddan;
 }
 
 class LandscapeSatelliteAccessService {
