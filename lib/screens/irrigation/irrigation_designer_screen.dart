@@ -60,6 +60,7 @@ class _IrrigationDesignerScreenState extends State<IrrigationDesignerScreen> {
         pump: project.pump,
         elevationPoints: project.elevationPoints,
         placements: project.placements,
+        pipeRoutes: project.pipeRoutes,
         version: project.version,
       );
       bundle = null;
@@ -92,6 +93,7 @@ class _IrrigationDesignerScreenState extends State<IrrigationDesignerScreen> {
         pump: project.pump,
         elevationPoints: project.elevationPoints,
         placements: result,
+        pipeRoutes: project.pipeRoutes,
         version: project.version,
       );
       bundle = null;
