@@ -23,7 +23,7 @@ class IrrigationPipeRouteService {
     final flowM3s = (route.designFlowLpm ?? 0) / 60000;
     final diameterM = route.diameterMm / 1000;
     final area = math.pi * diameterM * diameterM / 4;
-    final velocity = area == 0 ? 0 : flowM3s / area;
+    final velocity = area == 0 ? 0.0 : flowM3s / area;
     return IrrigationPipeRouteResult(
       routeId: route.id,
       lengthM: length,
