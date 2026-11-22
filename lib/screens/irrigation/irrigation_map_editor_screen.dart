@@ -1,6 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import '../../models/irrigation_design_models.dart';
+import '../../services/irrigation_geometry_service.dart';
+
+class IrrigationMapEditResult {
+  final List<GeoCoordinate> points;
+  final double areaM2;
+  final double areaFeddan;
+
+  const IrrigationMapEditResult({
+    required this.points,
+    required this.areaM2,
+    required this.areaFeddan,
+  });
+}
 
 class IrrigationMapEditorScreen extends StatefulWidget {
   const IrrigationMapEditorScreen({super.key});
@@ -14,20 +28,27 @@ class _IrrigationMapEditorScreenState
     extends State<IrrigationMapEditorScreen> {
   final points = <LatLng>[];
   final center = const LatLng(30.0444, 31.2357);
+  final geometry = const IrrigationGeometryService();
 
   void addPoint(LatLng point) => setState(() => points.add(point));
 
-  double get approximateAreaM2 {
-    if (points.length < 3) return 0;
-    const metersPerDegree = 111320.0;
-    var sum = 0.0;
-    for (var i = 0; i < points.length; i++) {
-      final a = points[i];
-      final b = points[(i + 1) % points.length];
-      sum += (a.longitude * metersPerDegree) * (b.latitude * metersPerDegree) -
-          (b.longitude * metersPerDegree) * (a.latitude * metersPerDegree);
-    }
-    return sum.abs() / 2;
+  List<GeoCoordinate> get coordinates => points
+      .map((point) => GeoCoordinate.checked(
+            latitude: point.latitude,
+            longitude: point.longitude,
+          ))
+      .toList(growable: false);
+
+  double get approximateAreaM2 => geometry.areaM2(coordinates);
+  double get approximateAreaFeddan => geometry.areaFeddan(coordinates);
+
+  void save() {
+    final result = IrrigationMapEditResult(
+      points: coordinates,
+      areaM2: approximateAreaM2,
+      areaFeddan: approximateAreaFeddan,
+    );
+    Navigator.pop(context, result);
   }
 
   @override
@@ -43,10 +64,12 @@ class _IrrigationMapEditorScreenState
                   ? null
                   : () => setState(() => points.removeLast()),
               icon: const Icon(Icons.undo),
+              tooltip: 'تراجع',
             ),
             IconButton(
               onPressed: () => setState(points.clear),
               icon: const Icon(Icons.delete_outline),
+              tooltip: 'مسح الحدود',
             ),
           ],
         ),
@@ -103,14 +126,12 @@ class _IrrigationMapEditorScreenState
                         child: Text(
                           points.length < 3
                               ? 'اضغط على الخريطة لإضافة 3 نقاط على الأقل'
-                              : 'المساحة التقريبية: '
-                                  '${approximateAreaM2.toStringAsFixed(1)} م²',
+                              : 'المساحة: ${approximateAreaM2.toStringAsFixed(1)} م²\n'
+                                  'أي ${approximateAreaFeddan.toStringAsFixed(3)} فدان',
                         ),
                       ),
                       FilledButton(
-                        onPressed: points.length < 3
-                            ? null
-                            : () => Navigator.pop(context, points),
+                        onPressed: points.length < 3 ? null : save,
                         child: const Text('حفظ الحدود'),
                       ),
                     ],
