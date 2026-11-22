@@ -4,6 +4,7 @@ import '../../services/irrigation_export_service.dart';
 import '../../services/irrigation_design_analysis_service.dart';
 import '../../services/landscape_satellite_access_service.dart';
 import '../../services/irrigation_map_validation_service.dart';
+import '../../services/irrigation_route_hydraulics_service.dart';
 import 'irrigation_map_editor_screen.dart';
 import 'irrigation_network_map_screen.dart';
 import 'irrigation_pipe_route_editor_screen.dart';
@@ -19,10 +20,11 @@ class _IrrigationDesignerScreenState extends State<IrrigationDesignerScreen> {
   IrrigationExportBundle? bundle;
   IrrigationDesignAnalysis? analysis;
   List<IrrigationMapIssue> mapIssues = const [];
+  List<IrrigationRouteHydraulicResult> routeHydraulics = const [];
   final steps = const ['الموقع', 'النباتات', 'المعدات والمناطق', 'المضخة', 'الفحص والتصدير'];
 
   @override void initState() { super.initState(); project = _demoProject(); }
-  void exportProject() { try { setState(() { bundle = const IrrigationExportService().export(project); analysis = const IrrigationDesignAnalysisService().analyze(project); mapIssues = const IrrigationMapValidationService().validate(project); }); } catch (e) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('لا يمكن التصدير: $e'))); } }
+  void exportProject() { try { setState(() { bundle = const IrrigationExportService().export(project); analysis = const IrrigationDesignAnalysisService().analyze(project); mapIssues = const IrrigationMapValidationService().validate(project); routeHydraulics = const IrrigationRouteHydraulicsService().analyze(project.pipeRoutes); }); } catch (e) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('لا يمكن التصدير: $e'))); } }
 
   Future<void> _editBoundary() async {
     final result = await Navigator.push<IrrigationMapEditResult>(
@@ -156,6 +158,8 @@ class _IrrigationDesignerScreenState extends State<IrrigationDesignerScreen> {
     ElevatedButton.icon(onPressed: exportProject, icon: const Icon(Icons.file_download), label: const Text('إنشاء DXF وBOQ وجدول التشغيل')),
     if (bundle != null) ...[Text('DXF: ${bundle!.dxf.length} حرف'), Text('بنود BOQ: ${bundle!.boq.length}'), ...bundle!.schedule.map((x) => ListTile(title: Text(x.zoneName), subtitle: Text('${x.runtimeMinutes.toStringAsFixed(1)} دقيقة تشغيل')))],
     if (analysis != null) ...[
+      ListTile(title: const Text('الفحص الهيدروليكي للمواسير'), trailing: Text('${routeHydraulics.length} مسارات')),
+      ...routeHydraulics.map((item) => ListTile(leading: Icon(item.hydraulic.warnings.isEmpty ? Icons.check_circle : Icons.warning, color: item.hydraulic.warnings.isEmpty ? Colors.green : Colors.orange), title: Text('${item.routeId} — ${item.lengthM.toStringAsFixed(1)} م'), subtitle: Text('الفقد: ${item.hydraulic.pipeFrictionHeadM.toStringAsFixed(2)} م — TDH: ${item.hydraulic.totalDynamicHeadM.toStringAsFixed(2)} م — سرعة: ${item.hydraulic.velocityMps.toStringAsFixed(2)} م/ث'))),
       ListTile(title: const Text('فحص عناصر الخريطة'), trailing: Text(mapIssues.isEmpty ? 'صالح' : '${mapIssues.length} ملاحظات')),
       ...mapIssues.map((issue) => ListTile(leading: const Icon(Icons.location_off, color: Colors.orange), title: Text(issue.message), subtitle: Text(issue.subjectId))),
       ListTile(title: const Text('تكلفة تقديرية'), trailing: Text('${analysis!.totalCost.toStringAsFixed(2)}')),
