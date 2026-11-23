@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:printing/printing.dart';
 import '../../models/irrigation_design_models.dart';
+import '../../models/irrigation_operations_models.dart';
 import '../../services/irrigation_export_service.dart';
 import '../../services/irrigation_design_analysis_service.dart';
 import '../../services/landscape_satellite_access_service.dart';
@@ -9,6 +10,7 @@ import '../../services/irrigation_route_hydraulics_service.dart';
 import '../../services/irrigation_zone_hydraulic_report_service.dart';
 import '../../services/irrigation_coverage_analysis_service.dart';
 import '../../services/irrigation_report_service.dart';
+import '../../services/irrigation_operations_service.dart';
 import 'irrigation_map_editor_screen.dart';
 import 'irrigation_network_map_screen.dart';
 import 'irrigation_pipe_route_editor_screen.dart';
@@ -28,10 +30,11 @@ class _IrrigationDesignerScreenState extends State<IrrigationDesignerScreen> {
   List<IrrigationZoneHydraulicReport> zoneReports = const [];
   List<IrrigationZoneCoverageReport> coverageReports = const [];
   IrrigationReportDocument? reportDocument;
+  List<MaintenanceTask> maintenanceTasks = const [];
   final steps = const ['الموقع', 'النباتات', 'المعدات والمناطق', 'المضخة', 'الفحص والتصدير'];
 
   @override void initState() { super.initState(); project = _demoProject(); }
-  void exportProject() { try { setState(() { bundle = const IrrigationExportService().export(project); analysis = const IrrigationDesignAnalysisService().analyze(project); mapIssues = const IrrigationMapValidationService().validate(project); routeHydraulics = const IrrigationRouteHydraulicsService().analyze(project.pipeRoutes); zoneReports = const IrrigationZoneHydraulicReportService().build(project); coverageReports = const IrrigationCoverageAnalysisService().analyze(project); }); } catch (e) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('لا يمكن التصدير: $e'))); } }
+  void exportProject() { try { setState(() { bundle = const IrrigationExportService().export(project); analysis = const IrrigationDesignAnalysisService().analyze(project); mapIssues = const IrrigationMapValidationService().validate(project); routeHydraulics = const IrrigationRouteHydraulicsService().analyze(project.pipeRoutes); zoneReports = const IrrigationZoneHydraulicReportService().build(project); coverageReports = const IrrigationCoverageAnalysisService().analyze(project); maintenanceTasks = const IrrigationOperationsService().buildMaintenancePlan(project, startAt: DateTime(2026, 1, 1)); }); } catch (e) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('لا يمكن التصدير: $e'))); } }
 
   Future<void> generateAndShareReport() async {
     try {
@@ -194,6 +197,8 @@ class _IrrigationDesignerScreenState extends State<IrrigationDesignerScreen> {
       ...routeHydraulics.map((item) => ListTile(leading: Icon(item.hydraulic.warnings.isEmpty ? Icons.check_circle : Icons.warning, color: item.hydraulic.warnings.isEmpty ? Colors.green : Colors.orange), title: Text('${item.routeId} — ${item.lengthM.toStringAsFixed(1)} م'), subtitle: Text('الفقد: ${item.hydraulic.pipeFrictionHeadM.toStringAsFixed(2)} م — TDH: ${item.hydraulic.totalDynamicHeadM.toStringAsFixed(2)} م — سرعة: ${item.hydraulic.velocityMps.toStringAsFixed(2)} م/ث'))),
       ListTile(title: const Text('فحص عناصر الخريطة'), trailing: Text(mapIssues.isEmpty ? 'صالح' : '${mapIssues.length} ملاحظات')),
       ...mapIssues.map((issue) => ListTile(leading: const Icon(Icons.location_off, color: Colors.orange), title: Text(issue.message), subtitle: Text(issue.subjectId))),
+      ListTile(title: const Text('خطة التشغيل والصيانة'), trailing: Text('${maintenanceTasks.length} مهام')),
+      ...maintenanceTasks.map((task) => ListTile(leading: const Icon(Icons.qr_code_2), title: Text(task.title), subtitle: Text('${task.assetId} — ${task.qrCode}'))),
       ListTile(title: const Text('تكلفة تقديرية'), trailing: Text('${analysis!.totalCost.toStringAsFixed(2)}')),
       ListTile(title: const Text('حالة الفحص'), trailing: Text(analysis!.valid ? 'صالح' : 'يحتاج مراجعة')),
       ...analysis!.issues.map((x) => ListTile(leading: const Icon(Icons.warning, color: Colors.orange), title: Text(x.message), subtitle: Text(x.subjectId))),
