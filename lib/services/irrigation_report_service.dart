@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import '../models/irrigation_design_models.dart';
+import '../models/map_alert_model.dart';
 import 'irrigation_coverage_analysis_service.dart';
 import 'irrigation_route_hydraulics_service.dart';
 import 'irrigation_zone_hydraulic_report_service.dart';
@@ -26,6 +27,7 @@ class IrrigationReportService {
     required List<IrrigationZoneCoverageReport> coverageReports,
     required List<IrrigationRouteHydraulicResult> routeHydraulics,
     required List<IrrigationZoneHydraulicReport> zoneReports,
+    List<MapAlert> satelliteAlerts = const [],
     DateTime? generatedAt,
   }) async {
     final date = generatedAt ?? DateTime.now();
@@ -49,6 +51,10 @@ class IrrigationReportService {
       'Coverage (preliminary; field calibration required):',
       ...coverageReports.map((report) =>
           '${report.zoneId}: covered ${report.coverage.coveredAreaM2.toStringAsFixed(1)} m2; dry ${report.coverage.dryAreaM2.toStringAsFixed(1)} m2; overlap ${report.coverage.overlapAreaM2.toStringAsFixed(1)} m2; warnings ${report.warnings.join(', ')}'),
+      '',
+      'Satellite alerts requiring field inspection:',
+      ...satelliteAlerts.map((alert) =>
+          '${alert.zoneId ?? 'Zone غير محدد'}: ${alert.title}; coordinates ${alert.latitude.toStringAsFixed(6)}, ${alert.longitude.toStringAsFixed(6)}; status ${alert.status}; يرجى الفحص الميداني.'),
       '',
       'Satellite analysis source names are intentionally omitted from this report.',
       'Potential problem locations must be verified in the field before action.',

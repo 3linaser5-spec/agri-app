@@ -36,8 +36,27 @@ class _AlertTile extends StatelessWidget {
         title: Text('${alert.title}${alert.zoneId == null ? '' : ' — Zone ${alert.zoneId}'}'),
         subtitle: Text('${alert.message}\nالإحداثيات: ${alert.latitude.toStringAsFixed(6)}, ${alert.longitude.toStringAsFixed(6)}\nيرجى الفحص الميداني — الخطورة: ${alert.severity}'),
         isThreeLine: true,
-        trailing: IconButton(icon: const Icon(Icons.note_add), tooltip: 'تسجيل نتيجة الفحص', onPressed: () => _addNote(context)),
+        trailing: PopupMenuButton<String>(
+          icon: const Icon(Icons.more_vert),
+          onSelected: (status) => _setStatus(context, status),
+          itemBuilder: (_) => const [
+            PopupMenuItem(value: 'open', child: Text('مفتوح')),
+            PopupMenuItem(value: 'inspected', child: Text('تم الفحص')),
+            PopupMenuItem(value: 'resolved', child: Text('تم الحل')),
+            PopupMenuItem(value: 'note', child: Text('تسجيل ملاحظة الفحص')),
+          ],
+        ),
       );
+
+  Future<void> _setStatus(BuildContext context, String status) async {
+    if (status == 'note') return _addNote(context);
+    try {
+      await MapAlertService.updateStatus(alertId: alert.id, status: status);
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تحديث حالة التنبيه')));
+    } catch (error) {
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تعذر تحديث الحالة: $error')));
+    }
+  }
 
   Future<void> _addNote(BuildContext context) async {
     final controller = TextEditingController();

@@ -11,10 +11,12 @@ import '../../services/irrigation_zone_hydraulic_report_service.dart';
 import '../../services/irrigation_coverage_analysis_service.dart';
 import '../../services/irrigation_report_service.dart';
 import '../../services/irrigation_operations_service.dart';
+import '../../services/map_alert_service.dart';
 import 'irrigation_map_editor_screen.dart';
 import 'irrigation_network_map_screen.dart';
 import 'irrigation_pipe_route_editor_screen.dart';
 import 'irrigation_satellite_alerts_panel.dart';
+import 'irrigation_3d_preview_screen.dart';
 
 class IrrigationDesignerScreen extends StatefulWidget {
   const IrrigationDesignerScreen({super.key});
@@ -44,6 +46,7 @@ class _IrrigationDesignerScreenState extends State<IrrigationDesignerScreen> {
         coverageReports: coverageReports,
         routeHydraulics: routeHydraulics,
         zoneReports: zoneReports,
+        satelliteAlerts: await MapAlertService.watchAlerts().first,
       );
       if (!mounted) return;
       setState(() => reportDocument = report);
@@ -186,6 +189,7 @@ class _IrrigationDesignerScreenState extends State<IrrigationDesignerScreen> {
   Widget _accessRequired([String message = 'خدمة أقمار اللاندسكيب غير مفعّلة لهذا الحساب.']) => Center(child: Padding(padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [const Icon(Icons.lock_outline, size: 64, color: Colors.blueGrey), const SizedBox(height: 12), Text(message, textAlign: TextAlign.center), const SizedBox(height: 8), const Text('اطلب من الأدمن تفعيل الخدمة وتحديد المساحة قبل استخدام المصمم.', textAlign: TextAlign.center)])));
   Widget _review() => ListView(padding: const EdgeInsets.all(16), children: [
     const IrrigationSatelliteAlertsPanel(),
+    OutlinedButton.icon(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => Irrigation3DPreviewScreen(project: project))), icon: const Icon(Icons.view_in_ar), label: const Text('فتح معاينة 3D مبسطة')),
     Card(child: ListTile(leading: const Icon(Icons.check_circle, color: Colors.green), title: const Text('المشروع صالح للتصدير'), subtitle: Text('${project.zones.length} Zones • ${project.equipment.length} معدات • الإصدار ${project.version}'))),
     ElevatedButton.icon(onPressed: exportProject, icon: const Icon(Icons.file_download), label: const Text('إنشاء DXF وBOQ وجدول التشغيل')),
     ElevatedButton.icon(onPressed: generateAndShareReport, icon: const Icon(Icons.picture_as_pdf), label: Text(reportDocument == null ? 'إنشاء ومشاركة تقرير PDF' : 'مشاركة تقرير PDF مرة أخرى')),

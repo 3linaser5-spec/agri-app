@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../../models/irrigation_design_models.dart';
+import '../../models/map_alert_model.dart';
+import '../../services/map_alert_service.dart';
 
 class IrrigationNetworkMapScreen extends StatefulWidget {
   final List<IrrigationMapPlacement> initialPlacements;
@@ -110,7 +112,9 @@ class _IrrigationNetworkMapScreenState
             ),
             const SizedBox(height: 8),
             Expanded(
-              child: FlutterMap(
+              child: StreamBuilder<List<MapAlert>>(
+                stream: MapAlertService.watchAlerts(),
+                builder: (context, snapshot) => FlutterMap(
                 options: MapOptions(
                   initialCenter: center,
                   initialZoom: 13,
@@ -122,7 +126,8 @@ class _IrrigationNetworkMapScreenState
                     userAgentPackageName: 'com.agri.app',
                   ),
                   MarkerLayer(
-                    markers: placements.map((placement) {
+                    markers: [
+                      ...placements.map((placement) {
                       final point = LatLng(
                         placement.coordinate.latitude,
                         placement.coordinate.longitude,
@@ -146,9 +151,24 @@ class _IrrigationNetworkMapScreenState
                           ],
                         ),
                       );
-                    }).toList(growable: false),
+                    }),
+                      ...(snapshot.data ?? const <MapAlert>[]).map((alert) => Marker(
+                        point: LatLng(alert.latitude, alert.longitude),
+                        width: 180,
+                        height: 54,
+                        child: GestureDetector(
+                          onTap: () => showDialog<void>(context: context, builder: (_) => AlertDialog(
+                            title: Text(alert.title),
+                            content: Text('${alert.message}\n\nالإحداثيات: ${alert.latitude.toStringAsFixed(6)}, ${alert.longitude.toStringAsFixed(6)}\nيرجى الفحص الميداني.'),
+                            actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('إغلاق'))],
+                          )),
+                          child: const Icon(Icons.warning_amber, color: Colors.red, size: 30),
+                        ),
+                      )),
+                    ],
                   ),
                 ],
+              ),
               ),
             ),
           ],
