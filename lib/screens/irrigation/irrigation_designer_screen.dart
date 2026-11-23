@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:printing/printing.dart';
 import '../../models/irrigation_design_models.dart';
 import '../../services/irrigation_export_service.dart';
 import '../../services/irrigation_design_analysis_service.dart';
@@ -7,6 +8,7 @@ import '../../services/irrigation_map_validation_service.dart';
 import '../../services/irrigation_route_hydraulics_service.dart';
 import '../../services/irrigation_zone_hydraulic_report_service.dart';
 import '../../services/irrigation_coverage_analysis_service.dart';
+import '../../services/irrigation_report_service.dart';
 import 'irrigation_map_editor_screen.dart';
 import 'irrigation_network_map_screen.dart';
 import 'irrigation_pipe_route_editor_screen.dart';
@@ -25,10 +27,31 @@ class _IrrigationDesignerScreenState extends State<IrrigationDesignerScreen> {
   List<IrrigationRouteHydraulicResult> routeHydraulics = const [];
   List<IrrigationZoneHydraulicReport> zoneReports = const [];
   List<IrrigationZoneCoverageReport> coverageReports = const [];
+  IrrigationReportDocument? reportDocument;
   final steps = const ['الموقع', 'النباتات', 'المعدات والمناطق', 'المضخة', 'الفحص والتصدير'];
 
   @override void initState() { super.initState(); project = _demoProject(); }
   void exportProject() { try { setState(() { bundle = const IrrigationExportService().export(project); analysis = const IrrigationDesignAnalysisService().analyze(project); mapIssues = const IrrigationMapValidationService().validate(project); routeHydraulics = const IrrigationRouteHydraulicsService().analyze(project.pipeRoutes); zoneReports = const IrrigationZoneHydraulicReportService().build(project); coverageReports = const IrrigationCoverageAnalysisService().analyze(project); }); } catch (e) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('لا يمكن التصدير: $e'))); } }
+
+  Future<void> generateAndShareReport() async {
+    try {
+      final report = await const IrrigationReportService().build(
+        project: project,
+        coverageReports: coverageReports,
+        routeHydraulics: routeHydraulics,
+        zoneReports: zoneReports,
+      );
+      if (!mounted) return;
+      setState(() => reportDocument = report);
+      await Printing.sharePdf(bytes: report.pdfBytes, filename: report.fileName);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('لا يمكن إنشاء التقرير: $error')),
+        );
+      }
+    }
+  }
 
   Future<void> _editBoundary() async {
     final result = await Navigator.push<IrrigationMapEditResult>(
@@ -160,6 +183,7 @@ class _IrrigationDesignerScreenState extends State<IrrigationDesignerScreen> {
   Widget _review() => ListView(padding: const EdgeInsets.all(16), children: [
     Card(child: ListTile(leading: const Icon(Icons.check_circle, color: Colors.green), title: const Text('المشروع صالح للتصدير'), subtitle: Text('${project.zones.length} Zones • ${project.equipment.length} معدات • الإصدار ${project.version}'))),
     ElevatedButton.icon(onPressed: exportProject, icon: const Icon(Icons.file_download), label: const Text('إنشاء DXF وBOQ وجدول التشغيل')),
+    ElevatedButton.icon(onPressed: generateAndShareReport, icon: const Icon(Icons.picture_as_pdf), label: Text(reportDocument == null ? 'إنشاء ومشاركة تقرير PDF' : 'مشاركة تقرير PDF مرة أخرى')),
     if (bundle != null) ...[Text('DXF: ${bundle!.dxf.length} حرف'), Text('بنود BOQ: ${bundle!.boq.length}'), ...bundle!.schedule.map((x) => ListTile(title: Text(x.zoneName), subtitle: Text('${x.runtimeMinutes.toStringAsFixed(1)} دقيقة تشغيل')))],
     if (analysis != null) ...[
       const ListTile(title: Text('فحص التغطية'), subtitle: Text('تقديري ويحتاج معايرة ميدانية قبل التنفيذ')),
