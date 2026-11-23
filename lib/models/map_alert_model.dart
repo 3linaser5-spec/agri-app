@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 class MapAlert {
   final String id;
   final String fieldId;
+  final String? zoneId;
   final String title;
   final String message;
   final double latitude;
@@ -11,7 +12,7 @@ class MapAlert {
   final DateTime? createdAt;
   final bool resolved;
 
-  const MapAlert({required this.id, required this.fieldId, required this.title, required this.message, required this.latitude, required this.longitude, required this.severity, required this.createdAt, required this.resolved});
+  const MapAlert({required this.id, required this.fieldId, this.zoneId, required this.title, required this.message, required this.latitude, required this.longitude, required this.severity, required this.createdAt, required this.resolved});
 
   factory MapAlert.fromDocument(DocumentSnapshot<Map<String, dynamic>> doc) {
     final d = doc.data() ?? const <String, dynamic>{};
@@ -19,6 +20,7 @@ class MapAlert {
     return MapAlert(
       id: doc.id,
       fieldId: d['field_id']?.toString() ?? '',
+      zoneId: d['zone_id']?.toString(),
       title: d['title']?.toString() ?? 'تنبيه فحص',
       message: d['message']?.toString() ?? '',
       latitude: _number(d['latitude'] ?? coordinates['lat']),

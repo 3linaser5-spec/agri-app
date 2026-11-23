@@ -1,4 +1,6 @@
+import '../models/irrigation_catalog_models.dart';
 import '../models/irrigation_design_models.dart';
+import '../models/map_alert_model.dart';
 
 class IrrigationZoneSatelliteAlert {
   final String id;
@@ -37,6 +39,29 @@ class IrrigationZoneSatelliteAlert {
 /// يحول مؤشرات التحليل إلى تنبيهات مفهومة للمستخدم بدون عرض مصادر البيانات.
 class IrrigationZoneSatelliteAlertService {
   const IrrigationZoneSatelliteAlertService();
+
+  List<IrrigationZoneSatelliteAlert> fromMapAlerts(
+    Iterable<MapAlert> alerts, {
+    required IrrigationSatelliteLink link,
+  }) {
+    return List.unmodifiable(alerts
+        .where((alert) => link.alertIds.contains(alert.id))
+        .where((alert) => alert.zoneId == null || alert.zoneId == link.zoneId)
+        .map((alert) => IrrigationZoneSatelliteAlert(
+              id: alert.id,
+              zoneId: link.zoneId,
+              coordinate: GeoCoordinate.checked(
+                latitude: alert.latitude,
+                longitude: alert.longitude,
+              ),
+              severity: alert.severity,
+              title: alert.title,
+              message: alert.message,
+              fieldInspectionRequest:
+                  'يرجى إجراء فحص ميداني عند الإحداثيات المعروضة وتسجيل النتيجة قبل اتخاذ إجراء.',
+              resolved: alert.resolved,
+            )));
+  }
 
   List<IrrigationZoneSatelliteAlert> analyze(
     IrrigationDesignProject project, {
