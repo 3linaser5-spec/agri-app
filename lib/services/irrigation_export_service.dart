@@ -223,20 +223,25 @@ class IrrigationExportService {
     b.block('PUMP_STATION_BLOCK');
     b.circle(IrrigationExportLayers.pumpStation, _Point(-2, 0, p.pump.headM), 0.5);
     b.insert(IrrigationExportLayers.pumpStation, 'PUMP_STATION_BLOCK', _Point(-2, 0, p.pump.headM));
-    var x = 0.0;
-    for (final pipe in p.pipes) {
-      final layer = pipe.id.toLowerCase().contains('main') ? IrrigationExportLayers.mainlinePipes : IrrigationExportLayers.lateralsPipes;
-      b.line(layer, _Point(x, 0, 0), _Point(x + pipe.lengthM, 0, 0.05));
-      x += 1.5;
+    for (final route in p.pipeRoutes) {
+      final layer = route.zoneId == null ? IrrigationExportLayers.mainlinePipes : IrrigationExportLayers.lateralsPipes;
+      for (var i = 0; i < route.points.length - 1; i++) {
+        b.line(layer, xy(route.points[i], 0), xy(route.points[i + 1], 0));
+      }
     }
-    for (var i = 0; i < p.valves.length; i++) b.circle(IrrigationExportLayers.valvesManifold, _Point(i * 1.5, 1, 0), 0.18);
-    for (var i = 0; i < p.equipment.length; i++) {
-      final layer = p.equipment[i].type.toLowerCase().contains('rotor') ? IrrigationExportLayers.rotorsSaroukh : IrrigationExportLayers.spraysPopup;
-      b.circle(layer, _Point(i * 1.5, 2, 0), 0.12);
-    }
-    for (var i = 0; i < p.plants.length; i++) {
-      final layer = p.plants[i].nameEn.toLowerCase().contains('tree') ? IrrigationExportLayers.plantsTrees : IrrigationExportLayers.plantsShrubsTurf;
-      b.circle(layer, _Point(i * 1.5, 3, 0), 0.2);
+    for (final placement in p.placements) {
+      final kind = placement.kind.toLowerCase();
+      final point = xy(placement.coordinate, 0);
+      if (kind.contains('valve') || kind.contains('محبس')) {
+        b.circle(IrrigationExportLayers.valvesManifold, point, 0.18);
+      } else if (kind.contains('plant') || kind.contains('نبات')) {
+        b.circle(kind.contains('tree') ? IrrigationExportLayers.plantsTrees : IrrigationExportLayers.plantsShrubsTurf, point, 0.2);
+      } else if (kind.contains('rotor') || kind.contains('big_gun')) {
+        b.circle(IrrigationExportLayers.rotorsSaroukh, point, 0.12);
+      } else {
+        b.circle(IrrigationExportLayers.spraysPopup, point, 0.12);
+      }
+      if (placement.label != null) b.text(IrrigationExportLayers.elevation3d, _Point(point.x, point.y + .25, point.z), placement.label!);
     }
     for (final point in p.elevationPoints) b.point(IrrigationExportLayers.elevation3d, xy(point.coordinate, point.elevationM));
     b.text(IrrigationExportLayers.elevation3d, _Point(0, 4, 0), 'DXF standard import; not original RainCAD');

@@ -8,6 +8,8 @@ void main() {
 
     expect(bundle.dxf, contains('SECTION'));
     expect(bundle.dxf, contains('PUMP_STATION'));
+    expect(bundle.dxf, contains('SPRAYS_POPUP'));
+    expect(bundle.dxf, contains('MAINLINE_PIPES'));
     expect(bundle.dxf.trimRight().endsWith('EOF'), isTrue);
     expect(bundle.boq, isNotEmpty);
     expect(bundle.boqCsv, contains('category'));
@@ -60,6 +62,25 @@ IrrigationDesignProject _project() {
     id: 'project-1',
     siteBoundary: boundary,
     equipment: [equipment],
+    placements: [
+      IrrigationMapPlacement(
+        id: 'spray-placement-1',
+        kind: 'spray',
+        coordinate: const GeoCoordinate(latitude: 30, longitude: 31.0005),
+        zoneId: 'zone-1',
+      ),
+    ],
+    pipeRoutes: [
+      IrrigationPipeRoute(
+        id: 'main-route-1',
+        points: const [
+          GeoCoordinate(latitude: 30, longitude: 31),
+          GeoCoordinate(latitude: 30, longitude: 31.0008),
+        ],
+        diameterMm: 50,
+        material: 'PVC',
+      ),
+    ],
     zones: [
       IrrigationZone(
         id: 'zone-1',
