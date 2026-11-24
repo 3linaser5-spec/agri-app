@@ -2,13 +2,13 @@
 """يفشل البناء إذا نزلت تغطية الأسطر عن الحد الأدنى.
 
 الاستخدام:
-    python3 scripts/check_coverage.py coverage/lcov.info 73
+    python3 scripts/check_coverage.py coverage/lcov.info 80
 """
 
 import sys
 from pathlib import Path
 
-DEFAULT_THRESHOLD = 73.0
+DEFAULT_THRESHOLD = 80.0
 
 
 def main() -> int:

@@ -16,11 +16,14 @@ class MapAlert {
 
   const MapAlert({required this.id, required this.fieldId, this.zoneId, required this.title, required this.message, required this.latitude, required this.longitude, required this.severity, this.status = 'open', required this.createdAt, required this.resolved, this.inspectionResult});
 
-  factory MapAlert.fromDocument(DocumentSnapshot<Map<String, dynamic>> doc) {
-    final d = doc.data() ?? const <String, dynamic>{};
+  factory MapAlert.fromDocument(DocumentSnapshot<Map<String, dynamic>> doc) =>
+      MapAlert.fromData(doc.id, doc.data() ?? const <String, dynamic>{});
+
+  factory MapAlert.fromData(String id, Map<String, dynamic> data) {
+    final d = data;
     final coordinates = d['coordinates'] is Map ? d['coordinates'] as Map : const {};
     return MapAlert(
-      id: doc.id,
+      id: id,
       fieldId: d['field_id']?.toString() ?? '',
       zoneId: d['zone_id']?.toString(),
       title: d['title']?.toString() ?? 'تنبيه فحص',

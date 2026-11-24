@@ -64,7 +64,7 @@ firebase deploy --only functions,firestore:rules,firestore:indexes,storage
 - `flutter test` يشغّل كل ملفات `test/` (لا تُوضع اختبارات داخل `lib/`).
 - `cd functions && npm test` لاختبارات Cloud Functions.
 - `.github/workflows/analyze.yml` يشغّل الاثنين مع `flutter analyze` على Flutter 3.50.1.
-- `scripts/check_coverage.py` يفرض حدًا أدنى لتغطية الأسطر (73%) من `coverage/lcov.info`.
+- `scripts/check_coverage.py` يفرض حدًا أدنى لتغطية الأسطر (80%) من `coverage/lcov.info`.
 - `.github/workflows/build_apk.yml` يبني APK ويحدّث `version.json`
   (الإصدار + بصمة SHA-256) الذي يقرأه التحديث الذاتي في التطبيق.
 

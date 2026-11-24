@@ -62,7 +62,7 @@ jobs:
       # حد أدنى لتغطية الأسطر حتى لا تنخفض التغطية بصمت مع أي تعديل جديد.
       - name: Check coverage threshold
         if: always()
-        run: python3 scripts/check_coverage.py coverage/lcov.info 73
+        run: python3 scripts/check_coverage.py coverage/lcov.info 80
 
       - name: Annotate test failures
         if: always()

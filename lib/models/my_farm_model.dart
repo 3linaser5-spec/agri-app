@@ -46,11 +46,14 @@ class MyFarmProgram {
     this.doneTasks = const [],
   });
 
-  factory MyFarmProgram.fromFirestore(DocumentSnapshot doc) {
-    final data = SafeParse.map(doc.data());
+  factory MyFarmProgram.fromFirestore(DocumentSnapshot doc) =>
+      MyFarmProgram.fromData(doc.id, SafeParse.map(doc.data()));
+
+  /// نفس التحليل من بيانات خام (بدون Firebase) حتى يمكن اختباره مباشرة.
+  factory MyFarmProgram.fromData(String id, Map<String, dynamic> data) {
     final tasks = SafeParse.mapList(data['tasks']);
     return MyFarmProgram(
-      id: doc.id,
+      id: id,
       userId: SafeParse.string(data['user_id']),
       templateId: SafeParse.string(data['template_id']),
       templateName: SafeParse.string(data['template_name']),

@@ -45,14 +45,16 @@ class HlsField {
     this.updatedAt,
   });
 
-  factory HlsField.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
-    final data = doc.data() ?? const <String, dynamic>{};
+  factory HlsField.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) =>
+      HlsField.fromData(doc.id, doc.data() ?? const <String, dynamic>{});
+
+  factory HlsField.fromData(String id, Map<String, dynamic> data) {
     final rawPolygon = data['polygon'];
     final polygon = rawPolygon is List
         ? rawPolygon.map(HlsCoordinate.fromMap).toList(growable: false)
         : const <HlsCoordinate>[];
     return HlsField(
-      id: doc.id,
+      id: id,
       name: (data['name'] as String?)?.trim().isNotEmpty == true
           ? (data['name'] as String).trim()
           : 'حقل بدون اسم',
@@ -201,16 +203,20 @@ class HlsObservation {
 
   factory HlsObservation.fromFirestore(
     DocumentSnapshot<Map<String, dynamic>> doc,
-  ) {
-    final data = doc.data() ?? const <String, dynamic>{};
+  ) => HlsObservation.fromData(doc.id, doc.data() ?? const {});
+
+  factory HlsObservation.fromData(String id, Map<String, dynamic> data) {
     final rawSamples = data['samples'];
     return HlsObservation(
-      id: doc.id,
+      id: id,
       date: _parseDate(data['date']) ?? DateTime.now(),
       metrics: _doubleMap(data['metrics']),
       bands: _doubleMap(data['bands']),
       samples: rawSamples is List
-          ? rawSamples.map(HlsSamplePoint.fromMap).toList(growable: false)
+          ? rawSamples
+              .whereType<Map>()
+              .map(HlsSamplePoint.fromMap)
+              .toList(growable: false)
           : const [],
       validSampleCount: _int(data['valid_sample_count']),
       totalSampleCount: _int(data['total_sample_count']),
@@ -258,10 +264,11 @@ class HlsAnalysisRun {
 
   factory HlsAnalysisRun.fromFirestore(
     DocumentSnapshot<Map<String, dynamic>> doc,
-  ) {
-    final data = doc.data() ?? const <String, dynamic>{};
+  ) => HlsAnalysisRun.fromData(doc.id, doc.data() ?? const {});
+
+  factory HlsAnalysisRun.fromData(String id, Map<String, dynamic> data) {
     return HlsAnalysisRun(
-      id: doc.id,
+      id: id,
       status: data['status']?.toString() ?? 'unknown',
       requestedAt: _parseDate(data['requested_at']),
       completedAt: _parseDate(data['completed_at']),
@@ -294,10 +301,11 @@ class HlsFieldNote {
 
   factory HlsFieldNote.fromFirestore(
     DocumentSnapshot<Map<String, dynamic>> doc,
-  ) {
-    final data = doc.data() ?? const <String, dynamic>{};
+  ) => HlsFieldNote.fromData(doc.id, doc.data() ?? const {});
+
+  factory HlsFieldNote.fromData(String id, Map<String, dynamic> data) {
     return HlsFieldNote(
-      id: doc.id,
+      id: id,
       text: data['text']?.toString() ?? '',
       category: data['category'] as String?,
       createdAt: _parseDate(data['created_at']),
