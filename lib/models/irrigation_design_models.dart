@@ -172,6 +172,103 @@ class ElevationPoint {
   Map<String, dynamic> toJson() => {'id': id, 'label': label, 'coordinate': coordinate.toJson(), 'elevation_m': elevationM};
 }
 
+/// عنصر موضوع على مخطط الموقع ويمكن ربطه بمعدة أو Zone أو نبات.
+class IrrigationMapPlacement {
+  final String id;
+  final String kind;
+  final GeoCoordinate coordinate;
+  final double rotationDegrees;
+  final String? equipmentId;
+  final String? zoneId;
+  final String? plantId;
+  final String? label;
+
+  IrrigationMapPlacement({
+    required this.id,
+    required this.kind,
+    required this.coordinate,
+    this.rotationDegrees = 0,
+    this.equipmentId,
+    this.zoneId,
+    this.plantId,
+    this.label,
+  }) {
+    _requiredText(id, 'معرّف العنصر');
+    _requiredText(kind, 'نوع العنصر');
+    _finiteNumber(rotationDegrees, 'زاوية العنصر');
+  }
+
+  factory IrrigationMapPlacement.fromJson(Map<String, dynamic> json) =>
+      IrrigationMapPlacement(
+        id: json['id']?.toString() ?? '',
+        kind: json['kind']?.toString() ?? '',
+        coordinate: GeoCoordinate.fromJson(_map(json['coordinate'], 'coordinate')),
+        rotationDegrees: json['rotation_degrees'] == null
+            ? 0
+            : _jsonDouble(json['rotation_degrees'], 'rotation_degrees'),
+        equipmentId: _optionalText(json['equipment_id']?.toString()),
+        zoneId: _optionalText(json['zone_id']?.toString()),
+        plantId: _optionalText(json['plant_id']?.toString()),
+        label: _optionalText(json['label']?.toString()),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'kind': kind,
+        'coordinate': coordinate.toJson(),
+        'rotation_degrees': rotationDegrees,
+        'equipment_id': equipmentId,
+        'zone_id': zoneId,
+        'plant_id': plantId,
+        'label': label,
+  };
+}
+
+/// مسار ماسورة مرسوم كنقاط متتابعة على الخريطة.
+class IrrigationPipeRoute {
+  final String id;
+  final List<GeoCoordinate> points;
+  final double diameterMm;
+  final String material;
+  final String? zoneId;
+  final double? designFlowLpm;
+
+  IrrigationPipeRoute({
+    required this.id,
+    required List<GeoCoordinate> points,
+    required num diameterMm,
+    required this.material,
+    this.zoneId,
+    this.designFlowLpm,
+  })  : points = List<GeoCoordinate>.unmodifiable(points),
+        diameterMm = _finiteNumber(diameterMm, 'قطر مسار الماسورة', min: _epsilon) {
+    _requiredText(id, 'معرّف مسار الماسورة');
+    _requiredText(material, 'مادة مسار الماسورة');
+    if (this.points.length < 2) _invalid(points, 'يجب أن يحتوي مسار الماسورة على نقطتين');
+    if (designFlowLpm != null) _finiteNumber(designFlowLpm!, 'تصرف مسار الماسورة', min: 0);
+  }
+
+  factory IrrigationPipeRoute.fromJson(Map<String, dynamic> json) => IrrigationPipeRoute(
+        id: json['id']?.toString() ?? '',
+        points: _objects(json['points'], 'points', GeoCoordinate.fromJson),
+        diameterMm: _jsonDouble(json['diameter_mm'], 'diameter_mm'),
+        material: json['material']?.toString() ?? '',
+        zoneId: _optionalText(json['zone_id']?.toString()),
+        designFlowLpm: json['design_flow_lpm'] == null
+            ? null
+            : _jsonDouble(json['design_flow_lpm'], 'design_flow_lpm'),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'points': points.map((point) => point.toJson()).toList(growable: false),
+        'diameter_mm': diameterMm,
+        'material': material,
+        'zone_id': zoneId,
+        'design_flow_lpm': designFlowLpm,
+      };
+}
+
 class DesignVersion {
   final int major; final int minor; final int patch; final String? label; final DateTime createdAt; final String? authorId;
   const DesignVersion({required this.major, required this.minor, required this.patch, this.label, required this.createdAt, this.authorId})
@@ -185,11 +282,11 @@ class IrrigationDesignProject {
   final String id; final String nameAr; final String nameEn; final String? description;
   final SiteBoundary siteBoundary; final List<PlantSpecies> plants; final List<IrrigationEquipment> equipment;
   final List<Pipe> pipes; final List<Valve> valves; final List<IrrigationZone> zones; final Pump pump;
-  final List<ElevationPoint> elevationPoints; final DesignVersion version;
-  IrrigationDesignProject({required this.id, this.nameAr = '', this.nameEn = '', this.description, required this.siteBoundary, List<PlantSpecies> plants = const [], List<IrrigationEquipment> equipment = const [], List<Pipe> pipes = const [], List<Valve> valves = const [], List<IrrigationZone> zones = const [], required this.pump, List<ElevationPoint> elevationPoints = const [], required this.version})
-      : plants = List<PlantSpecies>.unmodifiable(plants), equipment = List<IrrigationEquipment>.unmodifiable(equipment), pipes = List<Pipe>.unmodifiable(pipes), valves = List<Valve>.unmodifiable(valves), zones = List<IrrigationZone>.unmodifiable(zones), elevationPoints = List<ElevationPoint>.unmodifiable(elevationPoints) { _requiredText(id, 'معرّف المشروع'); }
-  factory IrrigationDesignProject.fromJson(Map<String, dynamic> j) => IrrigationDesignProject(id: j['id']?.toString() ?? '', nameAr: j['name_ar']?.toString() ?? '', nameEn: j['name_en']?.toString() ?? '', description: _optionalText(j['description']?.toString()), siteBoundary: SiteBoundary.fromJson(_map(j['site_boundary'], 'site_boundary')), plants: _objects(j['plants'], 'plants', PlantSpecies.fromJson), equipment: _objects(j['equipment'], 'equipment', IrrigationEquipment.fromJson), pipes: _objects(j['pipes'], 'pipes', Pipe.fromJson), valves: _objects(j['valves'], 'valves', Valve.fromJson), zones: _objects(j['zones'], 'zones', IrrigationZone.fromJson), pump: Pump.fromJson(_map(j['pump'], 'pump')), elevationPoints: _objects(j['elevation_points'], 'elevation_points', ElevationPoint.fromJson), version: DesignVersion.fromJson(_map(j['version'], 'version')));
-  Map<String, dynamic> toJson() => _copyJson({'id': id, 'name_ar': nameAr, 'name_en': nameEn, 'description': description, 'site_boundary': siteBoundary.toJson(), 'plants': plants.map((x) => x.toJson()).toList(growable: false), 'equipment': equipment.map((x) => x.toJson()).toList(growable: false), 'pipes': pipes.map((x) => x.toJson()).toList(growable: false), 'valves': valves.map((x) => x.toJson()).toList(growable: false), 'zones': zones.map((x) => x.toJson()).toList(growable: false), 'pump': pump.toJson(), 'elevation_points': elevationPoints.map((x) => x.toJson()).toList(growable: false), 'version': version.toJson()});
+  final List<ElevationPoint> elevationPoints; final List<IrrigationMapPlacement> placements; final List<IrrigationPipeRoute> pipeRoutes; final DesignVersion version;
+  IrrigationDesignProject({required this.id, this.nameAr = '', this.nameEn = '', this.description, required this.siteBoundary, List<PlantSpecies> plants = const [], List<IrrigationEquipment> equipment = const [], List<Pipe> pipes = const [], List<Valve> valves = const [], List<IrrigationZone> zones = const [], required this.pump, List<ElevationPoint> elevationPoints = const [], List<IrrigationMapPlacement> placements = const [], List<IrrigationPipeRoute> pipeRoutes = const [], required this.version})
+      : plants = List<PlantSpecies>.unmodifiable(plants), equipment = List<IrrigationEquipment>.unmodifiable(equipment), pipes = List<Pipe>.unmodifiable(pipes), valves = List<Valve>.unmodifiable(valves), zones = List<IrrigationZone>.unmodifiable(zones), elevationPoints = List<ElevationPoint>.unmodifiable(elevationPoints), placements = List<IrrigationMapPlacement>.unmodifiable(placements), pipeRoutes = List<IrrigationPipeRoute>.unmodifiable(pipeRoutes) { _requiredText(id, 'معرّف المشروع'); }
+  factory IrrigationDesignProject.fromJson(Map<String, dynamic> j) => IrrigationDesignProject(id: j['id']?.toString() ?? '', nameAr: j['name_ar']?.toString() ?? '', nameEn: j['name_en']?.toString() ?? '', description: _optionalText(j['description']?.toString()), siteBoundary: SiteBoundary.fromJson(_map(j['site_boundary'], 'site_boundary')), plants: _objects(j['plants'], 'plants', PlantSpecies.fromJson), equipment: _objects(j['equipment'], 'equipment', IrrigationEquipment.fromJson), pipes: _objects(j['pipes'], 'pipes', Pipe.fromJson), valves: _objects(j['valves'], 'valves', Valve.fromJson), zones: _objects(j['zones'], 'zones', IrrigationZone.fromJson), pump: Pump.fromJson(_map(j['pump'], 'pump')), elevationPoints: _objects(j['elevation_points'], 'elevation_points', ElevationPoint.fromJson), placements: _objects(j['placements'], 'placements', IrrigationMapPlacement.fromJson), pipeRoutes: _objects(j['pipe_routes'], 'pipe_routes', IrrigationPipeRoute.fromJson), version: DesignVersion.fromJson(_map(j['version'], 'version')));
+  Map<String, dynamic> toJson() => _copyJson({'id': id, 'name_ar': nameAr, 'name_en': nameEn, 'description': description, 'site_boundary': siteBoundary.toJson(), 'plants': plants.map((x) => x.toJson()).toList(growable: false), 'equipment': equipment.map((x) => x.toJson()).toList(growable: false), 'pipes': pipes.map((x) => x.toJson()).toList(growable: false), 'valves': valves.map((x) => x.toJson()).toList(growable: false), 'zones': zones.map((x) => x.toJson()).toList(growable: false), 'pump': pump.toJson(), 'elevation_points': elevationPoints.map((x) => x.toJson()).toList(growable: false), 'placements': placements.map((x) => x.toJson()).toList(growable: false), 'pipe_routes': pipeRoutes.map((x) => x.toJson()).toList(growable: false), 'version': version.toJson()});
 }
 
 // أسماء بديلة موجزة مناسبة للواجهات القديمة أو وحدات التكامل.

@@ -189,7 +189,14 @@ service cloud.firestore {
         allow read: if signedIn()
           && request.auth.uid == uid
           && hasActiveSatelliteAccess(uid);
-        allow create, update, delete: if false;
+        allow create, delete: if false;
+        allow update: if signedIn()
+          && request.auth.uid == uid
+          && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['status', 'resolved', 'updated_at'])
+          && request.resource.data.status in ['open', 'inspected', 'resolved']
+          && request.resource.data.resolved == (request.resource.data.status == 'resolved')
+          && request.resource.data.updated_at == request.time;
 
         match /inspection_notes/{noteId} {
           allow read: if signedIn() && request.auth.uid == uid;
