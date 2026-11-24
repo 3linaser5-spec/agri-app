@@ -81,7 +81,7 @@ class HlsField {
     const earthRadius = 6371008.8;
     final averageLatitude = polygon.fold<double>(
           0,
-          (sum, point) => sum + point.latitude,
+          (acc, point) => acc + point.latitude,
         ) /
         polygon.length;
     final longitudeScale = _cosDegrees(averageLatitude);

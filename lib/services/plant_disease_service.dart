@@ -14,7 +14,7 @@ class PlantDiseaseService {
       FirebaseFunctions.instanceFor(region: _region);
 
   Future<PlantDiseaseResult> classify({required File image}) async {
-    if (!await image.exists()) {
+    if (!image.existsSync()) {
       throw const PlantDiseaseException('ملف الصورة غير موجود. اختر الصورة مرة أخرى.');
     }
 

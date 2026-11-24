@@ -36,7 +36,11 @@ class _Irrigation3DPainter extends CustomPainter {
     final boundary = Path();
     for (var i = 0; i < points.length; i++) {
       final p = projectPoint(points[i], 0);
-      if (i == 0) boundary.moveTo(p.dx, p.dy); else boundary.lineTo(p.dx, p.dy);
+      if (i == 0) {
+        boundary.moveTo(p.dx, p.dy);
+      } else {
+        boundary.lineTo(p.dx, p.dy);
+      }
     }
     boundary.close();
     canvas.drawPath(boundary, ground);
@@ -44,7 +48,10 @@ class _Irrigation3DPainter extends CustomPainter {
     canvas.drawPath(boundary, outline);
     final pipePaint = Paint()..color = Colors.blue..strokeWidth = 3;
     for (final route in project.pipeRoutes) {
-      for (var i = 0; i < route.points.length - 1; i++) canvas.drawLine(projectPoint(route.points[i], 0.2), projectPoint(route.points[i + 1], 0.2), pipePaint);
+      for (var i = 0; i < route.points.length - 1; i++) {
+        canvas.drawLine(projectPoint(route.points[i], 0.2),
+            projectPoint(route.points[i + 1], 0.2), pipePaint);
+      }
     }
     for (final placement in project.placements) {
       final p = projectPoint(placement.coordinate, placement.kind == 'plant' ? 1 : .35);

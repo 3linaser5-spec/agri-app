@@ -30,7 +30,9 @@ class IrrigationCoverageAnalysisService {
     final key = _cacheKey(project);
     final cached = _cache[key];
     if (cached != null) return cached;
-    final result = List.unmodifiable(project.zones.map((zone) => _analyzeZone(project, zone)));
+    final result = List<IrrigationZoneCoverageReport>.unmodifiable(
+      project.zones.map((zone) => _analyzeZone(project, zone)),
+    );
     if (_cache.length >= 32) _cache.remove(_cache.keys.first);
     _cache[key] = result;
     return result;
@@ -41,7 +43,8 @@ class IrrigationCoverageAnalysisService {
   IrrigationZoneCoverageReport _analyzeZone(IrrigationDesignProject project, IrrigationZone zone) {
     final emitters = project.placements.where((p) => p.zoneId == zone.id && _isIrrigationElement(p.kind)).toList(growable: false);
     final obstacles = project.placements.where((p) => {'obstacle', 'building', 'wall', 'tree_canopy'}.contains(p.kind)).toList(growable: false);
-    final samples = _sampleBoundary(project.siteBoundary.points, 48);
+    final center = _zoneCenter(project, emitters);
+    final samples = _sampleArea(zone.areaM2, center, _cellSizeM(emitters));
     final fractions = samples.map((sample) {
       var hits = 0;
       for (final emitter in emitters) {
@@ -78,19 +81,58 @@ class IrrigationCoverageAnalysisService {
     );
   }
 
-  List<GeoCoordinate> _sampleBoundary(List<GeoCoordinate> boundary, int grid) {
-    final minLat = boundary.map((p) => p.latitude).reduce((a, b) => math.min(a, b).toDouble());
-    final maxLat = boundary.map((p) => p.latitude).reduce((a, b) => math.max(a, b).toDouble());
-    final minLon = boundary.map((p) => p.longitude).reduce((a, b) => math.min(a, b).toDouble());
-    final maxLon = boundary.map((p) => p.longitude).reduce((a, b) => math.max(a, b).toDouble());
+  /// مركز المنطقة: متوسط مواضع الرشاشات، أو متوسط حدود الموقع إن لم توجد
+  /// رشاشات (المنطقة لا تحمل مضلعًا خاصًا بها في الموديل).
+  GeoCoordinate _zoneCenter(
+    IrrigationDesignProject project,
+    List<IrrigationMapPlacement> emitters,
+  ) {
+    final source = emitters.isEmpty
+        ? project.siteBoundary.points
+        : emitters.map((e) => e.coordinate).toList(growable: false);
+    final lat = source.fold<double>(0, (s, p) => s + p.latitude) / source.length;
+    final lon = source.fold<double>(0, (s, p) => s + p.longitude) / source.length;
+    return GeoCoordinate(latitude: lat, longitude: lon);
+  }
+
+  /// خطوة الشبكة: لا تتجاوز ثلث أصغر مدى رشّ حتى لا تفوت أهداف صغيرة.
+  double _cellSizeM(List<IrrigationMapPlacement> emitters) {
+    final radii = emitters
+        .map((e) => _radiusM(e.kind))
+        .where((r) => r > 0)
+        .toList(growable: false);
+    if (radii.isEmpty) return 2;
+    return math.max(radii.reduce(math.min) / 3, 0.5);
+  }
+
+  /// عيّنات شبكية داخل مربع مساحته مساحة المنطقة ومركزه مركزها.
+  /// كانت العيّنات سابقًا تُوزّع على حدود الموقع كله، فتمسح مساحة المنطقة
+  /// الحقيقية وتُظهر تغطية أقل من الواقع بفارق كبير.
+  List<GeoCoordinate> _sampleArea(
+    double areaM2,
+    GeoCoordinate center,
+    double cellM,
+  ) {
+    final halfSideM = math.sqrt(math.max(areaM2, 1)) / 2;
+    final steps = (2 * halfSideM / cellM).ceil().clamp(24, 160);
+    final stepM = 2 * halfSideM / steps;
+    const metersPerDegreeLat = 111320.0;
+    final metersPerDegreeLon = math.max(
+      metersPerDegreeLat * math.cos(center.latitude * math.pi / 180),
+      1,
+    );
     final points = <GeoCoordinate>[];
-    for (var y = 0; y < grid; y++) {
-      for (var x = 0; x < grid; x++) {
-        final point = GeoCoordinate(latitude: minLat + (maxLat - minLat) * (y + .5) / grid, longitude: minLon + (maxLon - minLon) * (x + .5) / grid);
-        if (_inside(point, boundary)) points.add(point);
+    for (var y = 0; y < steps; y++) {
+      for (var x = 0; x < steps; x++) {
+        final dLat = -halfSideM + (y + .5) * stepM;
+        final dLon = -halfSideM + (x + .5) * stepM;
+        points.add(GeoCoordinate(
+          latitude: center.latitude + dLat / metersPerDegreeLat,
+          longitude: center.longitude + dLon / metersPerDegreeLon,
+        ));
       }
     }
-    return points.isEmpty ? [boundary.first] : points;
+    return points;
   }
 
   bool _covers(IrrigationMapPlacement emitter, GeoCoordinate point) {
@@ -105,17 +147,6 @@ class IrrigationCoverageAnalysisService {
   }
 
   bool _blocked(GeoCoordinate point, IrrigationMapPlacement emitter, List<IrrigationMapPlacement> obstacles) => obstacles.any((obstacle) => _distanceM(point, obstacle.coordinate) < math.min(2.0, _radiusM(emitter.kind) * .25));
-
-  bool _inside(GeoCoordinate point, List<GeoCoordinate> polygon) {
-    var inside = false;
-    for (var i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-      final yi = polygon[i].latitude, yj = polygon[j].latitude;
-      final xi = polygon[i].longitude, xj = polygon[j].longitude;
-      final intersects = ((yi > point.latitude) != (yj > point.latitude)) && (point.longitude < (xj - xi) * (point.latitude - yi) / (yj - yi + 1e-12) + xi);
-      if (intersects) inside = !inside;
-    }
-    return inside;
-  }
 
   bool _isIrrigationElement(String kind) =>
       {'rotor', 'spray', 'drip', 'bubbler', 'micro_spray'}.contains(kind);

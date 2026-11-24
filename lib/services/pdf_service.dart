@@ -31,7 +31,9 @@ class PdfService {
     if (alerts.isNotEmpty) {
       sections.add(PdfSection.divider());
       sections.add(PdfSection.h2('تنبيهات تستحق الفحص'));
-      for (final alert in alerts) sections.add(PdfSection.paragraph('• $alert'));
+      for (final alert in alerts) {
+        sections.add(PdfSection.paragraph('• $alert'));
+      }
     }
     sections.add(PdfSection.divider());
     sections.add(PdfSection.paragraph('هذا التقرير استرشادي ويجب ربطه بالفحص الميداني قبل اتخاذ القرار.'));

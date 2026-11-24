@@ -507,7 +507,7 @@ class _DynamicFormScreenState extends State<DynamicFormScreen> {
                                         .getZoneByGovernorate(tempSelected!);
                                   });
                                   await _saveGovernorate(tempSelected!);
-                                  if (mounted) {
+                                  if (bottomSheetContext.mounted) {
                                     Navigator.of(bottomSheetContext).pop();
                                   }
                                 },

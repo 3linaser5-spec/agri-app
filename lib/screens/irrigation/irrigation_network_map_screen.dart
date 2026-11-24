@@ -41,7 +41,7 @@ class _IrrigationNetworkMapScreenState
   void addPlacement(LatLng point) {
     setState(() {
       placements.add(IrrigationMapPlacement(
-        id: '${kind}-${placements.length + 1}',
+        id: '$kind-${placements.length + 1}',
         kind: kind,
         coordinate: GeoCoordinate.checked(
           latitude: point.latitude,
@@ -81,7 +81,7 @@ class _IrrigationNetworkMapScreenState
                 children: [
                   Expanded(
                     child: DropdownButtonFormField<String>(
-                      value: kind,
+                      initialValue: kind,
                       decoration: const InputDecoration(labelText: 'نوع العنصر'),
                       items: kinds.entries
                           .map((entry) => DropdownMenuItem(

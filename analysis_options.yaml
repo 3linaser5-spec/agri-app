@@ -1,0 +1,27 @@
+# إعدادات التحليل الساكن — تُستخدم بواسطة `flutter analyze` و`dart analyze`.
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  # مكتبات مولّدة أو مخرجات بناء لا تُحلَّل.
+  exclude:
+    - build/**
+    - functions/**
+    - "**/*.g.dart"
+    - "**/*.freezed.dart"
+
+  errors:
+    # منع أي خطأ حقيقي (لا تحويل النوع، عدم تطابق الوسائط...) من المرور.
+    invalid_assignment: error
+    return_of_invalid_type: error
+    unused_import: warning
+    unused_local_variable: warning
+    dead_code: warning
+
+linter:
+  rules:
+    - avoid_empty_else
+    - avoid_relative_lib_imports
+    - avoid_slow_async_io
+    - no_duplicate_case_values
+    - unrelated_type_equality_checks
+    - use_full_hex_values_for_flutter_colors

@@ -53,7 +53,7 @@ class SafeParse {
     return <String, dynamic>{};
   }
 
-  /// Map<String,String> وكل القيم تتحوّل لنص (null تتحول لنص فاضي).
+  /// `Map<String, String>` وكل القيم تتحوّل لنص (null تتحول لنص فاضي).
   static Map<String, String> stringMap(dynamic v) {
     if (v is Map) {
       return v.map((k, val) => MapEntry(k.toString(), string(val)));

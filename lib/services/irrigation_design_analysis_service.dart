@@ -32,9 +32,15 @@ class IrrigationDesignAnalysisService {
       if (zone.applicationRateMmH <= 0) issues.add(IrrigationDesignIssue(code:'invalid_application_rate', severity:'error', message:'معدل التطبيق غير صالح', subjectId:zone.id));
     }
     final lines = <IrrigationCostLine>[];
-    for (final p in project.pipes) lines.add(IrrigationCostLine(id:p.id, category:'pipe', description:'${p.diameter}${p.diameterUnit} ${p.material}', unit:'m', quantity:p.lengthM, unitCost:unitCosts[p.material] ?? 0));
-    for (final v in project.valves) lines.add(IrrigationCostLine(id:v.id, category:'valve', description:v.type, unit:'ea', quantity:1, unitCost:unitCosts[v.type] ?? 0));
-    for (final e in project.equipment) lines.add(IrrigationCostLine(id:e.id, category:'equipment', description:e.nameAr.isEmpty ? e.type : e.nameAr, unit:'ea', quantity:e.quantity.toDouble(), unitCost:unitCosts[e.type] ?? 0));
+    for (final p in project.pipes) {
+      lines.add(IrrigationCostLine(id:p.id, category:'pipe', description:'${p.diameter}${p.diameterUnit} ${p.material}', unit:'m', quantity:p.lengthM, unitCost:unitCosts[p.material] ?? 0));
+    }
+    for (final v in project.valves) {
+      lines.add(IrrigationCostLine(id:v.id, category:'valve', description:v.type, unit:'ea', quantity:1, unitCost:unitCosts[v.type] ?? 0));
+    }
+    for (final e in project.equipment) {
+      lines.add(IrrigationCostLine(id:e.id, category:'equipment', description:e.nameAr.isEmpty ? e.type : e.nameAr, unit:'ea', quantity:e.quantity.toDouble(), unitCost:unitCosts[e.type] ?? 0));
+    }
     final energy = pumpPowerKw * operatingHoursWeek;
     final scenarios = [
       IrrigationScenario(id:'baseline', name:'التصميم الأساسي', waterVolumeM3Week:weeklyWaterM3, energyKwhWeek:energy, estimatedCost:lines.fold<double>(0,(s,x)=>s+x.total)),

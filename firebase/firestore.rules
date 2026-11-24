@@ -541,16 +541,18 @@ service cloud.firestore {
       allow create: if signedIn()
         && (request.auth.uid == request.resource.data.owner_id || isAdmin());
       allow update: if signedIn()
-        && (request.auth.uid == resource.data.owner_id
-          && request.resource.data.owner_id == resource.data.owner_id || isAdmin());
+        && (isAdmin()
+          || (request.auth.uid == resource.data.owner_id
+            && request.resource.data.owner_id == request.auth.uid));
       match /versions/{versionId} {
         allow read, delete: if signedIn()
           && (request.auth.uid == resource.data.owner_id || isAdmin());
         allow create: if signedIn()
           && (request.auth.uid == request.resource.data.owner_id || isAdmin());
         allow update: if signedIn()
-          && (request.auth.uid == resource.data.owner_id
-            && request.resource.data.owner_id == resource.data.owner_id || isAdmin());
+          && (isAdmin()
+            || (request.auth.uid == resource.data.owner_id
+              && request.resource.data.owner_id == request.auth.uid));
       }
       match /satelliteLinks/{zoneId} {
         allow read, delete: if signedIn()
@@ -558,8 +560,9 @@ service cloud.firestore {
         allow create: if signedIn()
           && (request.auth.uid == request.resource.data.owner_id || isAdmin());
         allow update: if signedIn()
-          && (request.auth.uid == resource.data.owner_id
-            && request.resource.data.owner_id == resource.data.owner_id || isAdmin());
+          && (isAdmin()
+            || (request.auth.uid == resource.data.owner_id
+              && request.resource.data.owner_id == request.auth.uid));
       }
     }
 

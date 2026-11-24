@@ -206,7 +206,7 @@ class VersionService {
       final filePath = "${dir.path}/app-release.apk";
 
       final oldFile = File(filePath);
-      if (await oldFile.exists()) {
+      if (oldFile.existsSync()) {
         await oldFile.delete();
       }
 
@@ -504,7 +504,7 @@ class _AgriConsultantAppState extends State<AgriConsultantApp> {
     final update = await VersionService.checkUpdate();
     if (update == null || _updateDialogShowing) return;
     final ctx = _navigatorKey.currentContext;
-    if (ctx == null) return;
+    if (ctx == null || !ctx.mounted) return;
 
     _updateDialogShowing = true;
     await showDialog(
@@ -4343,7 +4343,7 @@ class _EncyclopediaSectionViewState extends State<EncyclopediaSectionView> {
                 ],
               ),
             );
-          }).toList(),
+          }),
         ],
       ),
     );

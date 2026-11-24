@@ -87,7 +87,7 @@ class _IrrigationPipeRouteEditorScreenState
                   SizedBox(
                     width: 130,
                     child: DropdownButtonFormField<String>(
-                      value: diameter,
+                      initialValue: diameter,
                       decoration: const InputDecoration(labelText: 'القطر mm'),
                       items: ['50', '75', '100', '150', '200']
                           .map((value) => DropdownMenuItem(
@@ -101,7 +101,7 @@ class _IrrigationPipeRouteEditorScreenState
                   SizedBox(
                     width: 130,
                     child: DropdownButtonFormField<String>(
-                      value: material,
+                      initialValue: material,
                       decoration: const InputDecoration(labelText: 'المادة'),
                       items: ['PE', 'PVC', 'HDPE', 'UPVC']
                           .map((value) => DropdownMenuItem(

@@ -249,7 +249,7 @@ List<WeatherAlert> buildWeatherAlerts(List<WeatherForecastDay> days) {
   }
   if (rainDay != null) {
     final chance = rainDay.precipitationProbability;
-    final chanceText = chance == null ? '' : ' (احتمال ${chance}٪)';
+    final chanceText = chance == null ? '' : ' (احتمال $chance٪)';
     alerts.add(WeatherAlert(
       kind: WeatherAlertKind.rain,
       title: 'أمطار متوقعة ${_arabicDateLabel(rainDay.date)}',

@@ -210,10 +210,10 @@ class _IrrigationDesignerScreenState extends State<IrrigationDesignerScreen> {
       ...mapIssues.map((issue) => ListTile(leading: const Icon(Icons.location_off, color: Colors.orange), title: Text(issue.message), subtitle: Text(issue.subjectId))),
       ListTile(title: const Text('خطة التشغيل والصيانة'), trailing: Text('${maintenanceTasks.length} مهام')),
       ...maintenanceTasks.map((task) => ListTile(leading: const Icon(Icons.qr_code_2), title: Text(task.title), subtitle: Text('${task.assetId} — ${task.qrCode}'))),
-      ListTile(title: const Text('تكلفة تقديرية'), trailing: Text('${analysis!.totalCost.toStringAsFixed(2)}')),
+      ListTile(title: const Text('تكلفة تقديرية'), trailing: Text(analysis!.totalCost.toStringAsFixed(2))),
       ListTile(title: const Text('حالة الفحص'), trailing: Text(analysis!.valid ? 'صالح' : 'يحتاج مراجعة')),
       ...analysis!.issues.map((x) => ListTile(leading: const Icon(Icons.warning, color: Colors.orange), title: Text(x.message), subtitle: Text(x.subjectId))),
-      ListTile(title: const Text('مهام الصيانة المبدئية'), trailing: Text('${const IrrigationDesignAnalysisService().buildMaintenancePlan(project, startAt: DateTime(2026, 1, 1)).length}')),
+      ListTile(title: const Text('مهام الصيانة المبدئية'), trailing: Text(const IrrigationDesignAnalysisService().buildMaintenancePlan(project, startAt: DateTime(2026, 1, 1)).length.toString())),
     ],
   ]);
 

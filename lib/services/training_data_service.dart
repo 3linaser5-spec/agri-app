@@ -60,7 +60,7 @@ class TrainingDataService {
     if (cleanCrop.length > 80 || cleanDisease.length > 80) {
       throw const TrainingDataException('اسم المحصول أو المرض أطول من الحد المسموح.');
     }
-    if (!await image.exists()) {
+    if (!image.existsSync()) {
       throw const TrainingDataException('ملف الصورة لم يعد متاحاً على الجهاز. اختره مرة أخرى.');
     }
 
@@ -106,7 +106,7 @@ class TrainingDataService {
       await sampleDocument.set({
         'crop': cleanCrop,
         'disease': cleanDisease,
-        'className': '${cleanCrop}__${cleanDisease}',
+        'className': '${cleanCrop}__$cleanDisease',
         'storagePath': storagePath,
         'mimeType': contentType,
         'sizeBytes': sizeBytes,

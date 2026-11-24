@@ -51,11 +51,7 @@ class PlantHealthService {
       if (RegExp(r'^[a-z0-9 ]+$').hasMatch(normalizedAlias)) {
         final escaped = RegExp.escape(normalizedAlias).replaceAll(' ', r'\s+');
         final endAnchor = String.fromCharCode(36);
-        final pattern = '(^|[^a-z0-9])' +
-            escaped +
-            '([^a-z0-9]|' +
-            endAnchor +
-            ')';
+        final pattern = '(^|[^a-z0-9])$escaped([^a-z0-9]|$endAnchor)';
         if (RegExp(pattern).hasMatch(normalizedValue)) {
           return true;
         }

@@ -160,9 +160,15 @@ class IrrigationExportService {
       unique(x.id, 'pipe');
       if (!x.lengthM.isFinite || x.lengthM <= 0) errors.add('invalid pipe length: ${x.id}');
     }
-    for (final x in project.valves) unique(x.id, 'valve');
-    for (final x in project.equipment) unique(x.id, 'equipment');
-    for (final x in project.plants) unique(x.id, 'plant');
+    for (final x in project.valves) {
+      unique(x.id, 'valve');
+    }
+    for (final x in project.equipment) {
+      unique(x.id, 'equipment');
+    }
+    for (final x in project.plants) {
+      unique(x.id, 'plant');
+    }
     for (final x in project.zones) {
       unique(x.id, 'zone');
       for (final id in x.pipeIds) {
@@ -194,9 +200,15 @@ class IrrigationExportService {
       final category = x.id.toLowerCase().contains('main') ? 'mainline' : 'lateral';
       lines.add(IrrigationBoqLine(category: category, code: x.material, description: '${x.diameter}${x.diameterUnit} ${x.material} pipe', unit: 'm', quantity: x.lengthM, sourceId: x.id));
     }
-    for (final x in p.valves) lines.add(IrrigationBoqLine(category: 'valve', code: x.type, description: '${x.diameterMm} mm ${x.type}', unit: 'ea', quantity: 1, sourceId: x.id));
-    for (final x in p.equipment) lines.add(IrrigationBoqLine(category: 'equipment', code: x.type, description: x.nameEn.isEmpty ? x.type : x.nameEn, unit: 'ea', quantity: x.quantity, sourceId: x.id));
-    for (final x in p.plants) lines.add(IrrigationBoqLine(category: 'plant', code: x.id, description: x.nameEn.isEmpty ? x.id : x.nameEn, unit: 'ea', quantity: 1, sourceId: x.id));
+    for (final x in p.valves) {
+      lines.add(IrrigationBoqLine(category: 'valve', code: x.type, description: '${x.diameterMm} mm ${x.type}', unit: 'ea', quantity: 1, sourceId: x.id));
+    }
+    for (final x in p.equipment) {
+      lines.add(IrrigationBoqLine(category: 'equipment', code: x.type, description: x.nameEn.isEmpty ? x.type : x.nameEn, unit: 'ea', quantity: x.quantity, sourceId: x.id));
+    }
+    for (final x in p.plants) {
+      lines.add(IrrigationBoqLine(category: 'plant', code: x.id, description: x.nameEn.isEmpty ? x.id : x.nameEn, unit: 'ea', quantity: 1, sourceId: x.id));
+    }
     return lines;
   }
 
@@ -214,12 +226,16 @@ class IrrigationExportService {
 
   String _dxf(IrrigationDesignProject p) {
     final b = _DxfBuilder();
-    for (final layer in IrrigationExportLayers.all) b.layer(layer);
+    for (final layer in IrrigationExportLayers.all) {
+      b.layer(layer);
+    }
     b.comment('STANDARD ASCII DXF IMPORT EXPORT - NOT AN ORIGINAL RAINCAD FILE');
     final origin = p.siteBoundary.points.first;
     _Point xy(GeoCoordinate c, double z) => _Point(c.longitude - origin.longitude, c.latitude - origin.latitude, z);
     final boundary = p.siteBoundary.points.map((c) => xy(c, 0)).toList();
-    for (var i = 0; i < boundary.length; i++) b.line(IrrigationExportLayers.boundary, boundary[i], boundary[(i + 1) % boundary.length]);
+    for (var i = 0; i < boundary.length; i++) {
+      b.line(IrrigationExportLayers.boundary, boundary[i], boundary[(i + 1) % boundary.length]);
+    }
     b.block('PUMP_STATION_BLOCK');
     b.circle(IrrigationExportLayers.pumpStation, _Point(-2, 0, p.pump.headM), 0.5);
     b.insert(IrrigationExportLayers.pumpStation, 'PUMP_STATION_BLOCK', _Point(-2, 0, p.pump.headM));
@@ -243,7 +259,9 @@ class IrrigationExportService {
       }
       if (placement.label != null) b.text(IrrigationExportLayers.elevation3d, _Point(point.x, point.y + .25, point.z), placement.label!);
     }
-    for (final point in p.elevationPoints) b.point(IrrigationExportLayers.elevation3d, xy(point.coordinate, point.elevationM));
+    for (final point in p.elevationPoints) {
+      b.point(IrrigationExportLayers.elevation3d, xy(point.coordinate, point.elevationM));
+    }
     b.text(IrrigationExportLayers.elevation3d, _Point(0, 4, 0), 'DXF standard import; not original RainCAD');
     return b.build();
   }

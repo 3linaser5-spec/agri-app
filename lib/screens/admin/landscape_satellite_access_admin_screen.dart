@@ -31,11 +31,13 @@ class _LandscapeSatelliteAccessAdminScreenState extends State<LandscapeSatellite
     setState(() => busy = true);
     try {
       final value = await LandscapeSatelliteAccessService.getEntitlement(uid);
-      if (mounted) setState(() {
-        enabled = value.active;
-        maxFeddan = value.maxFeddan;
-        maxFeddanController.text = value.maxFeddan.toString();
-      });
+      if (mounted) {
+        setState(() {
+          enabled = value.active;
+          maxFeddan = value.maxFeddan;
+          maxFeddanController.text = value.maxFeddan.toString();
+        });
+      }
     } finally {
       if (mounted) setState(() => busy = false);
     }
