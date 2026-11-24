@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:printing/printing.dart';
 import '../../models/irrigation_design_models.dart';
 import '../../models/irrigation_operations_models.dart';
@@ -17,6 +17,7 @@ import 'irrigation_network_map_screen.dart';
 import 'irrigation_pipe_route_editor_screen.dart';
 import 'irrigation_satellite_alerts_panel.dart';
 import 'irrigation_3d_preview_screen.dart';
+import 'irrigation_review_view.dart';
 
 class IrrigationDesignerScreen extends StatefulWidget {
   const IrrigationDesignerScreen({super.key});
@@ -192,30 +193,31 @@ class _IrrigationDesignerScreenState extends State<IrrigationDesignerScreen> {
 
   Widget _stepContent(int i) => Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(switch(i) { 0 => 'حدود الموقع: ${project.siteBoundary.points.length} نقاط — المساحة ${project.siteBoundary.declaredArea?.toStringAsFixed(3) ?? '-'} فدان', 1 => 'عدد النباتات: ${project.plants.length} — Kc: ${project.plants.isEmpty ? '-' : project.plants.first.kc}', 2 => 'المناطق: ${project.zones.length} — عناصر الخريطة: ${project.placements.length} — مسارات المواسير: ${project.pipeRoutes.length}', 3 => 'المضخة: ${project.pump.nameAr} — ${project.pump.headM} m TDH', _ => 'شغّل الفحص ثم صدّر DXF وBOQ وجدول التشغيل.'}), if (i == 0) Align(alignment: Alignment.centerRight, child: OutlinedButton.icon(onPressed: _editBoundary, icon: const Icon(Icons.map), label: const Text('فتح محرر الخريطة'))), if (i == 2) Wrap(spacing: 8, children: [OutlinedButton.icon(onPressed: _editPlacements, icon: const Icon(Icons.water_drop), label: const Text('عناصر الشبكة')), OutlinedButton.icon(onPressed: _addPipeRoute, icon: const Icon(Icons.alt_route), label: const Text('رسم مسار ماسورة'))])] )));
   Widget _accessRequired([String message = 'خدمة أقمار اللاندسكيب غير مفعّلة لهذا الحساب.']) => Center(child: Padding(padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [const Icon(Icons.lock_outline, size: 64, color: Colors.blueGrey), const SizedBox(height: 12), Text(message, textAlign: TextAlign.center), const SizedBox(height: 8), const Text('اطلب من الأدمن تفعيل الخدمة وتحديد المساحة قبل استخدام المصمم.', textAlign: TextAlign.center)])));
-  Widget _review() => ListView(padding: const EdgeInsets.all(16), children: [
-    const IrrigationSatelliteAlertsPanel(),
-    OutlinedButton.icon(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => Irrigation3DPreviewScreen(project: project))), icon: const Icon(Icons.view_in_ar), label: const Text('فتح معاينة 3D مبسطة')),
-    Card(child: ListTile(leading: const Icon(Icons.check_circle, color: Colors.green), title: const Text('المشروع صالح للتصدير'), subtitle: Text('${project.zones.length} Zones • ${project.equipment.length} معدات • الإصدار ${project.version}'))),
-    ElevatedButton.icon(onPressed: exportProject, icon: const Icon(Icons.file_download), label: const Text('إنشاء DXF وBOQ وجدول التشغيل')),
-    ElevatedButton.icon(onPressed: generateAndShareReport, icon: const Icon(Icons.picture_as_pdf), label: Text(reportDocument == null ? 'إنشاء ومشاركة تقرير PDF' : 'مشاركة تقرير PDF مرة أخرى')),
-    if (bundle != null) ...[Text('DXF: ${bundle!.dxf.length} حرف'), Text('بنود BOQ: ${bundle!.boq.length}'), ...bundle!.schedule.map((x) => ListTile(title: Text(x.zoneName), subtitle: Text('${x.runtimeMinutes.toStringAsFixed(1)} دقيقة تشغيل')))],
-    if (analysis != null) ...[
-      const ListTile(title: Text('فحص التغطية'), subtitle: Text('تحليل شبكي حسب المدى والاتجاه والعوائق؛ يلزم اختبار ضغط ميداني قبل التنفيذ')),
-      ...coverageReports.map((report) => ListTile(leading: Icon(report.warnings.length <= 1 ? Icons.check_circle : Icons.warning, color: report.warnings.length <= 1 ? Colors.green : Colors.orange), title: Text('${report.zoneId} — ${report.irrigationElementCount} عناصر'), subtitle: Text('مغطى: ${report.coverage.coveredAreaM2.toStringAsFixed(1)} م² — جاف: ${report.coverage.dryAreaM2.toStringAsFixed(1)} م² — تداخل: ${report.coverage.overlapAreaM2.toStringAsFixed(1)} م² — عينات: ${report.sampledPoints}'))),
-      ListTile(title: const Text('توافق الـZones مع المضخة'), trailing: Text('${zoneReports.where((report) => report.pumpAdequate).length}/${zoneReports.length} صالح')),
-      ...zoneReports.map((report) => ListTile(leading: Icon(report.pumpAdequate ? Icons.check_circle : Icons.warning, color: report.pumpAdequate ? Colors.green : Colors.orange), title: Text('${report.zoneId} — ${report.designFlowLpm.toStringAsFixed(1)} L/min'), subtitle: Text(report.recommendations.isEmpty ? 'المضخة مناسبة — TDH مطلوب: ${report.requiredHeadM.toStringAsFixed(1)} م' : report.recommendations.join(' ')))),
-      ListTile(title: const Text('الفحص الهيدروليكي للمواسير'), trailing: Text('${routeHydraulics.length} مسارات')),
-      ...routeHydraulics.map((item) => ListTile(leading: Icon(item.hydraulic.warnings.isEmpty ? Icons.check_circle : Icons.warning, color: item.hydraulic.warnings.isEmpty ? Colors.green : Colors.orange), title: Text('${item.routeId} — ${item.lengthM.toStringAsFixed(1)} م'), subtitle: Text('الفقد: ${item.hydraulic.pipeFrictionHeadM.toStringAsFixed(2)} م — TDH: ${item.hydraulic.totalDynamicHeadM.toStringAsFixed(2)} م — سرعة: ${item.hydraulic.velocityMps.toStringAsFixed(2)} م/ث'))),
-      ListTile(title: const Text('فحص عناصر الخريطة'), trailing: Text(mapIssues.isEmpty ? 'صالح' : '${mapIssues.length} ملاحظات')),
-      ...mapIssues.map((issue) => ListTile(leading: const Icon(Icons.location_off, color: Colors.orange), title: Text(issue.message), subtitle: Text(issue.subjectId))),
-      ListTile(title: const Text('خطة التشغيل والصيانة'), trailing: Text('${maintenanceTasks.length} مهام')),
-      ...maintenanceTasks.map((task) => ListTile(leading: const Icon(Icons.qr_code_2), title: Text(task.title), subtitle: Text('${task.assetId} — ${task.qrCode}'))),
-      ListTile(title: const Text('تكلفة تقديرية'), trailing: Text(analysis!.totalCost.toStringAsFixed(2))),
-      ListTile(title: const Text('حالة الفحص'), trailing: Text(analysis!.valid ? 'صالح' : 'يحتاج مراجعة')),
-      ...analysis!.issues.map((x) => ListTile(leading: const Icon(Icons.warning, color: Colors.orange), title: Text(x.message), subtitle: Text(x.subjectId))),
-      ListTile(title: const Text('مهام الصيانة المبدئية'), trailing: Text(const IrrigationDesignAnalysisService().buildMaintenancePlan(project, startAt: DateTime(2026, 1, 1)).length.toString())),
+  Widget _review() => ListView(
+    padding: const EdgeInsets.all(16),
+    children: [
+      const IrrigationSatelliteAlertsPanel(),
+      IrrigationReviewView(
+        project: project,
+        bundle: bundle,
+        analysis: analysis,
+        coverageReports: coverageReports,
+        zoneReports: zoneReports,
+        routeHydraulics: routeHydraulics,
+        mapIssues: mapIssues,
+        maintenanceTasks: maintenanceTasks,
+        hasReport: reportDocument != null,
+        onExport: exportProject,
+        onShareReport: generateAndShareReport,
+        onOpen3D: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => Irrigation3DPreviewScreen(project: project),
+          ),
+        ),
+      ),
     ],
-  ]);
+  );
 
   IrrigationDesignProject _demoProject() {
     final points = const [GeoCoordinate(latitude: 30, longitude: 31), GeoCoordinate(latitude: 30, longitude: 31.001), GeoCoordinate(latitude: 30.001, longitude: 31.001)];

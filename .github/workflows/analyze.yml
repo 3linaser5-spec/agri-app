@@ -27,7 +27,7 @@ jobs:
 
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
-          flutter-version: '3.44.0'
+          flutter-version: '3.50.1'
           channel: 'stable'
 
       - name: Install dependencies
@@ -57,7 +57,12 @@ jobs:
       # (أخطاء الاختبارات وأخطاء تجميع ملفات الاختبار) عشان تتقري من غير اللوج.
       - name: Test
         run: |
-          flutter test --no-pub --reporter json > test.json 2>&1 || touch test.failed
+          flutter test --no-pub --coverage --reporter json > test.json 2>&1 || touch test.failed
+
+      # حد أدنى لتغطية الأسطر حتى لا تنخفض التغطية بصمت مع أي تعديل جديد.
+      - name: Check coverage threshold
+        if: always()
+        run: python3 scripts/check_coverage.py coverage/lcov.info 73
 
       - name: Annotate test failures
         if: always()

@@ -1,0 +1,1366 @@
+import 'dart:async';
+import 'package:material_ui/material_ui.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
+import '../../models/weather_forecast.dart';
+import '../../services/weather_service.dart';
+import '../../data/egypt_data.dart';
+import '../../services/weather_push_service.dart';
+import '../../services/early_warning_service.dart';
+import '../../services/egypt_locations_service.dart';
+import '../../services/calculator_service.dart';
+import '../../models/my_farm_model.dart';
+import '../../services/my_farm_service.dart';
+import '../admin/admin_panel_screen.dart';
+import '../calculators/calculator_hub_screen.dart';
+import './profile_screen.dart';
+import './statistics_screen.dart';
+
+
+// ---------------- HomeDashboard ----------------
+class HomeDashboard extends StatefulWidget {
+  final String userName;
+  final String userPhone;
+  const HomeDashboard({
+    super.key,
+    required this.userName,
+    required this.userPhone,
+  });
+
+  @override
+  State<HomeDashboard> createState() => _HomeDashboardState();
+}
+
+class _HomeDashboardState extends State<HomeDashboard> {
+  String weatherTemp = "--";
+  String weatherHumidity = "--";
+  String weatherStatusText = "جاري تحديد موقعك وجلب الطقس...";
+  String locationName = "";
+  bool isWeatherLoaded = false;
+  bool _refreshing = false;
+  String _selectedGovernorate = "";
+  List<GovernorateInfo> _governorates = [];
+  WeatherSnapshot? _weatherSnapshot;
+  double? _weatherLatitude;
+  double? _weatherLongitude;
+  WeatherLocationSelection? _selectedWeatherLocation;
+  bool _weatherPushEnabled = false;
+  bool _weatherPushBusy = false;
+  List<MyFarmProgram> _activePrograms = const [];
+  StreamSubscription<List<MyFarmProgram>>? _farmProgramsSubscription;
+  late Future<bool> _adminAccess;
+
+  @override
+  void initState() {
+    super.initState();
+    _adminAccess = CalculatorService.isCurrentUserAdmin();
+    _loadCachedWeather();
+    _loadWeatherPushPreference();
+    _listenToFarmPrograms();
+  }
+
+  void _listenToFarmPrograms() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    _farmProgramsSubscription = MyFarmService.getUserPrograms(uid).listen(
+      (programs) {
+        _safeSet(() => _activePrograms = programs
+            .where((program) => program.status == 'active' && !program.isCompleted)
+            .toList(growable: false));
+      },
+      onError: (Object error) {
+        debugPrint('تعذر تحميل البرامج النشطة للإنذار المبكر');
+      },
+    );
+  }
+
+  void _loadGovernorates() {
+    if (_governorates.isNotEmpty) return;
+    setState(() {
+      _governorates = EgyptData.governorates;
+    });
+  }
+
+  Future<void> _showGovernoratePicker() async {
+    _loadGovernorates();
+    if (!mounted) return;
+
+    final selectedGovernorate = await showModalBottomSheet<GovernorateInfo>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          height: MediaQuery.of(context).size.height * 0.75,
+          child: Column(
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 12),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const Row(
+                children: [
+                  Icon(Icons.location_city, color: Color(0xFF047857)),
+                  SizedBox(width: 8),
+                  Text('اختر المحافظة',
+                      style: TextStyle(
+                          fontSize: 17, fontWeight: FontWeight.bold)),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFECFDF5),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: ListTile(
+                  leading: const Icon(Icons.my_location,
+                      color: Color(0xFF047857)),
+                  title: const Text('تحديد تلقائي (GPS)',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: const Text('استخدام موقعك الحالي',
+                      style: TextStyle(fontSize: 11)),
+                  onTap: () async {
+                    Navigator.pop(context);
+                    await _fetchWeatherByLocation();
+                  },
+                ),
+              ),
+              const Divider(),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: _governorates.length,
+                  itemBuilder: (context, index) {
+                    final gov = _governorates[index];
+                    final name = gov.name;
+                    final isSelected = name == _selectedGovernorate;
+                    return ListTile(
+                      leading: Icon(
+                        Icons.location_on,
+                        color: isSelected
+                            ? const Color(0xFF047857)
+                            : Colors.grey,
+                      ),
+                      title: Text(name),
+                      trailing: isSelected
+                          ? const Icon(Icons.check,
+                              color: Color(0xFF047857))
+                          : null,
+                      onTap: () async {
+                        Navigator.pop(context, gov);
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (selectedGovernorate == null || !mounted) return;
+
+    try {
+      final catalog = await EgyptLocationCatalog.load();
+      final governorate = catalog.findGovernorate(selectedGovernorate.name);
+      if (governorate == null) {
+        throw const FormatException('لم تتوفر بيانات لهذه المحافظة.');
+      }
+      final area = await _pickAdministrativeArea(governorate, catalog);
+      if (area == null || !mounted) return;
+      final location = await _pickWeatherLocationInArea(
+        governorate,
+        area,
+        catalog.coverageNote,
+      );
+      if (location != null && mounted) {
+        await _fetchWeatherForAdministrativeLocation(location);
+      }
+    } catch (error) {
+      debugPrint('تعذر تحميل بيانات المراكز والقرى');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('تعذر تحميل قائمة المراكز والقرى. حاول مرة أخرى.'),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<EgyptAdministrativeArea?> _pickAdministrativeArea(
+    EgyptAdministrativeGovernorate governorate,
+    EgyptLocationCatalog catalog,
+  ) {
+    return showModalBottomSheet<EgyptAdministrativeArea>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: SafeArea(
+          child: SizedBox(
+            height: MediaQuery.of(sheetContext).size.height * 0.78,
+            child: Column(
+              children: [
+                const SizedBox(height: 18),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 18),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.location_city,
+                          color: Color(0xFF047857)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'اختر المركز أو المنطقة في ${governorate.name}',
+                          style: const TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(18, 8, 18, 10),
+                  child: Text(
+                    'اختر المركز أولاً، ثم اختر قريتك إن كانت مدرجة.',
+                    style: TextStyle(fontSize: 12, color: Colors.black54),
+                  ),
+                ),
+                Expanded(
+                  child: ListView.separated(
+                    itemCount: governorate.areas.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      final area = governorate.areas[index];
+                      return ListTile(
+                        leading: const Icon(Icons.place_outlined,
+                            color: Color(0xFF047857)),
+                        title: Text(area.name),
+                        subtitle: Text(area.villages.isEmpty
+                            ? 'استخدام موقع المركز أو المنطقة'
+                            : '${area.villages.length} قرية/وحدة محلية متاحة'),
+                        trailing: const Icon(Icons.chevron_left),
+                        onTap: () => Navigator.pop(sheetContext, area),
+                      );
+                    },
+                  ),
+                ),
+                _buildLocationDataAttribution(catalog.coverageNote),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<WeatherLocationSelection?> _pickWeatherLocationInArea(
+    EgyptAdministrativeGovernorate governorate,
+    EgyptAdministrativeArea area,
+    String coverageNote,
+  ) {
+    return showModalBottomSheet<WeatherLocationSelection>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: SafeArea(
+          child: SizedBox(
+            height: MediaQuery.of(sheetContext).size.height * 0.82,
+            child: Column(
+              children: [
+                const SizedBox(height: 18),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 18),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.holiday_village_outlined,
+                          color: Color(0xFF047857)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'اختر القرية في ${area.name}',
+                          style: const TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.location_city,
+                      color: Color(0xFF047857)),
+                  title: Text('استخدام موقع ${area.name}'),
+                  subtitle: const Text('طقس تقريبي على مستوى المركز/المنطقة'),
+                  onTap: () => Navigator.pop(
+                    sheetContext,
+                    WeatherLocationSelection.forArea(governorate, area),
+                  ),
+                ),
+                const Divider(height: 1),
+                Expanded(
+                  child: ListView.separated(
+                    itemCount: area.villages.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      final village = area.villages[index];
+                      return ListTile(
+                        leading: const Icon(Icons.holiday_village_outlined),
+                        title: Text(village.name),
+                        onTap: () => Navigator.pop(
+                          sheetContext,
+                          WeatherLocationSelection.forVillage(
+                            governorate,
+                            area,
+                            village,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                _buildLocationDataAttribution(coverageNote),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLocationDataAttribution(String coverageNote) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+      child: Text(
+        'البيانات: CAPMAS عبر OCHA/HDX · CC BY-IGO. $coverageNote',
+        textAlign: TextAlign.center,
+        style: const TextStyle(fontSize: 10, color: Colors.black54),
+      ),
+    );
+  }
+
+  void _safeSet(VoidCallback fn) {
+    if (mounted) setState(fn);
+  }
+
+  Future<void> _loadWeatherPushPreference() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    final enabled = await WeatherPushService.isEnabled(uid);
+    if (FirebaseAuth.instance.currentUser?.uid != uid) return;
+    _safeSet(() => _weatherPushEnabled = enabled);
+    if (enabled) {
+      try {
+        await WeatherPushService.syncStoredLocation(uid);
+      } catch (error) {
+        debugPrint('تعذر مزامنة اشتراك الطقس المحفوظ');
+      }
+    }
+  }
+
+  Future<void> _syncWeatherPushLocation(double latitude, double longitude) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    try {
+      await WeatherPushService.syncLocation(
+        uid: uid,
+        latitude: latitude,
+        longitude: longitude,
+      );
+    } catch (error) {
+      debugPrint('تعذر تحديث موقع تنبيهات الطقس');
+    }
+  }
+
+  Future<void> _setWeatherPushEnabled(bool enabled) async {
+    if (_weatherPushBusy) return;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('سجّل الدخول أولاً لتفعيل التنبيهات.')),
+      );
+      return;
+    }
+    if (enabled && (_weatherLatitude == null || _weatherLongitude == null)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('حدّد موقع المزرعة أولاً من بطاقة الطقس.')),
+      );
+      return;
+    }
+
+    _safeSet(() => _weatherPushBusy = true);
+    try {
+      if (enabled) {
+        await WeatherPushService.enable(
+          uid: uid,
+          latitude: _weatherLatitude!,
+          longitude: _weatherLongitude!,
+        );
+      } else {
+        await WeatherPushService.disable(uid);
+      }
+      _safeSet(() => _weatherPushEnabled = enabled);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(enabled
+                ? 'تم تفعيل إشعارات الطقس لهذا الجهاز.'
+                : 'تم إيقاف إشعارات الطقس لهذا الجهاز.'),
+          ),
+        );
+      }
+    } on WeatherPushPermissionDenied {
+      _safeSet(() => _weatherPushEnabled = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('اسمح بالإشعارات من إعدادات الهاتف لتفعيلها.')),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('تعذر تحديث اشتراك الطقس. تحقق من الاتصال ثم أعد المحاولة.'),
+          ),
+        );
+      }
+    } finally {
+      _safeSet(() => _weatherPushBusy = false);
+    }
+  }
+
+  String _weatherSummary(WeatherSnapshot snapshot) {
+    final temperature = snapshot.currentTemperatureC;
+    final formattedTemperature = temperature == temperature.roundToDouble()
+        ? temperature.toStringAsFixed(0)
+        : temperature.toStringAsFixed(1);
+    return '${snapshot.currentCondition} · درجة الحرارة: $formattedTemperature°م | الرطوبة: ${snapshot.currentHumidityPercent}%';
+  }
+
+  Future<void> _fetchWeatherForAdministrativeLocation(
+    WeatherLocationSelection location,
+  ) async {
+    _safeSet(() {
+      _refreshing = true;
+      _selectedGovernorate = location.governorateName;
+      _selectedWeatherLocation = location;
+      _weatherLatitude = location.latitude;
+      _weatherLongitude = location.longitude;
+      _weatherSnapshot = null;
+      isWeatherLoaded = false;
+      weatherTemp = '--';
+      weatherHumidity = '--';
+      weatherStatusText = 'جاري جلب الطقس للموقع المختار...';
+      locationName = location.displayName;
+    });
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('selected_gov', location.governorateName);
+      await prefs.setString(
+        'selected_weather_location',
+        json.encode(location.toJson()),
+      );
+      await prefs.remove('weather_data');
+      unawaited(_syncWeatherPushLocation(location.latitude, location.longitude));
+
+      final snapshot = await WeatherService.fetch(
+        latitude: location.latitude,
+        longitude: location.longitude,
+      );
+      _safeSet(() {
+        _weatherSnapshot = snapshot;
+        _weatherLatitude = location.latitude;
+        _weatherLongitude = location.longitude;
+        weatherTemp = snapshot.currentTemperatureC.toString();
+        weatherHumidity = snapshot.currentHumidityPercent.toString();
+        weatherStatusText = _weatherSummary(snapshot);
+        isWeatherLoaded = true;
+      });
+
+      await _saveWeatherCache();
+    } catch (e) {
+      debugPrint("خطأ في توقعات الطقس");
+      _safeSet(() => weatherStatusText = "⚠️ تعذر الاتصال بالخدمة");
+    } finally {
+      _safeSet(() => _refreshing = false);
+    }
+  }
+
+  Future<void> _refreshWeather() async {
+    final selectedLocation = _selectedWeatherLocation;
+    if (selectedLocation != null) {
+      await _fetchWeatherForAdministrativeLocation(selectedLocation);
+      return;
+    }
+    await _fetchWeatherByLocation();
+  }
+
+  Future<void> _loadCachedWeather() async {
+    final prefs = await SharedPreferences.getInstance();
+    _selectedGovernorate = prefs.getString('selected_gov') ?? "";
+    final savedLocation = prefs.getString('selected_weather_location');
+    if (savedLocation != null) {
+      try {
+        _selectedWeatherLocation = WeatherLocationSelection.fromJson(
+          Map<String, dynamic>.from(json.decode(savedLocation) as Map),
+        );
+      } catch (_) {
+        await prefs.remove('selected_weather_location');
+      }
+    }
+    final cached = prefs.getString('weather_data');
+    bool stale = true;
+    if (cached != null) {
+      try {
+        final data = json.decode(cached) as Map<String, dynamic>;
+        final savedAt = int.tryParse('${data['saved_at'] ?? ''}');
+        if (savedAt != null) {
+          final age = DateTime.now().millisecondsSinceEpoch - savedAt;
+          stale = age > const Duration(minutes: 30).inMilliseconds;
+        }
+        WeatherSnapshot? snapshot;
+        final cachedForecast = data['forecast'];
+        if (cachedForecast is Map) {
+          try {
+            snapshot = WeatherSnapshot.fromJson(
+              Map<String, dynamic>.from(cachedForecast),
+            );
+          } catch (_) {}
+        }
+        _safeSet(() {
+          _weatherSnapshot = snapshot;
+          _weatherLatitude = (data['latitude'] as num?)?.toDouble() ??
+              _selectedWeatherLocation?.latitude;
+          _weatherLongitude = (data['longitude'] as num?)?.toDouble() ??
+              _selectedWeatherLocation?.longitude;
+          weatherTemp = snapshot?.currentTemperatureC.toString() ??
+              (data['temp'] ?? "--").toString();
+          weatherHumidity = snapshot?.currentHumidityPercent.toString() ??
+              (data['humidity'] ?? "--").toString();
+          weatherStatusText = snapshot == null
+              ? (data['status'] ?? "").toString()
+              : _weatherSummary(snapshot);
+          locationName = _selectedWeatherLocation?.displayName ??
+              (data['location'] ?? "").toString();
+          isWeatherLoaded = snapshot != null || data['loaded'] == true;
+        });
+      } catch (_) {}
+    }
+    if (!mounted) return;
+    if (!isWeatherLoaded || stale || _weatherSnapshot == null) {
+      final selectedLocation = _selectedWeatherLocation;
+      if (selectedLocation != null) {
+        unawaited(_fetchWeatherForAdministrativeLocation(selectedLocation));
+      } else {
+        // لا نفترض أن مركز المحافظة هو موقع المزرعة؛ نستخدم GPS ما لم يحدد
+        // المستخدم مركزًا أو قرية بنفسه.
+        unawaited(_fetchWeatherByLocation());
+      }
+    }
+  }
+
+  Future<void> _saveWeatherCache() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+        'weather_data',
+        json.encode({
+          'temp': weatherTemp,
+          'humidity': weatherHumidity,
+          'status': weatherStatusText,
+          'location': locationName,
+          'loaded': isWeatherLoaded,
+          'latitude': _weatherLatitude,
+          'longitude': _weatherLongitude,
+          'saved_at': DateTime.now().millisecondsSinceEpoch,
+          'forecast': _weatherSnapshot?.toJson(),
+        }));
+  }
+
+  Future<String> _getCityName(
+    double lat,
+    double lon, {
+    String fallback = "",
+  }) async {
+    try {
+      final url = Uri.parse(
+          'https://nominatim.openstreetmap.org/reverse?lat=$lat&lon=$lon&format=json&addressdetails=1&accept-language=ar&zoom=18');
+      final resp = await http.get(url, headers: {
+        'User-Agent': 'Nabati-App/1.0',
+      }).timeout(const Duration(seconds: 8));
+
+      if (resp.statusCode == 200) {
+        final data = json.decode(resp.body);
+        final rawAddress = data['address'];
+        final address = rawAddress is Map
+            ? Map<String, dynamic>.from(rawAddress)
+            : <String, dynamic>{};
+        final governorate = address['state'] ??
+            address['governorate'] ??
+            address['region'];
+        final locality = address['village'] ??
+            address['town'] ??
+            address['city'] ??
+            address['municipality'] ??
+            address['suburb'] ??
+            address['neighbourhood'] ??
+            address['city_district'] ??
+            address['county'] ??
+            address['state_district'];
+        if (governorate != null && governorate.toString().trim().isNotEmpty) {
+          final governorateName = governorate.toString().trim();
+          if (locality != null && locality.toString().trim().isNotEmpty) {
+            final localityName = locality.toString().trim();
+            if (localityName != governorateName) {
+              return '$localityName، $governorateName';
+            }
+          }
+          return governorateName;
+        }
+        final city = address['city'] ??
+            address['town'] ??
+            address['village'] ??
+            address['municipality'] ??
+            address['suburb'] ??
+            address['neighbourhood'] ??
+            address['city_district'] ??
+            address['county'] ??
+            address['state_district'];
+        if (city != null && city.toString().trim().isNotEmpty) {
+          return city.toString();
+        }
+      }
+    } catch (e) {
+      debugPrint("Nominatim error");
+    }
+    if (fallback.isNotEmpty) return fallback;
+    return '${lat.toStringAsFixed(2)}, ${lon.toStringAsFixed(2)}';
+  }
+
+  Future<void> _fetchWeatherByLocation() async {
+    _safeSet(() {
+      _refreshing = true;
+      _selectedWeatherLocation = null;
+      _selectedGovernorate = '';
+      _weatherSnapshot = null;
+      _weatherLatitude = null;
+      _weatherLongitude = null;
+      weatherTemp = '--';
+      weatherHumidity = '--';
+      locationName = 'جار تحديد موقعك الحالي...';
+      weatherStatusText = 'جار طلب قراءة GPS حديثة ودقيقة...';
+      isWeatherLoaded = false;
+    });
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('selected_gov');
+      await prefs.remove('selected_weather_location');
+      await prefs.remove('weather_data');
+
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        _safeSet(() {
+          locationName = 'تعذر تحديد الموقع';
+          weatherStatusText = 'شغّل GPS في الهاتف ثم أعد المحاولة.';
+        });
+        return;
+      }
+
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          _safeSet(() {
+            locationName = 'تعذر تحديد الموقع';
+            weatherStatusText = 'اسمح للتطبيق باستخدام الموقع ثم أعد المحاولة.';
+          });
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        _safeSet(() {
+          locationName = 'تعذر تحديد الموقع';
+          weatherStatusText =
+              'فعّل صلاحية الموقع من إعدادات الهاتف ثم أعد المحاولة.';
+        });
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.bestForNavigation,
+          timeLimit: Duration(seconds: 45),
+        ),
+      );
+      final now = DateTime.now();
+      final fixAge = now.difference(position.timestamp);
+      if (fixAge > const Duration(minutes: 3) ||
+          fixAge < const Duration(minutes: -1)) {
+        _safeSet(() {
+          locationName = 'قراءة GPS قديمة';
+          weatherStatusText =
+              'لم يصل موقع حديث. تحرك إلى مكان مفتوح وتأكد من تشغيل GPS.';
+        });
+        return;
+      }
+      if (!position.accuracy.isFinite || position.accuracy > 10000) {
+        _safeSet(() {
+          locationName = 'إشارة GPS غير دقيقة';
+          weatherStatusText =
+              'دقة الموقع ضعيفة؛ فعّل الموقع الدقيق في إعدادات الهاتف ثم أعد المحاولة.';
+        });
+        return;
+      }
+
+      String cityName = await _getCityName(
+        position.latitude,
+        position.longitude,
+        fallback: 'موقعك الحالي',
+      );
+
+      final snapshot = await WeatherService.fetch(
+        latitude: position.latitude,
+        longitude: position.longitude,
+      );
+      _safeSet(() {
+        _weatherSnapshot = snapshot;
+        _weatherLatitude = position.latitude;
+        _weatherLongitude = position.longitude;
+        _selectedWeatherLocation = null;
+        weatherTemp = snapshot.currentTemperatureC.toString();
+        weatherHumidity = snapshot.currentHumidityPercent.toString();
+        locationName = cityName;
+        _selectedGovernorate = "";
+        weatherStatusText = _weatherSummary(snapshot);
+        isWeatherLoaded = true;
+      });
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('selected_gov');
+        await prefs.remove('selected_weather_location');
+      } catch (_) {}
+      await _saveWeatherCache();
+      unawaited(
+        _syncWeatherPushLocation(position.latitude, position.longitude),
+      );
+    } catch (e) {
+      debugPrint('تعذر الحصول على موقع GPS حديث ودقيق');
+      _safeSet(() {
+        _weatherSnapshot = null;
+        isWeatherLoaded = false;
+        locationName = 'تعذر تحديد الموقع';
+        weatherStatusText =
+            'تحقق من تشغيل GPS وصلاحية الموقع الدقيق، ثم أعد المحاولة.';
+      });
+    } finally {
+      _safeSet(() => _refreshing = false);
+    }
+  }
+
+  Widget _buildQuickActionCard({
+    required IconData icon,
+    required Color color,
+    required String title,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardColor,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.grey.shade200),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.grey.shade100,
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          children: [
+            Container(
+              width: 55,
+              height: 55,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              alignment: Alignment.center,
+              child: Icon(icon, color: color, size: 30),
+            ),
+            const SizedBox(height: 10),
+            Text(title,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                    fontWeight: FontWeight.bold, fontSize: 13)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTipCard() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Colors.amber.shade50,
+            Colors.orange.shade50,
+          ],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.amber.shade200),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: Colors.amber.shade100,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            alignment: Alignment.center,
+            child: Icon(Icons.lightbulb,
+                color: Colors.amber.shade800, size: 24),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'نصيحة اليوم 💡',
+                  style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                      color: Colors.amber.shade900),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'تجنب رش المبيدات في وقت الظهيرة أو عند ارتفاع درجات الحرارة لتفادي احتراق الأوراق، وأفضل وقت للرش هو الصباح الباكر أو بعد كسر حدة الشمس عصراً.',
+                  style: TextStyle(
+                      fontSize: 12, height: 1.6, color: Colors.black87),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWeatherAlertList(List<WeatherAlert> alerts) {
+    if (alerts.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: const Row(
+          children: [
+            Icon(Icons.check_circle_outline, color: Color(0xFF047857)),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'لا توجد تنبيهات جوية مهمة خلال الأيام الثلاثة القادمة',
+                style: TextStyle(fontSize: 12),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'تنبيهات الطقس القريبة',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+        ),
+        const SizedBox(height: 8),
+        ...alerts.map((alert) {
+          final color = switch (alert.kind) {
+            WeatherAlertKind.rain => const Color(0xFF0369A1),
+            WeatherAlertKind.heat => const Color(0xFFB45309),
+            WeatherAlertKind.cold => const Color(0xFF4338CA),
+          };
+          final icon = switch (alert.kind) {
+            WeatherAlertKind.rain => Icons.water_drop,
+            WeatherAlertKind.heat => Icons.thermostat,
+            WeatherAlertKind.cold => Icons.ac_unit,
+          };
+          return Container(
+            margin: const EdgeInsets.only(bottom: 7),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: color.withValues(alpha: 0.22)),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(icon, size: 20, color: color),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(alert.title,
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold, color: color)),
+                      const SizedBox(height: 3),
+                      Text(alert.message,
+                          style: const TextStyle(fontSize: 11, height: 1.4)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        }),
+      ],
+    );
+  }
+
+  IconData _forecastIcon(int weatherCode) {
+    if (weatherCode == 0) return Icons.wb_sunny;
+    if (weatherCode >= 95) return Icons.thunderstorm;
+    if ((weatherCode >= 51 && weatherCode <= 67) ||
+        (weatherCode >= 80 && weatherCode <= 82)) {
+      return Icons.umbrella;
+    }
+    if (weatherCode >= 71 && weatherCode <= 77) return Icons.ac_unit;
+    return Icons.cloud_queue;
+  }
+
+  Widget _buildForecastDayTile(WeatherForecastDay day, int index) {
+    final label = index == 0 ? 'اليوم' : (index == 1 ? 'غدًا' : day.dayName);
+    return Container(
+      width: 104,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFD1FAE5)),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+          Icon(_forecastIcon(day.weatherCode),
+              color: day.weatherCode == 0
+                  ? Colors.orange
+                  : const Color(0xFF0284C7),
+              size: 23),
+          Text(day.conditionLabel,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 10)),
+          Text(
+            '${day.maximumTemperatureC.toStringAsFixed(0)}° / ${day.minimumTemperatureC.toStringAsFixed(0)}°',
+            textDirection: TextDirection.ltr,
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+          ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.water_drop, size: 13, color: Colors.blue),
+              const SizedBox(width: 3),
+              Text(
+                day.precipitationProbability == null
+                    ? '—'
+                    : '${day.precipitationProbability}٪',
+                style: const TextStyle(fontSize: 11),
+              ),
+            ],
+          ),
+          Text('${day.precipitationMm.toStringAsFixed(1)} مم',
+              style: const TextStyle(fontSize: 10, color: Colors.black54)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWeatherPushControl() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFD1FAE5)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.notifications_active_outlined,
+              color: Color(0xFF047857), size: 18),
+          const SizedBox(width: 8),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('تنبيهات الطقس والإنذار المبكر',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
+                SizedBox(height: 3),
+                Text(
+                  'أمطار أو حر/برد، ومؤشرات رطوبة لمتابعة المحاصيل النشطة. الموقع تقريبي (نحو 1 كم).',
+                  style: TextStyle(fontSize: 9, height: 1.3),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 4),
+          _weatherPushBusy
+              ? const SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Color(0xFF047857),
+                  ),
+                )
+              : Switch.adaptive(
+                  value: _weatherPushEnabled,
+                  activeTrackColor: const Color(0xFF047857),
+                  onChanged: _setWeatherPushEnabled,
+                ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEarlyWarningCard() {
+    if (_activePrograms.isEmpty) return const SizedBox.shrink();
+    final warnings = _weatherSnapshot == null
+        ? const <CropWeatherWarning>[]
+        : EarlyWarningService.evaluate(
+            forecast: _weatherSnapshot!.days,
+            programs: _activePrograms,
+          );
+    final warning = warnings.isEmpty ? null : warnings.first;
+    final color = warning?.level == CropWeatherRiskLevel.elevated
+        ? const Color(0xFFB45309)
+        : const Color(0xFF047857);
+    final title = _weatherSnapshot == null
+        ? 'الإنذار المبكر للمحصول'
+        : warning?.title ?? 'لا توجد إشارة رطوبة مرتفعة حاليًا';
+    final message = _weatherSnapshot == null
+        ? 'جارٍ تحميل توقعات الطقس لحقولك.'
+        : warning?.message ??
+            'نراجع توقعات الأيام الثلاثة القادمة للمحاصيل النشطة. الإشارة تعتمد الطقس فقط ولا تعني وجود إصابة.';
+
+    return Card(
+      margin: EdgeInsets.zero,
+      color: color.withValues(alpha: 0.07),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              warning?.level == CropWeatherRiskLevel.elevated
+                  ? Icons.warning_amber_rounded
+                  : Icons.eco_outlined,
+              color: color,
+              size: 20,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: TextStyle(
+                          color: color,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12)),
+                  const SizedBox(height: 3),
+                  Text(message,
+                      maxLines: warning == null ? 2 : 4,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 10, height: 1.4)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWeatherCard() {
+    final snapshot = _weatherSnapshot;
+    final icon = snapshot == null
+        ? Icons.cloud_outlined
+        : _forecastIcon(snapshot.currentWeatherCode);
+    return Card(
+      margin: EdgeInsets.zero,
+      color: const Color(0xFFECFDF5),
+      elevation: 0,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsetsDirectional.fromSTEB(12, 6, 8, 6),
+            child: Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(11),
+                  ),
+                  alignment: Alignment.center,
+                  child: Icon(icon, size: 20, color: const Color(0xFF0284C7)),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        snapshot == null
+                            ? 'الطقس · ${locationName.isEmpty ? 'موقع المزرعة' : locationName}'
+                            : '$locationName · ${snapshot.currentTemperatureC.toStringAsFixed(0)}°م',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 12),
+                      ),
+                      Text(
+                        snapshot == null
+                            ? weatherStatusText
+                            : '${snapshot.currentCondition} · رطوبة ${snapshot.currentHumidityPercent}٪',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 10, color: Colors.black54),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'اختر المحافظة والمركز والقرية',
+                  visualDensity: VisualDensity.compact,
+                  constraints: const BoxConstraints.tightFor(width: 34, height: 34),
+                  padding: EdgeInsets.zero,
+                  onPressed: _showGovernoratePicker,
+                  icon: const Icon(Icons.location_on_outlined,
+                      size: 18, color: Color(0xFF047857)),
+                ),
+                _refreshing
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Color(0xFF047857)),
+                      )
+                    : IconButton(
+                        tooltip: 'تحديث طقس الموقع المختار',
+                        visualDensity: VisualDensity.compact,
+                        constraints:
+                            const BoxConstraints.tightFor(width: 34, height: 34),
+                        padding: EdgeInsets.zero,
+                        onPressed: _refreshWeather,
+                        icon: const Icon(Icons.refresh,
+                            size: 18, color: Color(0xFF047857)),
+                      ),
+              ],
+            ),
+          ),
+          if (snapshot != null)
+            Theme(
+              data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+              child: ExpansionTile(
+                tilePadding: const EdgeInsetsDirectional.only(start: 12, end: 14),
+                childrenPadding:
+                    const EdgeInsetsDirectional.fromSTEB(12, 0, 12, 12),
+                visualDensity: VisualDensity.compact,
+                leading: const Icon(Icons.calendar_month_outlined,
+                    size: 17, color: Color(0xFF047857)),
+                title: const Text('التوقعات والتنبيهات',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                subtitle: const Text('تفاصيل ٧ أيام وإعداد الإشعارات',
+                    style: TextStyle(fontSize: 9)),
+                children: [
+                  if (FirebaseAuth.instance.currentUser != null) ...[
+                    _buildWeatherPushControl(),
+                    const SizedBox(height: 8),
+                  ],
+                  _buildWeatherAlertList(snapshot.alerts),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    height: 118,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: snapshot.days.length,
+                      separatorBuilder: (_, __) => const SizedBox(width: 6),
+                      itemBuilder: (context, index) =>
+                          _buildForecastDayTile(snapshot.days[index], index),
+                    ),
+                  ),
+                  Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: TextButton.icon(
+                      onPressed: () => launchUrl(
+                        Uri.https('open-meteo.com'),
+                        mode: LaunchMode.externalApplication,
+                      ),
+                      icon: const Icon(Icons.open_in_new, size: 12),
+                      label: const Text('مصدر البيانات: Open-Meteo',
+                          style: TextStyle(fontSize: 10)),
+                    ),
+                  ),
+                  const Text(
+                    'التنبيهات تقديرية وليست تحذيرات رسمية أو تشخيصًا زراعيًا.',
+                    style: TextStyle(fontSize: 9, color: Colors.black54),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _farmProgramsSubscription?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF047857),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('مرحباً بك، ${widget.userName}',
+                style: const TextStyle(color: Colors.white, fontSize: 16)),
+            const Text('نباتي - مستشارك الزراعي الذكي',
+                style: TextStyle(color: Color(0xFFFDE68A), fontSize: 11)),
+          ],
+        ),
+        actions: [
+          FutureBuilder<bool>(
+            future: _adminAccess,
+            builder: (context, snapshot) {
+              if (snapshot.data != true) return const SizedBox.shrink();
+              return IconButton(
+                icon: const Icon(Icons.admin_panel_settings,
+                    color: Colors.amber),
+                tooltip: 'لوحة الأدمن',
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (context) => const AdminPanelScreen()),
+                  );
+                },
+              );
+            },
+            ),
+          IconButton(
+            icon: const Icon(Icons.bar_chart, color: Colors.white),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (context) => const StatisticsScreen()),
+              );
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.person, color: Colors.white),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => ProfileScreen(
+                    userName: widget.userName,
+                    userPhone: widget.userPhone,
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+      body: Directionality(
+        textDirection: TextDirection.rtl,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+          children: [
+            _buildEarlyWarningCard(),
+            if (_activePrograms.isNotEmpty) const SizedBox(height: 8),
+            _buildWeatherCard(),
+            const SizedBox(height: 16),
+            _buildTipCard(),
+            const SizedBox(height: 20),
+            
+            // تم إبقاء زرار الحاسبات فقط وشيل الباقي
+            Row(
+              children: [
+                Expanded(
+                  child: _buildQuickActionCard(
+                      icon: Icons.calculate,
+                      color: const Color(0xFF047857),
+                      title: 'حاسبات ومخططات المزرعة',
+                      onTap: () {
+                        Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (context) =>
+                                    const CalculatorHubScreen()));
+                      }),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

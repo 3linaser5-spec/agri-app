@@ -117,10 +117,23 @@ service cloud.firestore {
           && requestAfter.data.reviewed_by == request.auth.uid
           && requestAfter.data.reviewed_at == request.time;
       }
+      // تفعيل خدمة اللاندسكيب يحدده الأدمن مباشرة (بدون مستند طلب)،
+      // لكن بشكل مستند محكم: حقول محددة، ومساحة رقمية، وتوقيتات الخادم.
       function validLandscapeGrant() {
         return serviceId == 'irrigation_landscape_satellite'
-          && request.resource.data.service == serviceId
+          && request.resource.data.keys().hasAll([
+            'service', 'status', 'max_feddan', 'activated_at', 'activated_by', 'updated_at'
+          ])
+          && request.resource.data.keys().hasOnly([
+            'service', 'status', 'max_feddan', 'activated_at', 'activated_by', 'updated_at'
+          ])
+          && request.resource.data['service'] == 'irrigation_landscape_satellite'
           && request.resource.data.status in ['active', 'revoked']
+          && request.resource.data.max_feddan is number
+          && request.resource.data.max_feddan >= 0
+          && (request.resource.data.status == 'revoked'
+            || request.resource.data.max_feddan > 0)
+          && request.resource.data.activated_at == request.time
           && request.resource.data.activated_by == request.auth.uid
           && request.resource.data.updated_at == request.time;
       }

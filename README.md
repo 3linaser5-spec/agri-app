@@ -48,7 +48,9 @@ firebase deploy --only functions,firestore:rules,firestore:indexes,storage
 
 | المسار | المحتوى |
 | --- | --- |
-| `lib/main.dart` | نقطة الدخول + التنقّل + شاشات الجذر + `VersionService` |
+| `lib/main.dart` | نقطة الدخول فقط (`main`) |
+| `lib/app/` | `AgriConsultantApp`، `ThemeController`، وتهيئة Firebase المشتركة |
+| `lib/screens/root/` | شاشات الجذر: البداية، الدخول، التنقّل، الرئيسية، الماسح، السجل، الحساب، الموسوعة، الإحصاءات |
 | `lib/screens/` | شاشات مقسّمة حسب النطاق (admin, calculators, farm, irrigation, satellite) |
 | `lib/services/` | خدمات Firebase والشبكة والتحليل |
 | `lib/engines/` | محركات الري والهيدروليكا والتغطية (pure Dart، مغطاة باختبارات) |
@@ -61,7 +63,8 @@ firebase deploy --only functions,firestore:rules,firestore:indexes,storage
 
 - `flutter test` يشغّل كل ملفات `test/` (لا تُوضع اختبارات داخل `lib/`).
 - `cd functions && npm test` لاختبارات Cloud Functions.
-- `.github/workflows/analyze.yml` يشغّل الاثنين مع `flutter analyze`.
+- `.github/workflows/analyze.yml` يشغّل الاثنين مع `flutter analyze` على Flutter 3.50.1.
+- `scripts/check_coverage.py` يفرض حدًا أدنى لتغطية الأسطر (73%) من `coverage/lcov.info`.
 - `.github/workflows/build_apk.yml` يبني APK ويحدّث `version.json`
   (الإصدار + بصمة SHA-256) الذي يقرأه التحديث الذاتي في التطبيق.
 
@@ -71,4 +74,4 @@ firebase deploy --only functions,firestore:rules,firestore:indexes,storage
 `raw.githubusercontent.com/3linaser5-spec/agri-app/main/version.json`، يقارن
 الإصدار، ينزّل APK من نطاقات GitHub المسموحة، يتحقق من SHA-256 ثم يفتح المثبّت.
 أي تغيير في مكان النشر يتطلب تحديث قائمة النطاقات المسموحة في
-`lib/main.dart` و`scripts/update_release_checksum.py`.
+`lib/services/version_service.dart` و`scripts/update_release_checksum.py`.
