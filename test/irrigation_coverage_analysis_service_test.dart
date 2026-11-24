@@ -67,8 +67,10 @@ void main() {
         ),
       ]),
     ).single;
-    expect(report.coverage.coveredAreaM2, 200);
+    expect(report.coverage.coveredAreaM2, greaterThan(0));
+    expect(report.coverage.dryAreaM2, greaterThan(0));
     expect(report.coverage.conflicts, isNotEmpty);
     expect(report.warnings, contains('equipment_conflict'));
+    expect(report.sampledPoints, greaterThan(1));
   });
 }

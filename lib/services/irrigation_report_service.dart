@@ -50,11 +50,11 @@ class IrrigationReportService {
       '',
       'Coverage (preliminary; field calibration required):',
       ...coverageReports.map((report) =>
-          '${report.zoneId}: covered ${report.coverage.coveredAreaM2.toStringAsFixed(1)} m2; dry ${report.coverage.dryAreaM2.toStringAsFixed(1)} m2; overlap ${report.coverage.overlapAreaM2.toStringAsFixed(1)} m2; warnings ${report.warnings.join(', ')}'),
+          '${report.zoneId}: covered ${report.coverage.coveredAreaM2.toStringAsFixed(1)} m2; dry ${report.coverage.dryAreaM2.toStringAsFixed(1)} m2; overlap ${report.coverage.overlapAreaM2.toStringAsFixed(1)} m2; samples ${report.sampledPoints}; warnings ${report.warnings.join(', ')}'),
       '',
       'Satellite alerts requiring field inspection:',
       ...satelliteAlerts.map((alert) =>
-          '${alert.zoneId ?? 'Zone غير محدد'}: ${alert.title}; coordinates ${alert.latitude.toStringAsFixed(6)}, ${alert.longitude.toStringAsFixed(6)}; status ${alert.status}; يرجى الفحص الميداني.'),
+          '${alert.zoneId ?? 'Zone غير محدد'}: ${alert.title}; coordinates ${alert.latitude.toStringAsFixed(6)}, ${alert.longitude.toStringAsFixed(6)}; status ${alert.status}; inspection result: ${alert.inspectionResult ?? 'لم تُسجل نتيجة بعد'}.'),
       '',
       'Satellite analysis source names are intentionally omitted from this report.',
       'Potential problem locations must be verified in the field before action.',

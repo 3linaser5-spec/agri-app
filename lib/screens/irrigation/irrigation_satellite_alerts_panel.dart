@@ -31,22 +31,28 @@ class _AlertTile extends StatelessWidget {
   const _AlertTile({required this.alert});
 
   @override
-  Widget build(BuildContext context) => ListTile(
-        leading: const Icon(Icons.location_on, color: Colors.red),
-        title: Text('${alert.title}${alert.zoneId == null ? '' : ' — Zone ${alert.zoneId}'}'),
-        subtitle: Text('${alert.message}\nالإحداثيات: ${alert.latitude.toStringAsFixed(6)}, ${alert.longitude.toStringAsFixed(6)}\nيرجى الفحص الميداني — الخطورة: ${alert.severity}'),
-        isThreeLine: true,
-        trailing: PopupMenuButton<String>(
-          icon: const Icon(Icons.more_vert),
-          onSelected: (status) => _setStatus(context, status),
-          itemBuilder: (_) => const [
-            PopupMenuItem(value: 'open', child: Text('مفتوح')),
-            PopupMenuItem(value: 'inspected', child: Text('تم الفحص')),
-            PopupMenuItem(value: 'resolved', child: Text('تم الحل')),
-            PopupMenuItem(value: 'note', child: Text('تسجيل ملاحظة الفحص')),
-          ],
-        ),
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.location_on, color: Colors.red),
+            title: Text('${alert.title}${alert.zoneId == null ? '' : ' — Zone ${alert.zoneId}'}'),
+            subtitle: Text('${alert.message}\nالإحداثيات: ${alert.latitude.toStringAsFixed(6)}, ${alert.longitude.toStringAsFixed(6)}\nالخطورة: ${alert.severity}'),
+            isThreeLine: true,
+          ),
+          Wrap(spacing: 6, runSpacing: 6, children: [
+            _statusButton(context, 'open', 'مفتوح'),
+            _statusButton(context, 'inspected', 'تم الفحص'),
+            _statusButton(context, 'resolved', 'تم الحل'),
+            OutlinedButton.icon(onPressed: () => _addNote(context), icon: const Icon(Icons.note_add_outlined, size: 17), label: const Text('ملاحظة الفحص')),
+          ]),
+        ]),
       );
+
+  Widget _statusButton(BuildContext context, String value, String label) => value == alert.status
+      ? FilledButton(onPressed: null, child: Text(label))
+      : OutlinedButton(onPressed: () => _setStatus(context, value), child: Text(label));
 
   Future<void> _setStatus(BuildContext context, String status) async {
     if (status == 'note') return _addNote(context);

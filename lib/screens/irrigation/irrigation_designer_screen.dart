@@ -41,12 +41,17 @@ class _IrrigationDesignerScreenState extends State<IrrigationDesignerScreen> {
 
   Future<void> generateAndShareReport() async {
     try {
+      final alerts = await MapAlertService.watchAlerts().first;
+      final alertsWithNotes = await Future.wait(alerts.map((alert) async {
+        final notes = await MapAlertService.loadInspectionNotes(alertId: alert.id);
+        return notes.isEmpty ? alert : alert.copyWith(inspectionResult: notes.join(' | '));
+      }));
       final report = await const IrrigationReportService().build(
         project: project,
         coverageReports: coverageReports,
         routeHydraulics: routeHydraulics,
         zoneReports: zoneReports,
-        satelliteAlerts: await MapAlertService.watchAlerts().first,
+        satelliteAlerts: alertsWithNotes,
       );
       if (!mounted) return;
       setState(() => reportDocument = report);
@@ -195,8 +200,8 @@ class _IrrigationDesignerScreenState extends State<IrrigationDesignerScreen> {
     ElevatedButton.icon(onPressed: generateAndShareReport, icon: const Icon(Icons.picture_as_pdf), label: Text(reportDocument == null ? 'إنشاء ومشاركة تقرير PDF' : 'مشاركة تقرير PDF مرة أخرى')),
     if (bundle != null) ...[Text('DXF: ${bundle!.dxf.length} حرف'), Text('بنود BOQ: ${bundle!.boq.length}'), ...bundle!.schedule.map((x) => ListTile(title: Text(x.zoneName), subtitle: Text('${x.runtimeMinutes.toStringAsFixed(1)} دقيقة تشغيل')))],
     if (analysis != null) ...[
-      const ListTile(title: Text('فحص التغطية'), subtitle: Text('تقديري ويحتاج معايرة ميدانية قبل التنفيذ')),
-      ...coverageReports.map((report) => ListTile(leading: Icon(report.warnings.length <= 1 ? Icons.check_circle : Icons.warning, color: report.warnings.length <= 1 ? Colors.green : Colors.orange), title: Text('${report.zoneId} — ${report.irrigationElementCount} عناصر'), subtitle: Text('مغطى: ${report.coverage.coveredAreaM2.toStringAsFixed(1)} م² — جاف: ${report.coverage.dryAreaM2.toStringAsFixed(1)} م² — تداخل: ${report.coverage.overlapAreaM2.toStringAsFixed(1)} م²'))),
+      const ListTile(title: Text('فحص التغطية'), subtitle: Text('تحليل شبكي حسب المدى والاتجاه والعوائق؛ يلزم اختبار ضغط ميداني قبل التنفيذ')),
+      ...coverageReports.map((report) => ListTile(leading: Icon(report.warnings.length <= 1 ? Icons.check_circle : Icons.warning, color: report.warnings.length <= 1 ? Colors.green : Colors.orange), title: Text('${report.zoneId} — ${report.irrigationElementCount} عناصر'), subtitle: Text('مغطى: ${report.coverage.coveredAreaM2.toStringAsFixed(1)} م² — جاف: ${report.coverage.dryAreaM2.toStringAsFixed(1)} م² — تداخل: ${report.coverage.overlapAreaM2.toStringAsFixed(1)} م² — عينات: ${report.sampledPoints}'))),
       ListTile(title: const Text('توافق الـZones مع المضخة'), trailing: Text('${zoneReports.where((report) => report.pumpAdequate).length}/${zoneReports.length} صالح')),
       ...zoneReports.map((report) => ListTile(leading: Icon(report.pumpAdequate ? Icons.check_circle : Icons.warning, color: report.pumpAdequate ? Colors.green : Colors.orange), title: Text('${report.zoneId} — ${report.designFlowLpm.toStringAsFixed(1)} L/min'), subtitle: Text(report.recommendations.isEmpty ? 'المضخة مناسبة — TDH مطلوب: ${report.requiredHeadM.toStringAsFixed(1)} م' : report.recommendations.join(' ')))),
       ListTile(title: const Text('الفحص الهيدروليكي للمواسير'), trailing: Text('${routeHydraulics.length} مسارات')),

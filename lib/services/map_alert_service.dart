@@ -23,6 +23,13 @@ class MapAlertService {
     await _alerts(uid).doc(alertId).collection('inspection_notes').add({'text': text.trim(), 'created_at': FieldValue.serverTimestamp()});
   }
 
+  static Future<List<String>> loadInspectionNotes({required String alertId}) async {
+    final uid = _uid;
+    if (uid == null) return const [];
+    final snapshot = await _alerts(uid).doc(alertId).collection('inspection_notes').orderBy('created_at', descending: true).limit(20).get();
+    return List.unmodifiable(snapshot.docs.map((doc) => doc.data()['text']?.toString() ?? '').where((text) => text.trim().isNotEmpty));
+  }
+
   static Future<void> updateStatus({required String alertId, required String status}) async {
     final uid = _uid;
     if (uid == null) throw StateError('سجّل الدخول أولًا.');
