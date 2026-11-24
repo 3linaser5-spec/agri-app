@@ -61,7 +61,7 @@ dependencies:
   # ✅ أدوات إضافية
   intl: ^0.20.2
   flutter_map: ^8.2.1
-  latlong2: ^0.9.1
+  latlong2: ^0.10.1
   material_ui: ^1.11.1
   cupertino_ui: ^1.1.7
 
