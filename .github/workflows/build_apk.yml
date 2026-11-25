@@ -242,7 +242,8 @@ jobs:
             printf 'storePassword=%s\n' "$KEYSTORE_PASSWORD"
             printf 'keyPassword=%s\n' "$KEY_PASSWORD"
             printf 'keyAlias=%s\n' "$KEY_ALIAS"
-            printf 'storeFile=app/agri-release-key.jks\n'
+            # Gradle resolves storeFile relative to android/app/build.gradle.
+            printf 'storeFile=agri-release-key.jks\n'
           } > android/key.properties
 
       - name: Install dependencies
