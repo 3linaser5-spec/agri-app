@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:http/http.dart' as http;
+import 'package:dio/dio.dart';
 
 import '../models/weather_forecast.dart';
 
@@ -26,8 +26,15 @@ class WeatherService {
       },
     );
 
-    final response = await http
-        .get(uri, headers: const {'Accept': 'application/json'})
+    final response = await Dio()
+        .getUri<String>(
+          uri,
+          options: Options(
+            headers: const {'Accept': 'application/json'},
+            responseType: ResponseType.plain,
+            validateStatus: (_) => true,
+          ),
+        )
         .timeout(const Duration(seconds: 12));
     if (response.statusCode != 200) {
       throw WeatherServiceException(
@@ -35,7 +42,7 @@ class WeatherService {
       );
     }
 
-    final decoded = jsonDecode(response.body);
+    final decoded = jsonDecode(response.data ?? '');
     if (decoded is! Map<String, dynamic>) {
       throw const FormatException('استجابة الطقس ليست JSON صالحًا');
     }

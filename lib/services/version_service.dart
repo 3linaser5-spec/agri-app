@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'dart:async';
 import 'package:material_ui/material_ui.dart';
-import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:dio/dio.dart';
 import 'package:crypto/crypto.dart' as crypto;
@@ -18,11 +17,17 @@ class VersionService {
 
   static Future<Map<String, dynamic>?> fetchVersionInfo() async {
     try {
-      final response = await http
-          .get(Uri.parse(versionUrl))
+      final response = await Dio()
+          .get<String>(
+            versionUrl,
+            options: Options(
+              responseType: ResponseType.plain,
+              validateStatus: (_) => true,
+            ),
+          )
           .timeout(const Duration(seconds: 10));
       if (response.statusCode == 200) {
-        return json.decode(response.body) as Map<String, dynamic>;
+        return json.decode(response.data ?? '') as Map<String, dynamic>;
       }
       return null;
     } catch (e) {
