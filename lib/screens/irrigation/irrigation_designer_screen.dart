@@ -1,6 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:printing/printing.dart';
 import '../../models/irrigation_design_models.dart';
+import '../../models/map_alert_model.dart';
 import '../../models/irrigation_operations_models.dart';
 import '../../services/irrigation_export_service.dart';
 import '../../services/irrigation_design_analysis_service.dart';
@@ -50,7 +51,7 @@ class _IrrigationDesignerScreenState extends State<IrrigationDesignerScreen> {
     try {
       final entitlement = await LandscapeSatelliteAccessService.getCurrentEntitlement();
       final hasSatellite = entitlement.active && entitlement.maxFeddan > 0;
-      final alerts = hasSatellite ? await MapAlertService.watchAlerts().first : const [];
+      final alerts = hasSatellite ? await MapAlertService.watchAlerts().first : const <MapAlert>[];
       final alertsWithNotes = await Future.wait(alerts.map((alert) async {
         final notes = await MapAlertService.loadInspectionNotes(alertId: alert.id);
         return notes.isEmpty ? alert : alert.copyWith(inspectionResult: notes.join(' | '));
