@@ -24,6 +24,15 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/service_entitlements/$(uid)/services/satellite_monitoring).data.status == 'active';
     }
 
+    function hasActiveLandscapeAccess(uid) {
+      return exists(/databases/$(database)/documents/service_entitlements/$(uid)/services/irrigation_landscape_satellite)
+        && get(/databases/$(database)/documents/service_entitlements/$(uid)/services/irrigation_landscape_satellite).data.status == 'active';
+    }
+
+    function hasMapAlertAccess(uid) {
+      return hasActiveSatelliteAccess(uid) || hasActiveLandscapeAccess(uid);
+    }
+
     // لا أحد يكتب هنا من التطبيق
     match /admins/{uid} {
       allow read: if signedIn() && request.auth.uid == uid;
@@ -201,10 +210,11 @@ service cloud.firestore {
       match /map_alerts/{alertId} {
         allow read: if signedIn()
           && request.auth.uid == uid
-          && hasActiveSatelliteAccess(uid);
+          && hasMapAlertAccess(uid);
         allow create, delete: if false;
-        allow update: if signedIn()
-          && request.auth.uid == uid
+          allow update: if signedIn()
+            && request.auth.uid == uid
+            && hasMapAlertAccess(uid)
           && request.resource.data.diff(resource.data).affectedKeys()
               .hasOnly(['status', 'resolved', 'updated_at'])
           && request.resource.data.status in ['open', 'inspected', 'resolved']
@@ -212,9 +222,10 @@ service cloud.firestore {
           && request.resource.data.updated_at == request.time;
 
         match /inspection_notes/{noteId} {
-          allow read: if signedIn() && request.auth.uid == uid;
+          allow read: if signedIn() && request.auth.uid == uid && hasMapAlertAccess(uid);
           allow create: if signedIn()
             && request.auth.uid == uid
+            && hasMapAlertAccess(uid)
             && request.resource.data.keys().hasOnly(['text', 'created_at'])
             && request.resource.data.keys().hasAll(['text', 'created_at'])
             && request.resource.data.text is string
@@ -549,6 +560,11 @@ service cloud.firestore {
     }
 
     match /irrigationDesignProjects/{projectId} {
+      function ownsParentProject() {
+        return signedIn() && (isAdmin()
+          || get(/databases/$(database)/documents/irrigationDesignProjects/$(projectId)).data.owner_id == request.auth.uid);
+      }
+
       allow read, delete: if signedIn()
         && (request.auth.uid == resource.data.owner_id || isAdmin());
       allow create: if signedIn()
@@ -559,20 +575,26 @@ service cloud.firestore {
             && request.resource.data.owner_id == request.auth.uid));
       match /versions/{versionId} {
         allow read, delete: if signedIn()
+          && ownsParentProject()
           && (request.auth.uid == resource.data.owner_id || isAdmin());
         allow create: if signedIn()
+          && ownsParentProject()
           && (request.auth.uid == request.resource.data.owner_id || isAdmin());
         allow update: if signedIn()
+          && ownsParentProject()
           && (isAdmin()
             || (request.auth.uid == resource.data.owner_id
               && request.resource.data.owner_id == request.auth.uid));
       }
       match /satelliteLinks/{zoneId} {
         allow read, delete: if signedIn()
+          && ownsParentProject()
           && (request.auth.uid == resource.data.owner_id || isAdmin());
         allow create: if signedIn()
+          && ownsParentProject()
           && (request.auth.uid == request.resource.data.owner_id || isAdmin());
         allow update: if signedIn()
+          && ownsParentProject()
           && (isAdmin()
             || (request.auth.uid == resource.data.owner_id
               && request.resource.data.owner_id == request.auth.uid));

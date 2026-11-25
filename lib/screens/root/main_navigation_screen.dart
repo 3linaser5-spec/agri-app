@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 import '../calculators/calculator_hub_screen.dart';
 import '../farm/my_farm_screen.dart';
 import '../satellite/satellite_access_gate_screen.dart';
+import '../irrigation/irrigation_designer_screen.dart';
 import './home_dashboard.dart';
 import './ai_scanner_screen.dart';
 import './history_screen.dart';
@@ -85,6 +86,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                     _buildActionItem(Icons.calculate, 'الحاسبات', const Color(0xFF047857), () {
                       Navigator.pop(context);
                       Navigator.push(context, MaterialPageRoute(builder: (_) => const CalculatorHubScreen()));
+                    }),
+                    _buildActionItem(Icons.water_drop, 'اللاندسكيب والري', const Color(0xFF0E7490), () {
+                      Navigator.pop(context);
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => const IrrigationDesignerScreen()));
                     }),
                     _buildActionItem(Icons.menu_book, 'الموسوعة', const Color(0xFF0EA5E9), () {
                       Navigator.pop(context);

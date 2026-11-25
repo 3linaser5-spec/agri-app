@@ -145,6 +145,22 @@ async function requireSatelliteAccess(uid: string): Promise<void> {
   }
 }
 
+function validateSatelliteFieldInput(field: Record<string, unknown>): void {
+  const name = field['name'];
+  const crop = field['crop'];
+  if (typeof name !== 'string' || name.trim().length < 1 || name.trim().length > 100) {
+    throw new HttpsError('invalid-argument', 'اسم الحقل غير صالح.');
+  }
+  if (typeof crop !== 'string' || crop.trim().length < 1 || crop.trim().length > 100) {
+    throw new HttpsError('invalid-argument', 'نوع المحصول غير صالح.');
+  }
+  const plantingDate = field['planting_date'];
+  if (plantingDate !== undefined && plantingDate !== null &&
+      !(typeof plantingDate === 'string' && parseIsoDate(plantingDate))) {
+    throw new HttpsError('invalid-argument', 'تاريخ الزراعة غير صالح.');
+  }
+}
+
 function polygonAreaM2(polygon: unknown): number {
   const points = validateHlsPolygon(polygon);
   const meanLatitude = points.reduce((sum, point) => sum + point.latitude, 0) / points.length;
@@ -161,8 +177,10 @@ export const saveSatelliteField = onCall(
   async (request) => {
     const uid = request.auth?.uid;
     if (!uid || !isRecord(request.data)) throw new HttpsError('unauthenticated', 'سجّل الدخول أولًا.');
+    await requireSatelliteAccess(uid);
     const fieldId = request.data['fieldId']; const field = request.data['field'];
     if (!safeFieldId(fieldId) || !isRecord(field)) throw new HttpsError('invalid-argument', 'بيانات الحقل غير صالحة.');
+    validateSatelliteFieldInput(field);
     let areaM2: number;
     try { areaM2 = polygonAreaM2(getFieldPolygon(field)); } catch { throw new HttpsError('invalid-argument', 'حدود الحقل غير صالحة.'); }
     const db = getFirestore(); const userRef = db.collection('users').doc(uid); const fieldRef = userRef.collection('satellite_fields').doc(fieldId);

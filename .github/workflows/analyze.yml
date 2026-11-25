@@ -25,6 +25,22 @@ jobs:
         working-directory: functions
         run: npm ci && npm test
 
+      - name: Set up Java for Firebase Emulator
+        uses: actions/setup-java@cf277444c67ac2f5d8a4f9c3e5a6f8b7d9e0c1a2 # v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Install Firestore Rules test dependencies
+        run: npm ci
+        working-directory: rules-tests
+
+      - name: Run Firestore Emulator Rules tests
+        run: |
+          rules-tests/node_modules/.bin/firebase emulators:exec \
+            --only firestore --project agri-rules-test \
+            "npm test --prefix rules-tests"
+
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           flutter-version: '3.50.1'

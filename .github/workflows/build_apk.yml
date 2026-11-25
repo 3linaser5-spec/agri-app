@@ -212,13 +212,16 @@ jobs:
         env:
           GOOGLE_SERVICES_JSON_B64: ${{ secrets.GOOGLE_SERVICES_JSON }}
         run: |
+          test -n "$GOOGLE_SERVICES_JSON_B64" || { echo 'GOOGLE_SERVICES_JSON secret is missing'; exit 1; }
           umask 077
           printf '%s' "$GOOGLE_SERVICES_JSON_B64" | base64 --decode > android/app/google-services.json
+          test -s android/app/google-services.json
 
       - name: Decode Keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
+          test -n "$KEYSTORE_BASE64" || { echo 'KEYSTORE_BASE64 secret is missing'; exit 1; }
           umask 077
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > android/app/agri-release-key.jks
           test -s android/app/agri-release-key.jks
@@ -229,12 +232,15 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
         run: |
+          test -n "$KEYSTORE_PASSWORD" || { echo 'KEYSTORE_PASSWORD secret is missing'; exit 1; }
+          test -n "$KEY_PASSWORD" || { echo 'KEY_PASSWORD secret is missing'; exit 1; }
+          test -n "$KEY_ALIAS" || { echo 'KEY_ALIAS secret is missing'; exit 1; }
           umask 077
           {
             printf 'storePassword=%s\n' "$KEYSTORE_PASSWORD"
             printf 'keyPassword=%s\n' "$KEY_PASSWORD"
             printf 'keyAlias=%s\n' "$KEY_ALIAS"
-            printf 'storeFile=agri-release-key.jks\n'
+            printf 'storeFile=app/agri-release-key.jks\n'
           } > android/key.properties
 
       - name: Install dependencies

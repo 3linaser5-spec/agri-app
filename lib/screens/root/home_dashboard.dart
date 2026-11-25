@@ -15,6 +15,9 @@ import '../../models/my_farm_model.dart';
 import '../../services/my_farm_service.dart';
 import '../admin/admin_panel_screen.dart';
 import '../calculators/calculator_hub_screen.dart';
+import '../farm/my_farm_screen.dart';
+import '../irrigation/irrigation_designer_screen.dart';
+import '../satellite/satellite_access_gate_screen.dart';
 import './profile_screen.dart';
 import './statistics_screen.dart';
 import './home_dashboard_widgets.dart';
@@ -867,21 +870,45 @@ class _HomeDashboardState extends State<HomeDashboard> {
             const HomeTipCard(),
             const SizedBox(height: 20),
             
-            // تم إبقاء زرار الحاسبات فقط وشيل الباقي
-            Row(
+            GridView.count(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              crossAxisCount: 2,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 10,
+              childAspectRatio: 1.35,
               children: [
-                Expanded(
-                  child: HomeQuickActionCard(
-                      icon: Icons.calculate,
-                      color: const Color(0xFF047857),
-                      title: 'حاسبات ومخططات المزرعة',
-                      onTap: () {
-                        Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (context) =>
-                                    const CalculatorHubScreen()));
-                      }),
+                HomeQuickActionCard(
+                  icon: Icons.calculate,
+                  color: const Color(0xFF047857),
+                  title: 'الحاسبات',
+                  onTap: () => Navigator.push(context, MaterialPageRoute(
+                    builder: (_) => const CalculatorHubScreen(),
+                  )),
+                ),
+                HomeQuickActionCard(
+                  icon: Icons.agriculture,
+                  color: const Color(0xFF10B981),
+                  title: 'مزرعتي',
+                  onTap: () => Navigator.push(context, MaterialPageRoute(
+                    builder: (_) => const MyFarmScreen(),
+                  )),
+                ),
+                HomeQuickActionCard(
+                  icon: Icons.water_drop,
+                  color: const Color(0xFF0E7490),
+                  title: 'اللاندسكيب والري',
+                  onTap: () => Navigator.push(context, MaterialPageRoute(
+                    builder: (_) => const IrrigationDesignerScreen(),
+                  )),
+                ),
+                HomeQuickActionCard(
+                  icon: Icons.satellite_alt,
+                  color: const Color(0xFF0F766E),
+                  title: 'رصد الأقمار',
+                  onTap: () => Navigator.push(context, MaterialPageRoute(
+                    builder: (_) => const SatelliteMonitoringScreen(),
+                  )),
                 ),
               ],
             ),
