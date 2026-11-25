@@ -1,6 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:printing/printing.dart';
 import '../../models/irrigation_design_models.dart';
+import '../../models/map_alert_model.dart';
 import '../../models/irrigation_operations_models.dart';
 import '../../services/irrigation_export_service.dart';
 import '../../services/irrigation_design_analysis_service.dart';
@@ -19,6 +20,11 @@ import 'irrigation_satellite_alerts_panel.dart';
 import 'irrigation_3d_preview_screen.dart';
 import 'irrigation_review_view.dart';
 
+/// مصمم شبكة الري واللاندسكيب.
+///
+/// التصميم (الحدود، النباتات، المعدات، المضخة، الفحص، التصدير) متاح لكل حساب.
+/// اشتراك أقمار اللاندسكيب إضافة منفصلة: يفتح تنبيهات الأقمار وحدود المساحة
+/// المرتبطة بالاشتراك فقط، ولا يمنع استخدام المصمم.
 class IrrigationDesignerScreen extends StatefulWidget {
   const IrrigationDesignerScreen({super.key});
   @override State<IrrigationDesignerScreen> createState() => _IrrigationDesignerScreenState();
@@ -38,11 +44,14 @@ class _IrrigationDesignerScreenState extends State<IrrigationDesignerScreen> {
   final steps = const ['الموقع', 'النباتات', 'المعدات والمناطق', 'المضخة', 'الفحص والتصدير'];
 
   @override void initState() { super.initState(); project = _demoProject(); }
+
   void exportProject() { try { setState(() { bundle = const IrrigationExportService().export(project); analysis = const IrrigationDesignAnalysisService().analyze(project); mapIssues = const IrrigationMapValidationService().validate(project); routeHydraulics = const IrrigationRouteHydraulicsService().analyze(project.pipeRoutes); zoneReports = const IrrigationZoneHydraulicReportService().build(project); coverageReports = const IrrigationCoverageAnalysisService().analyze(project); maintenanceTasks = const IrrigationOperationsService().buildMaintenancePlan(project, startAt: DateTime(2026, 1, 1)); }); } catch (e) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('لا يمكن التصدير: $e'))); } }
 
   Future<void> generateAndShareReport() async {
     try {
-      final alerts = await MapAlertService.watchAlerts().first;
+      final entitlement = await LandscapeSatelliteAccessService.getCurrentEntitlement();
+      final hasSatellite = entitlement.active && entitlement.maxFeddan > 0;
+      final alerts = hasSatellite ? await MapAlertService.watchAlerts().first : const <MapAlert>[];
       final alertsWithNotes = await Future.wait(alerts.map((alert) async {
         final notes = await MapAlertService.loadInspectionNotes(alertId: alert.id);
         return notes.isEmpty ? alert : alert.copyWith(inspectionResult: notes.join(' | '));
@@ -72,8 +81,11 @@ class _IrrigationDesignerScreenState extends State<IrrigationDesignerScreen> {
       MaterialPageRoute(builder: (_) => const IrrigationMapEditorScreen()),
     );
     if (!mounted || result == null) return;
+    // حد المساحة بالفدان قيد اشتراك أقمار اللاندسكيب فقط؛ التصميم بدون
+    // اشتراك يحفظ الحدود كما رسمها المستخدم.
     final entitlement = await LandscapeSatelliteAccessService.getCurrentEntitlement();
-    if (!entitlement.allows(result.areaFeddan)) {
+    final satelliteLimitApplies = entitlement.active && entitlement.maxFeddan > 0;
+    if (satelliteLimitApplies && !entitlement.allows(result.areaFeddan)) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('المساحة تتجاوز الحد المسموح: ${entitlement.maxFeddan} فدان')),
@@ -178,25 +190,48 @@ class _IrrigationDesignerScreenState extends State<IrrigationDesignerScreen> {
     textDirection: TextDirection.rtl,
     child: Scaffold(
       appBar: AppBar(title: const Text('مصمم شبكة الري واللاندسكيب')),
-      body: StreamBuilder<LandscapeSatelliteEntitlement>(stream: LandscapeSatelliteAccessService.watchEntitlement(), builder: (context, access) {
-        if (access.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-        final entitlement = access.data;
-        if (entitlement == null || !entitlement.active) return _accessRequired();
-        if (entitlement.maxFeddan <= 0) return _accessRequired('الأدمن لم يحدد مساحة فدان مسموحة لهذا الحساب.');
-        return Column(children: [
-          Stepper(currentStep: step, onStepTapped: (i) => setState(() => step=i), controlsBuilder: (_,__) => const SizedBox.shrink(), steps: [for (var i=0;i<steps.length;i++) Step(title: Text(steps[i]), content: _stepContent(i), isActive: step >= i, state: step > i ? StepState.complete : StepState.indexed)]),
-          if (step == steps.length - 1) Expanded(child: _review()),
-        ]);
-      }),
+      body: Column(children: [
+        Stepper(currentStep: step, onStepTapped: (i) => setState(() => step = i), controlsBuilder: (_, __) => const SizedBox.shrink(), steps: [for (var i = 0; i < steps.length; i++) Step(title: Text(steps[i]), content: _stepContent(i), isActive: step >= i, state: step > i ? StepState.complete : StepState.indexed)]),
+        if (step == steps.length - 1) Expanded(child: _review()),
+      ]),
     ),
   );
 
   Widget _stepContent(int i) => Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(switch(i) { 0 => 'حدود الموقع: ${project.siteBoundary.points.length} نقاط — المساحة ${project.siteBoundary.declaredArea?.toStringAsFixed(3) ?? '-'} فدان', 1 => 'عدد النباتات: ${project.plants.length} — Kc: ${project.plants.isEmpty ? '-' : project.plants.first.kc}', 2 => 'المناطق: ${project.zones.length} — عناصر الخريطة: ${project.placements.length} — مسارات المواسير: ${project.pipeRoutes.length}', 3 => 'المضخة: ${project.pump.nameAr} — ${project.pump.headM} m TDH', _ => 'شغّل الفحص ثم صدّر DXF وBOQ وجدول التشغيل.'}), if (i == 0) Align(alignment: Alignment.centerRight, child: OutlinedButton.icon(onPressed: _editBoundary, icon: const Icon(Icons.map), label: const Text('فتح محرر الخريطة'))), if (i == 2) Wrap(spacing: 8, children: [OutlinedButton.icon(onPressed: _editPlacements, icon: const Icon(Icons.water_drop), label: const Text('عناصر الشبكة')), OutlinedButton.icon(onPressed: _addPipeRoute, icon: const Icon(Icons.alt_route), label: const Text('رسم مسار ماسورة'))])] )));
-  Widget _accessRequired([String message = 'خدمة أقمار اللاندسكيب غير مفعّلة لهذا الحساب.']) => Center(child: Padding(padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [const Icon(Icons.lock_outline, size: 64, color: Colors.blueGrey), const SizedBox(height: 12), Text(message, textAlign: TextAlign.center), const SizedBox(height: 8), const Text('اطلب من الأدمن تفعيل الخدمة وتحديد المساحة قبل استخدام المصمم.', textAlign: TextAlign.center)])));
+
+  Widget _satelliteSection() => StreamBuilder<LandscapeSatelliteEntitlement>(
+    stream: LandscapeSatelliteAccessService.watchEntitlement(),
+    builder: (context, snapshot) {
+      if (snapshot.connectionState == ConnectionState.waiting) {
+        return const SizedBox(height: 8);
+      }
+      final entitlement = snapshot.data;
+      final hasSatellite = entitlement != null && entitlement.active && entitlement.maxFeddan > 0;
+      return hasSatellite ? const IrrigationSatelliteAlertsPanel() : _satelliteLockedCard();
+    },
+  );
+
+  Widget _satelliteLockedCard() => const Card(
+    color: Color(0xFFF1F5F9),
+    child: Padding(
+      padding: EdgeInsets.all(12),
+      child: Row(children: [
+        Icon(Icons.satellite_alt, color: Colors.blueGrey),
+        SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            'تنبيهات الأقمار الصناعية إضافة منفصلة عن المصمم. التصميم والفحص والتصدير شغالين بدونها.',
+            style: TextStyle(fontSize: 12),
+          ),
+        ),
+      ]),
+    ),
+  );
+
   Widget _review() => ListView(
     padding: const EdgeInsets.all(16),
     children: [
-      const IrrigationSatelliteAlertsPanel(),
+      _satelliteSection(),
       IrrigationReviewView(
         project: project,
         bundle: bundle,
