@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:material_ui/material_ui.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:http/http.dart' as http;
+import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import '../../models/weather_forecast.dart';
@@ -608,12 +608,19 @@ class _HomeDashboardState extends State<HomeDashboard> {
     try {
       final url = Uri.parse(
           'https://nominatim.openstreetmap.org/reverse?lat=$lat&lon=$lon&format=json&addressdetails=1&accept-language=ar&zoom=18');
-      final resp = await http.get(url, headers: {
-        'User-Agent': 'Nabati-App/1.0',
-      }).timeout(const Duration(seconds: 8));
+      final resp = await Dio()
+          .get<String>(
+            url.toString(),
+            options: Options(
+              responseType: ResponseType.plain,
+              validateStatus: (_) => true,
+              headers: {'User-Agent': 'Nabati-App/1.0'},
+            ),
+          )
+          .timeout(const Duration(seconds: 8));
 
       if (resp.statusCode == 200) {
-        final data = json.decode(resp.body);
+        final data = json.decode(resp.data ?? '');
         final rawAddress = data['address'];
         final address = rawAddress is Map
             ? Map<String, dynamic>.from(rawAddress)
