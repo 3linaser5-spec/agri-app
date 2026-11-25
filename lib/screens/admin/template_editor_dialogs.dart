@@ -1,0 +1,640 @@
+import 'package:material_ui/material_ui.dart';
+
+import '../../utils/formula_evaluator.dart';
+import '../../utils/number_utils.dart';
+
+const _green = Color(0xFF047857);
+
+/// رقم للعرض في حقول التعديل: 5.0 تظهر 5 و 2.5 تفضل 2.5
+String formatTemplateNumber(dynamic v) {
+  if (v is! num) return '';
+  final d = v.toDouble();
+  return d == d.roundToDouble() ? d.toInt().toString() : d.toString();
+}
+
+// ═══════════════════════════════════════════════════════════
+// حوار الحقل (Stateful عشان الـ controllers تتخلص منها صح)
+// ═══════════════════════════════════════════════════════════
+class TemplateFieldDialog extends StatefulWidget {
+  final Map<String, dynamic>? initial;
+  final Set<String> takenIds;
+  const TemplateFieldDialog({super.key, this.initial, required this.takenIds});
+
+  @override
+  State<TemplateFieldDialog> createState() => TemplateFieldDialogState();
+}
+
+class TemplateFieldDialogState extends State<TemplateFieldDialog> {
+  static final _idRegex = RegExp(r'^[A-Za-z_][A-Za-z0-9_]*$');
+  static const _reserved = {'governorate', 'climate_zone'};
+
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _id;
+  late final TextEditingController _label;
+  late final TextEditingController _unit;
+  late final TextEditingController _options;
+  late final TextEditingController _min;
+  late final TextEditingController _max;
+  late final TextEditingController _default;
+  late String _type;
+  late bool _required;
+
+  @override
+  void initState() {
+    super.initState();
+    final i = widget.initial ?? const <String, dynamic>{};
+    _id = TextEditingController(text: i['id']?.toString() ?? '');
+    _label = TextEditingController(text: i['label']?.toString() ?? '');
+    _unit = TextEditingController(text: i['unit']?.toString() ?? '');
+    final opts = (i['options'] is List) ? (i['options'] as List) : const [];
+    _options = TextEditingController(
+      text: opts.whereType<Map>().map((o) {
+        final v = o['value']?.toString() ?? '';
+        final l = o['label']?.toString() ?? '';
+        return v == l ? l : '$v|$l';
+      }).join('\n'),
+    );
+    _min = TextEditingController(text: formatTemplateNumber(i['min']));
+    _max = TextEditingController(text: formatTemplateNumber(i['max']));
+    _default = TextEditingController(text: formatTemplateNumber(i['default']));
+    final t = i['type']?.toString() ?? 'number';
+    _type = const ['number', 'text', 'dropdown', 'slider'].contains(t)
+        ? t
+        : 'number';
+    _required = i['required'] is bool ? i['required'] as bool : true;
+  }
+
+  @override
+  void dispose() {
+    _id.dispose();
+    _label.dispose();
+    _unit.dispose();
+    _options.dispose();
+    _min.dispose();
+    _max.dispose();
+    _default.dispose();
+    super.dispose();
+  }
+
+  List<Map<String, String>> _parseOptions() {
+    final result = <Map<String, String>>[];
+    for (final raw in _options.text.split('\n')) {
+      final line = raw.trim();
+      if (line.isEmpty) continue;
+      final bar = line.indexOf('|');
+      if (bar == -1) {
+        result.add({'value': line, 'label': line});
+      } else {
+        final v = line.substring(0, bar).trim();
+        final l = line.substring(bar + 1).trim();
+        if (v.isNotEmpty && l.isNotEmpty) result.add({'value': v, 'label': l});
+      }
+    }
+    return result;
+  }
+
+  String? _optionalNumber(String? v) {
+    if (v == null || v.trim().isEmpty) return null;
+    final n = NumberUtils.tryParseDouble(v);
+    return n == null || !n.isFinite ? 'رقم غير صالح' : null;
+  }
+
+  void _submit() {
+    if (!_formKey.currentState!.validate()) return;
+    final map = <String, dynamic>{
+      if (widget.initial != null) ...widget.initial!,
+      'id': _id.text.trim(),
+      'label': _label.text.trim(),
+      'type': _type,
+      'unit': _unit.text.trim().isEmpty ? null : _unit.text.trim(),
+      'required': _required,
+    };
+    if (_type == 'dropdown') {
+      map['options'] = _parseOptions();
+    } else {
+      map.remove('options');
+    }
+    if (_type == 'number' || _type == 'slider') {
+      final mn = NumberUtils.tryParseDouble(_min.text);
+      final mx = NumberUtils.tryParseDouble(_max.text);
+      final df = NumberUtils.tryParseDouble(_default.text);
+      if (mn != null) {
+        map['min'] = mn;
+      } else {
+        map.remove('min');
+      }
+      if (mx != null) {
+        map['max'] = mx;
+      } else {
+        map.remove('max');
+      }
+      if (df != null) {
+        map['default'] = df;
+      } else {
+        map.remove('default');
+      }
+    } else {
+      map
+        ..remove('min')
+        ..remove('max')
+        ..remove('default');
+    }
+    Navigator.pop(context, map);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: AlertDialog(
+        backgroundColor: isDark ? const Color(0xFF1E1E1E) : null,
+        title: Text(widget.initial == null ? 'إضافة حقل جديد' : 'تعديل الحقل'),
+        content: SingleChildScrollView(
+          child: Form(
+            key: _formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: _id,
+                  decoration: const InputDecoration(
+                    labelText: 'ID الحقل (إنجليزي)',
+                    hintText: 'مثال: area',
+                  ),
+                  validator: (v) {
+                    final raw = v ?? '';
+                    final id = raw.trim();
+                    if (id.isEmpty) return 'ادخل الـ ID';
+                    if (raw != id) {
+                      return 'الـ ID لا يقبل فراغات في بدايته أو نهايته';
+                    }
+                    if (!_idRegex.hasMatch(id)) {
+                      return 'حروف إنجليزية وأرقام و _ فقط، ويبدأ بحرف';
+                    }
+                    if (_reserved.contains(id)) return 'الـ ID ده محجوز للنظام';
+                    if (widget.takenIds.contains(id)) {
+                      return 'الـ ID مستخدم قبل كده';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 10),
+                TextFormField(
+                  controller: _label,
+                  decoration: const InputDecoration(
+                    labelText: 'اسم الحقل بالعربي',
+                    hintText: 'مثال: المساحة',
+                  ),
+                  validator: (v) =>
+                      (v == null || v.trim().isEmpty) ? 'ادخل اسم الحقل' : null,
+                ),
+                const SizedBox(height: 10),
+                DropdownButtonFormField<String>(
+                  initialValue: _type,
+                  decoration: const InputDecoration(labelText: 'نوع الحقل'),
+                  items: [
+                    const DropdownMenuItem(value: 'number', child: Text('رقم')),
+                    const DropdownMenuItem(value: 'text', child: Text('نص')),
+                    const DropdownMenuItem(
+                        value: 'dropdown', child: Text('قائمة منسدلة')),
+                    if (widget.initial?['type'] == 'slider')
+                      const DropdownMenuItem(
+                          value: 'slider', child: Text('شريط تمرير')),
+                  ],
+                  onChanged: (v) => setState(() => _type = v ?? 'number'),
+                ),
+                if (_type == 'dropdown') ...[
+                  const SizedBox(height: 10),
+                  TextFormField(
+                    controller: _options,
+                    maxLines: 5,
+                    decoration: const InputDecoration(
+                      labelText: 'الخيارات (كل خيار في سطر)',
+                      hintText: 'طينية\nرملية\ncalcareous|جيرية',
+                      helperText:
+                          'الصيغة: القيمة|الاسم الظاهر، أو الاسم فقط',
+                      helperMaxLines: 2,
+                    ),
+                    validator: (v) {
+                      for (final raw in _options.text.split('\n')) {
+                        final line = raw.trim();
+                        if (line.isEmpty) continue;
+                        final bar = line.indexOf('|');
+                        if (bar != -1 &&
+                            (line.substring(0, bar).trim().isEmpty ||
+                                line.substring(bar + 1).trim().isEmpty)) {
+                          return 'كل خيار لازم يكون له قيمة واسم غير فارغين';
+                        }
+                      }
+                      final opts = _parseOptions();
+                      if (opts.isEmpty) return 'ادخل خيار واحد على الأقل';
+                      final values = opts.map((o) => o['value']).toList();
+                      if (values.toSet().length != values.length) {
+                        return 'فيه قيم مكررة بين الخيارات';
+                      }
+                      final labels = opts.map((o) => o['label']).toList();
+                      if (labels.toSet().length != labels.length) {
+                        return 'فيه أسماء مكررة بين الخيارات';
+                      }
+                      return null;
+                    },
+                  ),
+                ],
+                const SizedBox(height: 10),
+                TextFormField(
+                  controller: _unit,
+                  decoration: const InputDecoration(
+                    labelText: 'الوحدة (اختياري)',
+                    hintText: 'مثال: فدان',
+                  ),
+                ),
+                if (_type == 'number' || _type == 'slider') ...[
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextFormField(
+                          controller: _min,
+                          keyboardType:
+                              const TextInputType.numberWithOptions(
+                                  decimal: true),
+                          decoration:
+                              const InputDecoration(labelText: 'أقل قيمة'),
+                          validator: _optionalNumber,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextFormField(
+                          controller: _max,
+                          keyboardType:
+                              const TextInputType.numberWithOptions(
+                                  decimal: true),
+                          decoration:
+                              const InputDecoration(labelText: 'أكبر قيمة'),
+                          validator: (v) {
+                            final e = _optionalNumber(v);
+                            if (e != null) return e;
+                            final mn =
+                                NumberUtils.tryParseDouble(_min.text);
+                            final mx = NumberUtils.tryParseDouble(v);
+                            if (mn != null && mx != null && mx < mn) {
+                              return 'أقل من الحد الأدنى';
+                            }
+                            return null;
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  TextFormField(
+                    controller: _default,
+                    keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true),
+                    decoration: const InputDecoration(
+                        labelText: 'القيمة الافتراضية (اختياري)'),
+                    validator: _optionalNumber,
+                  ),
+                ],
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('حقل إجباري'),
+                  value: _required,
+                  onChanged: (v) => setState(() => _required = v),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('إلغاء'),
+          ),
+          ElevatedButton(
+            onPressed: _submit,
+            style: ElevatedButton.styleFrom(backgroundColor: _green),
+            child: Text(widget.initial == null ? 'إضافة' : 'حفظ',
+                style: const TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// حوار المهمة
+// ═══════════════════════════════════════════════════════════
+class TemplateTaskDialog extends StatefulWidget {
+  final Map<String, dynamic>? initial;
+  const TemplateTaskDialog({super.key, this.initial});
+
+  @override
+  State<TemplateTaskDialog> createState() => TemplateTaskDialogState();
+}
+
+class TemplateTaskDialogState extends State<TemplateTaskDialog> {
+  static const _base = ['ري', 'تسميد', 'رش', 'خدمة', 'حصاد'];
+  static const _icons = {
+    'ري': 'ري 💧',
+    'تسميد': 'تسميد 🧪',
+    'رش': 'رش 🧴',
+    'خدمة': 'خدمة 🚜',
+    'حصاد': 'حصاد 🌾',
+  };
+
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _title;
+  late final TextEditingController _desc;
+  late final TextEditingController _day;
+  late String _category;
+  late final List<String> _categories;
+
+  @override
+  void initState() {
+    super.initState();
+    final i = widget.initial ?? const <String, dynamic>{};
+    _title = TextEditingController(text: i['title']?.toString() ?? '');
+    _desc = TextEditingController(text: i['description']?.toString() ?? '');
+    _day = TextEditingController(
+        text:
+            i['day_from_start'] == null ? '0' : formatTemplateNumber(i['day_from_start']));
+    final cat = i['category']?.toString() ?? '';
+    _categories = [..._base, if (cat.isNotEmpty && !_base.contains(cat)) cat];
+    _category = cat.isNotEmpty ? cat : 'ري';
+  }
+
+  @override
+  void dispose() {
+    _title.dispose();
+    _desc.dispose();
+    _day.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    if (!_formKey.currentState!.validate()) return;
+    Navigator.pop(context, {
+      'title': _title.text.trim(),
+      'description': _desc.text.trim(),
+      'day_from_start': NumberUtils.tryParseInt(_day.text) ?? 0,
+      'category': _category,
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: AlertDialog(
+        backgroundColor: isDark ? const Color(0xFF1E1E1E) : null, // ✅ Dark Mode
+        title: Text(widget.initial == null ? 'إضافة مهمة' : 'تعديل المهمة'),
+        content: SingleChildScrollView(
+          child: Form(
+            key: _formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: _title,
+                  decoration: const InputDecoration(
+                    labelText: 'اسم المهمة',
+                    hintText: 'مثال: رية المحاياة',
+                  ),
+                  validator: (v) =>
+                      (v == null || v.trim().isEmpty) ? 'ادخل اسم المهمة' : null,
+                ),
+                const SizedBox(height: 10),
+                TextFormField(
+                  controller: _desc,
+                  maxLines: 2,
+                  decoration: const InputDecoration(
+                    labelText: 'الوصف',
+                    hintText: 'تفاصيل المهمة',
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextFormField(
+                  controller: _day,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'اليوم من بداية الزراعة',
+                    hintText: 'مثال: 21',
+                  ),
+                  validator: (v) {
+                    final n = NumberUtils.tryParseInt(v);
+                    if (n == null || n < 0) return 'ادخل رقم 0 أو أكبر';
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 10),
+                DropdownButtonFormField<String>(
+                  initialValue: _category,
+                  decoration: const InputDecoration(labelText: 'التصنيف'),
+                  items: _categories
+                      .map((c) => DropdownMenuItem(
+                          value: c, child: Text(_icons[c] ?? c)))
+                      .toList(),
+                  onChanged: (v) => setState(() => _category = v ?? 'ري'),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('إلغاء'),
+          ),
+          ElevatedButton(
+            onPressed: _submit,
+            style: ElevatedButton.styleFrom(backgroundColor: _green),
+            child: Text(widget.initial == null ? 'إضافة' : 'حفظ',
+                style: const TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// حوار المادة (مع معادلة اختيارية للكمية)
+// ═══════════════════════════════════════════════════════════
+class TemplateMaterialDialog extends StatefulWidget {
+  final Map<String, dynamic>? initial;
+  final Set<String> knownVars;
+  const TemplateMaterialDialog({
+    super.key,
+    this.initial,
+    required this.knownVars,
+  });
+
+  @override
+  State<TemplateMaterialDialog> createState() => TemplateMaterialDialogState();
+}
+
+class TemplateMaterialDialogState extends State<TemplateMaterialDialog> {
+  static const _base = ['تقاوي', 'سماد', 'مبيد', 'عمالة'];
+
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _name;
+  late final TextEditingController _qty;
+  late final TextEditingController _unit;
+  late final TextEditingController _price;
+  late final TextEditingController _formula;
+  late String _category;
+  late final List<String> _categories;
+
+  @override
+  void initState() {
+    super.initState();
+    final i = widget.initial ?? const <String, dynamic>{};
+    _name = TextEditingController(text: i['name']?.toString() ?? '');
+    _qty = TextEditingController(text: formatTemplateNumber(i['quantity_per_unit']));
+    _unit = TextEditingController(text: i['unit']?.toString() ?? 'كجم');
+    _price = TextEditingController(text: formatTemplateNumber(i['price_per_unit']));
+    _formula =
+        TextEditingController(text: i['quantity_formula']?.toString() ?? '');
+    final cat = i['category']?.toString() ?? '';
+    _categories = [..._base, if (cat.isNotEmpty && !_base.contains(cat)) cat];
+    _category = cat.isNotEmpty ? cat : 'تقاوي';
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _qty.dispose();
+    _unit.dispose();
+    _price.dispose();
+    _formula.dispose();
+    super.dispose();
+  }
+
+  String? _nonNegative(String? v) {
+    if (v == null || v.trim().isEmpty) return null;
+    final n = NumberUtils.tryParseDouble(v);
+    if (n == null) return 'رقم غير صالح';
+    if (n < 0) return 'لا يقل عن صفر';
+    return null;
+  }
+
+  void _submit() {
+    if (!_formKey.currentState!.validate()) return;
+    final formula = _formula.text.trim();
+    Navigator.pop(context, <String, dynamic>{
+      'name': _name.text.trim(),
+      'category': _category,
+      'quantity_per_unit': NumberUtils.tryParseDouble(_qty.text) ?? 0,
+      'unit': _unit.text.trim().isEmpty ? 'كجم' : _unit.text.trim(),
+      'price_per_unit': NumberUtils.tryParseDouble(_price.text) ?? 0,
+      if (formula.isNotEmpty) 'quantity_formula': formula,
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final vars = (widget.knownVars.toList()..sort()).join('، ');
+    
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: AlertDialog(
+        backgroundColor: isDark ? const Color(0xFF1E1E1E) : null, // ✅ Dark Mode
+        title: Text(widget.initial == null ? 'إضافة مادة' : 'تعديل المادة'),
+        content: SingleChildScrollView(
+          child: Form(
+            key: _formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: _name,
+                  decoration: const InputDecoration(
+                    labelText: 'اسم المادة',
+                    hintText: 'مثال: بذور قمح',
+                  ),
+                  validator: (v) =>
+                      (v == null || v.trim().isEmpty) ? 'ادخل اسم المادة' : null,
+                ),
+                const SizedBox(height: 10),
+                DropdownButtonFormField<String>(
+                  initialValue: _category,
+                  decoration: const InputDecoration(labelText: 'التصنيف'),
+                  items: _categories
+                      .map((c) => DropdownMenuItem(value: c, child: Text(c)))
+                      .toList(),
+                  onChanged: (v) => setState(() => _category = v ?? 'تقاوي'),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        controller: _qty,
+                        keyboardType:
+                            const TextInputType.numberWithOptions(
+                                decimal: true),
+                        decoration: const InputDecoration(
+                            labelText: 'الكمية / وحدة'),
+                        validator: _nonNegative,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: TextFormField(
+                        controller: _unit,
+                        decoration:
+                            const InputDecoration(labelText: 'الوحدة'),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                TextFormField(
+                  controller: _price,
+                  keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true),
+                  decoration: const InputDecoration(
+                      labelText: 'السعر التقديري للوحدة'),
+                  validator: _nonNegative,
+                ),
+                const SizedBox(height: 10),
+                TextFormField(
+                  controller: _formula,
+                  decoration: InputDecoration(
+                    labelText: 'معادلة الكمية الكلية (اختياري)',
+                    hintText: 'مثال: area * seed_rate / 1000',
+                    helperText:
+                        'لو فاضية: الكمية = الكمية/وحدة × المساحة.\nالمتغيرات: $vars',
+                    helperMaxLines: 4,
+                  ),
+                  validator: (v) =>
+                      FormulaEvaluator.validate(v ?? '', widget.knownVars),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('إلغاء'),
+          ),
+          ElevatedButton(
+            onPressed: _submit,
+            style: ElevatedButton.styleFrom(backgroundColor: _green),
+            child: Text(widget.initial == null ? 'إضافة' : 'حفظ',
+                style: const TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+}

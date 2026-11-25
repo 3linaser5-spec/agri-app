@@ -6,7 +6,7 @@
 
 ## المتطلبات
 
-- Flutter 3.44.x (أحدث إصدار مستقر يعمل عليه CI) و Dart 3.10+
+- Flutter 3.50.x (النسخة التي يعمل عليها CI) و Dart 3.10+
 - Node.js 20+ لوظائف Firebase (`functions/`)
 - Python 3.11 لوظيفة تشخيص النبات `functions/plant_ai` (اختياري محليًا)
 
@@ -58,6 +58,12 @@ firebase deploy --only functions,firestore:rules,firestore:indexes,storage
 | `firebase/` | قواعد Firestore وStorage والفهارس |
 | `functions/` | Cloud Functions (TypeScript) + `plant_ai` (Python) |
 | `docs/` | أدلة الإعداد والتشغيل |
+
+الشاشات الكبيرة مقسومة إلى ملف الشاشة (منطق الحالة والبيانات) + ملف ويدجتس
+عرضية خالصة قابلة للاختبار بلا Firebase: `root/home_dashboard_widgets.dart`،
+`admin/template_editor_dialogs.dart`، `satellite/hls_time_series_chart.dart`،
+`calculators/irrigation_calculator_widgets.dart`،
+`calculators/calculator_result_tabs.dart`.
 
 ## الاختبارات و CI
 
