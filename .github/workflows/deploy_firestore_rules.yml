@@ -1,0 +1,80 @@
+# نشر قواعد Firestore يدويًا (workflow_dispatch فقط، لا يعمل على push أو pull_request).
+# Manual-only deploy of the Firestore rules and indexes. It never runs on push,
+# pull_request or a schedule.
+#
+# قبل أول تشغيل لازم المالك يضيف:
+#   - Repository secret  FIREBASE_SERVICE_ACCOUNT : كامل JSON لحساب خدمة عنده صلاحية
+#     نشر Firestore (Firebase Rules / Cloud Datastore Owner أو ما يعادلها).
+#   - Repository variable FIREBASE_PROJECT_ID     : معرّف مشروع Firebase.
+# القواعد الحالية لم تُنشر بعد؛ هذا الـ workflow هو الطريقة المقصودة لنشرها.
+#
+# Before the first run the owner must add:
+#   - Secret   FIREBASE_SERVICE_ACCOUNT : full JSON of a service account allowed to
+#     deploy Firestore rules/indexes.
+#   - Variable FIREBASE_PROJECT_ID      : the Firebase project id.
+# The rules are currently undeployed; this workflow is how they get published.
+
+name: Deploy Firestore Rules
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20'
+
+      - name: Fail fast on missing configuration
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
+        run: |
+          missing=0
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
+            echo "::error::Repository secret FIREBASE_SERVICE_ACCOUNT is missing or empty."
+            missing=1
+          fi
+          if [ -z "$FIREBASE_PROJECT_ID" ]; then
+            echo "::error::Repository variable FIREBASE_PROJECT_ID is missing or empty."
+            missing=1
+          fi
+          if [ "$missing" -ne 0 ]; then
+            echo "أضف السر FIREBASE_SERVICE_ACCOUNT والمتغير FIREBASE_PROJECT_ID قبل التشغيل."
+            exit 1
+          fi
+
+      - name: Install firebase-tools
+        run: npm install --global firebase-tools@15
+
+      - name: Write service account credentials
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          umask 077
+          credentials="$RUNNER_TEMP/firebase-service-account.json"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$credentials"
+          chmod 600 "$credentials"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$credentials" >> "$GITHUB_ENV"
+
+      - name: Deploy Firestore rules and indexes
+        env:
+          FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
+        run: |
+          firebase deploy \
+            --only firestore:rules,firestore:indexes \
+            --project "$FIREBASE_PROJECT_ID" \
+            --non-interactive
+
+      - name: Remove temporary credentials
+        if: always()
+        run: rm -f "$RUNNER_TEMP/firebase-service-account.json"

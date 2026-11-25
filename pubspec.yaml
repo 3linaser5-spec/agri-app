@@ -28,7 +28,6 @@ dependencies:
   firebase_storage: ^13.0.0
 
   # ✅ الشبكة
-  http: ^1.2.2
   dio: ^5.7.0
 
   # ✅ الصور والموقع
