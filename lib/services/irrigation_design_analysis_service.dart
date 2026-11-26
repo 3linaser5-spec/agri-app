@@ -1,5 +1,6 @@
 import '../models/irrigation_design_models.dart';
 import '../models/irrigation_operations_models.dart';
+import 'irrigation_operations_service.dart';
 
 class IrrigationDesignIssue {
   final String code, severity, message, subjectId;
@@ -49,8 +50,10 @@ class IrrigationDesignAnalysisService {
     return IrrigationDesignAnalysis(issues:List.unmodifiable(issues), costLines:List.unmodifiable(lines), scenarios:List.unmodifiable(scenarios));
   }
 
-  List<MaintenanceTask> buildMaintenancePlan(IrrigationDesignProject project, {required DateTime startAt}) => [
-    for (final v in project.valves) MaintenanceTask(id:'maintenance-${v.id}', projectId:project.id, assetId:v.id, title:'فحص المحبس وتنظيف الفلتر', priority:'medium', status:'open', dueAt:startAt.add(const Duration(days:30)), qrCode:'irrigation://${project.id}/valve/${v.id}'),
-    MaintenanceTask(id:'maintenance-pump-${project.pump.id}', projectId:project.id, assetId:project.pump.id, title:'فحص المضخة والضغط', priority:'high', status:'open', dueAt:startAt.add(const Duration(days:14)), qrCode:'irrigation://${project.id}/pump/${project.pump.id}'),
-  ];
+  /// خطة الصيانة مصدرها واحد فقط: [IrrigationOperationsService]. كان فيه
+  /// هنا نسخة مختصرة (محابس + مضخة) وفي مكان تاني نسخة كاملة (محابس +
+  /// مناطق + مسارات + مضخة)، فالمستخدم كان يشوف خطتين مختلفتين لنفس المشروع
+  /// حسب الشاشة اللي فتحها.
+  List<MaintenanceTask> buildMaintenancePlan(IrrigationDesignProject project, {required DateTime startAt}) =>
+      const IrrigationOperationsService().buildMaintenancePlan(project, startAt: startAt);
 }
