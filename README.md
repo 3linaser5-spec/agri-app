@@ -81,3 +81,15 @@ firebase deploy --only functions,firestore:rules,firestore:indexes,storage
 الإصدار، ينزّل APK من نطاقات GitHub المسموحة، يتحقق من SHA-256 ثم يفتح المثبّت.
 أي تغيير في مكان النشر يتطلب تحديث قائمة النطاقات المسموحة في
 `lib/services/version_service.dart` و`scripts/update_release_checksum.py`.
+
+## أرقام التواصل (واتساب)
+
+رقم المهندس لا يُكتب داخل الكود ولا في المستودع. يُمرَّر وقت بناء الـ APK من
+GitHub Secrets: `ENGINEER_PHONE` (صيغة دولية بدون +) و`ENGINEER_PHONE_LOCAL`
+(الصيغة المحلية للعرض في PDF). لو السر غير موجود، أزرار التواصل تختفي من
+الواجهة وتُبنى بقية الميزات بشكل طبيعي.
+
+## الأمان
+
+راجع `SECURITY.md` لقائمة الإجراءات المطلوبة قبل النشر: نشر قواعد Firestore
+وStorage، تقييد مفتاح Firebase، تفعيل App Check، وسياسة كلمة المرور.

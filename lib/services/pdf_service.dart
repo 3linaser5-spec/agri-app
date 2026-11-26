@@ -157,7 +157,7 @@ class PdfService {
     sections.add(PdfSection.paragraph(
         'تنبيه: هذا البرنامج استرشادي، ويجب مراجعة المهندس الزراعي المختص قبل التطبيق الفعلي.'));
     sections.add(PdfSection.paragraph(
-        'تطبيق نباتي - مستشارك الزراعي الذكي | إشراف: م. علي الدهشوري | للتواصل: ${AppConfig.engineerPhoneLocal}'));
+        'تطبيق نباتي - مستشارك الزراعي الذكي | إشراف: م. علي الدهشوري | للتواصل: ${AppConfig.pdfContactLine}'));
     sections.add(PdfSection.paragraph(
         '© 2025 نباتي - جميع الحقوق محفوظة'));
 
