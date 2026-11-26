@@ -79,6 +79,108 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (mounted) setState(() => _saving = false);
   }
 
+  Future<void> _changePassword() async {
+    final currentCtrl = TextEditingController();
+    final newCtrl = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('تغيير كلمة المرور'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(
+            controller: currentCtrl,
+            obscureText: true,
+            decoration: const InputDecoration(labelText: 'كلمة المرور الحالية'),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: newCtrl,
+            obscureText: true,
+            decoration: const InputDecoration(labelText: 'كلمة المرور الجديدة'),
+          ),
+        ]),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('إلغاء'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('حفظ'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) {
+      currentCtrl.dispose();
+      newCtrl.dispose();
+      return;
+    }
+    setState(() => _saving = true);
+    final error = await _authService.changePassword(
+      currentPassword: currentCtrl.text,
+      newPassword: newCtrl.text,
+    );
+    currentCtrl.dispose();
+    newCtrl.dispose();
+    if (!mounted) return;
+    setState(() => _saving = false);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(error ?? '✅ تم تغيير كلمة المرور بنجاح'),
+      backgroundColor: error == null ? const Color(0xFF047857) : null,
+    ));
+  }
+
+  Future<void> _deleteAccount() async {
+    final passwordCtrl = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('حذف الحساب'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+                'سيتم حذف حسابك وبياناتك الشخصية نهائيًا. لا يمكن التراجع عن هذه الخطوة.'),
+            const SizedBox(height: 8),
+            TextField(
+              controller: passwordCtrl,
+              obscureText: true,
+              decoration: const InputDecoration(labelText: 'كلمة المرور للتأكيد'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('إلغاء'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('حذف نهائي', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) {
+      passwordCtrl.dispose();
+      return;
+    }
+    setState(() => _saving = true);
+    final error = await _authService.deleteAccount(password: passwordCtrl.text);
+    passwordCtrl.dispose();
+    if (!mounted) return;
+    setState(() => _saving = false);
+    if (error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error), backgroundColor: Colors.red),
+      );
+      return;
+    }
+    Navigator.of(context).popUntil((r) => r.isFirst);
+  }
+
   Future<void> _logout() async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -274,6 +376,36 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         builder: (context) => const AboutScreen()),
                   );
                 },
+              ),
+            ),
+            const SizedBox(height: 16),
+            Card(
+              shape:
+                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              elevation: 2,
+              child: Column(
+                children: [
+                  ListTile(
+                    leading: const Icon(Icons.lock_reset,
+                        color: Color(0xFF047857)),
+                    title: const Text('تغيير كلمة المرور',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+                    trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                    onTap: _saving ? null : _changePassword,
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
+                    leading:
+                        const Icon(Icons.delete_forever, color: Colors.red),
+                    title: const Text('حذف الحساب',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, color: Colors.red)),
+                    subtitle:
+                        const Text('حذف نهائي للحساب والبيانات الشخصية'),
+                    trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                    onTap: _saving ? null : _deleteAccount,
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 24),

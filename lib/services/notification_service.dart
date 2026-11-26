@@ -94,10 +94,20 @@ class NotificationService {
         ?.requestNotificationsPermission();
 
     // ✅ صلاحية الإشعارات المجدولة الدقيقة (أندرويد 12+)
-    await _localNotifications
+    // بنطلبها بس لو الجدولة الدقيقة مش متاحة أصلًا؛ طلبها في كل تشغيل كان
+    // بيفتح شاشة الإعدادات للمستخدم من غير داعي، وأندرويد 14 بيرفض الطلب
+    // لتطبيقات مش منبهات. الجدولة بترجع تلقائيًا لغير دقيقة لو مرفوضة.
+    final androidImpl = _localNotifications
         .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
-        ?.requestExactAlarmsPermission();
+            AndroidFlutterLocalNotificationsPlugin>();
+    try {
+      final canExact = await androidImpl?.canScheduleExactNotifications();
+      if (canExact == false) {
+        await androidImpl?.requestExactAlarmsPermission();
+      }
+    } catch (e) {
+      debugPrint("⚠️ تعذر التحقق من صلاحية المنبّه الدقيق: $e");
+    }
 
     // Firebase Messaging
     NotificationSettings firebaseSettings =
@@ -156,6 +166,17 @@ class NotificationService {
   // ═══════════════════════════════════════════
   // عرض إشعار محلي (فوري)
   // ═══════════════════════════════════════════
+  /// معرّف فريد لكل إشعار معروض. الاعتماد على الثواني وحدها كان بيخلي
+  /// إشعارين في نفس الثانية ياخدوا نفس الرقم، فالتاني يستبدل الأول.
+  static int _lastShownId = 0;
+
+  @visibleForTesting
+  static int nextNotificationId([DateTime? now]) {
+    final seconds = (now ?? DateTime.now()).millisecondsSinceEpoch ~/ 1000;
+    _lastShownId = seconds > _lastShownId ? seconds : _lastShownId + 1;
+    return _lastShownId;
+  }
+
   static Future<void> showLocalNotification({
     required String title,
     required String body,
@@ -178,7 +199,7 @@ class NotificationService {
     );
 
     await _localNotifications.show(
-      DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      nextNotificationId(),
       title,
       body,
       details,
@@ -202,7 +223,7 @@ class NotificationService {
     );
 
     await _localNotifications.show(
-      DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      nextNotificationId(),
       title,
       body,
       details,
@@ -225,7 +246,7 @@ class NotificationService {
       iOS: DarwinNotificationDetails(),
     );
     await _localNotifications.show(
-      DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      nextNotificationId(),
       title,
       body,
       details,

@@ -9,7 +9,11 @@ void main() {
     expect(result.valid, isTrue);
     expect(result.totalCost, 180);
     expect(result.scenarios, hasLength(2));
-    expect(const IrrigationDesignAnalysisService().buildMaintenancePlan(p, startAt: DateTime(2026, 1, 1)), hasLength(2));
+    // خطة الصيانة موحّدة الآن مع IrrigationOperationsService: محبس + منطقة + مضخة.
+    final plan = const IrrigationDesignAnalysisService()
+        .buildMaintenancePlan(p, startAt: DateTime(2026, 1, 1));
+    expect(plan, hasLength(3));
+    expect(plan.map((task) => task.assetId), containsAll(['v', 'z', 'pump']));
   });
 
   test('reports missing zone references', () {

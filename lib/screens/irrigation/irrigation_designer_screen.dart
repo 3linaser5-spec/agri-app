@@ -12,6 +12,7 @@ import '../../services/irrigation_zone_hydraulic_report_service.dart';
 import '../../services/irrigation_coverage_analysis_service.dart';
 import '../../services/irrigation_report_service.dart';
 import '../../services/irrigation_operations_service.dart';
+import '../../services/irrigation_project_service.dart';
 import '../../services/map_alert_service.dart';
 import 'irrigation_map_editor_screen.dart';
 import 'irrigation_network_map_screen.dart';
@@ -41,11 +42,78 @@ class _IrrigationDesignerScreenState extends State<IrrigationDesignerScreen> {
   List<IrrigationZoneCoverageReport> coverageReports = const [];
   IrrigationReportDocument? reportDocument;
   List<MaintenanceTask> maintenanceTasks = const [];
+  String? _savedDocumentId;
+  bool _savingProject = false;
   final steps = const ['الموقع', 'النباتات', 'المعدات والمناطق', 'المضخة', 'الفحص والتصدير'];
 
   @override void initState() { super.initState(); project = _demoProject(); }
 
   void exportProject() { try { setState(() { bundle = const IrrigationExportService().export(project); analysis = const IrrigationDesignAnalysisService().analyze(project); mapIssues = const IrrigationMapValidationService().validate(project); routeHydraulics = const IrrigationRouteHydraulicsService().analyze(project.pipeRoutes); zoneReports = const IrrigationZoneHydraulicReportService().build(project); coverageReports = const IrrigationCoverageAnalysisService().analyze(project); maintenanceTasks = const IrrigationOperationsService().buildMaintenancePlan(project, startAt: DateTime(2026, 1, 1)); }); } catch (e) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('لا يمكن التصدير: $e'))); } }
+
+  Future<void> _saveProject() async {
+    setState(() => _savingProject = true);
+    try {
+      final id = await IrrigationProjectService.save(project, documentId: _savedDocumentId);
+      if (!mounted) return;
+      setState(() => _savedDocumentId = id);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تم حفظ التصميم في حسابك.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$error')));
+    } finally {
+      if (mounted) setState(() => _savingProject = false);
+    }
+  }
+
+  Future<void> _openSavedProjects() async {
+    List<SavedIrrigationProject> items;
+    try {
+      items = await IrrigationProjectService.list();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$error')));
+      return;
+    }
+    if (!mounted) return;
+    if (items.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('لا توجد تصاميم محفوظة بعد. استخدم زر الحفظ أولاً.')),
+      );
+      return;
+    }
+    final selected = await showDialog<SavedIrrigationProject>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('تصاميمي المحفوظة'),
+        children: [
+          for (final item in items)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, item),
+              child: ListTile(
+                title: Text(item.name),
+                subtitle: Text('مناطق: ${item.project.zones.length} — عناصر: ${item.project.placements.length}'),
+              ),
+            ),
+        ],
+      ),
+    );
+    if (!mounted || selected == null) return;
+    setState(() {
+      project = selected.project;
+      _savedDocumentId = selected.documentId;
+      step = 0;
+      bundle = null;
+      analysis = null;
+      mapIssues = const [];
+      coverageReports = const [];
+      maintenanceTasks = const [];
+      reportDocument = null;
+      routeHydraulics = const [];
+      zoneReports = const [];
+    });
+  }
 
   Future<void> generateAndShareReport() async {
     try {
@@ -189,7 +257,21 @@ class _IrrigationDesignerScreenState extends State<IrrigationDesignerScreen> {
   @override Widget build(BuildContext context) => Directionality(
     textDirection: TextDirection.rtl,
     child: Scaffold(
-      appBar: AppBar(title: const Text('مصمم شبكة الري واللاندسكيب')),
+      appBar: AppBar(
+        title: const Text('مصمم شبكة الري واللاندسكيب'),
+        actions: [
+          IconButton(
+            onPressed: _savingProject ? null : _saveProject,
+            tooltip: 'حفظ التصميم',
+            icon: const Icon(Icons.save_outlined),
+          ),
+          IconButton(
+            onPressed: _openSavedProjects,
+            tooltip: 'تصاميمي المحفوظة',
+            icon: const Icon(Icons.folder_open),
+          ),
+        ],
+      ),
       body: Column(children: [
         Stepper(currentStep: step, onStepTapped: (i) => setState(() => step = i), controlsBuilder: (_, __) => const SizedBox.shrink(), steps: [for (var i = 0; i < steps.length; i++) Step(title: Text(steps[i]), content: _stepContent(i), isActive: step >= i, state: step > i ? StepState.complete : StepState.indexed)]),
         if (step == steps.length - 1) Expanded(child: _review()),

@@ -212,16 +212,30 @@ class IrrigationExportService {
     return lines;
   }
 
+  /// أقصى زمن تشغيل منطقي لمنطقة في اليوم الواحد (دقيقة).
+  static const maxRuntimeMinutes = 1440.0;
+
+  /// المنطقة اللي معدل تصرفها صفر أو غير صالح متخرجش `Infinity` في CSV؛
+  /// بنكتب زمن تشغيل صفر مع ملاحظة واضحة بدل قيمة مستحيلة.
   List<IrrigationScheduleLine> _schedule(IrrigationDesignProject p, double dailyMm) => p.zones
-      .map((z) => IrrigationScheduleLine(
-            zoneId: z.id,
-            zoneName: z.nameEn.isEmpty ? z.id : z.nameEn,
-            method: z.method,
-            flowLpm: z.designFlowLpm,
-            areaM2: z.areaM2,
-            runtimeMinutes: (z.areaM2 * dailyMm / z.designFlowLpm).clamp(0, double.infinity),
-            notes: 'Calculated from design flow; verify field conditions',
-          ))
+      .map((z) {
+        final flow = z.designFlowLpm;
+        final flowValid = flow.isFinite && flow > 0;
+        final runtime = flowValid
+            ? (z.areaM2 * dailyMm / flow).clamp(0.0, maxRuntimeMinutes)
+            : 0.0;
+        return IrrigationScheduleLine(
+          zoneId: z.id,
+          zoneName: z.nameEn.isEmpty ? z.id : z.nameEn,
+          method: z.method,
+          flowLpm: flowValid ? flow : 0,
+          areaM2: z.areaM2,
+          runtimeMinutes: runtime,
+          notes: flowValid
+              ? 'Calculated from design flow; verify field conditions'
+              : 'No valid design flow for this zone; set flow rate before use',
+        );
+      })
       .toList(growable: false);
 
   String _dxf(IrrigationDesignProject p) {

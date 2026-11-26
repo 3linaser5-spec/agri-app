@@ -52,6 +52,15 @@ void main() {
       'pump-1',
     ]));
     expect(tasks.every((task) => task.qrCode!.startsWith('irrigation://')), isTrue);
+    expect(
+      const IrrigationOperationsService().maintenanceJson(tasks),
+      contains('"asset_id"'),
+    );
+    expect(
+      const IrrigationOperationsService()
+          .qrPayload(projectId: 'p', assetType: 'valve', assetId: 'v'),
+      'irrigation://p/valve/v',
+    );
   });
 
   test('creates an as-built record with installed project data', () {

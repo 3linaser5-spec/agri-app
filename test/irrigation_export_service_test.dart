@@ -17,6 +17,55 @@ void main() {
     expect(bundle.schedule.single.runtimeMinutes, closeTo(25, 1e-9));
   });
 
+  test('exposes the bundle as a JSON snapshot', () {
+    final json = IrrigationExportService.exportProject(_project()).toJson();
+
+    expect(json['dxf'], contains('SECTION'));
+    expect(json['boq'], isNotEmpty);
+    expect(
+      (json['schedule'] as List).single['runtime_minutes'],
+      closeTo(25, 1e-9),
+    );
+  });
+
+  test('never writes Infinity or NaN into the schedule CSV', () {
+    final bundle = const IrrigationExportService().export(_project());
+
+    expect(bundle.scheduleCsv.contains('Infinity'), isFalse);
+    expect(bundle.scheduleCsv.contains('NaN'), isFalse);
+    expect(bundle.schedule.single.runtimeMinutes.isFinite, isTrue);
+  });
+
+  test('caps an implausibly long runtime at one day', () {
+    final base = _project();
+    final project = IrrigationDesignProject(
+      id: base.id,
+      siteBoundary: base.siteBoundary,
+      equipment: base.equipment,
+      zones: [
+        IrrigationZone(
+          id: 'zone-1',
+          method: 'spray',
+          equipmentIds: ['spray-1'],
+          areaM2: 100000,
+          designFlowLpm: 1,
+          applicationRateMmH: 8,
+        ),
+      ],
+      pump: base.pump,
+      version: base.version,
+    );
+
+    expect(
+      const IrrigationExportService()
+          .export(project)
+          .schedule
+          .single
+          .runtimeMinutes,
+      IrrigationExportService.maxRuntimeMinutes,
+    );
+  });
+
   test('rejects a zone that references a missing equipment item', () {
     final project = _project().zones.single;
     final invalid = IrrigationDesignProject(

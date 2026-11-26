@@ -113,7 +113,10 @@ class TrainingDataService {
         'uploadedByUid': user.uid,
         'uploadedAt': FieldValue.serverTimestamp(),
         'status': 'pending_training',
-        'labelConfirmedByAgronomist': true,
+        // التطبيق لا يتحقق من أن من رفع الصورة مهندس زراعي؛ الرفع من بوابة
+        // الأدمن لا يعني تأكيد التصنيف، والخادم هو من يضبط هذا العلم بعد
+        // المراجعة. كتابة true من العميل كانت تلوّث بيانات التدريب.
+        'labelConfirmedByAgronomist': false,
         'source': 'admin_training_portal',
       });
       return sampleDocument.id;
