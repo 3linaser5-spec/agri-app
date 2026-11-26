@@ -143,7 +143,14 @@ class _AiScannerScreenState extends State<AiScannerScreen> {
   }
 
   Future<void> _sendToEngineerWhatsApp() async {
-    const engineerPhone = AppConfig.engineerPhone;
+    final baseUrl = AppConfig.whatsappUrl;
+    if (baseUrl == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('رقم التواصل غير متاح في هذه النسخة')));
+      }
+      return;
+    }
     final message = """
 السلام عليكم يا بشمهندس علي، معي استشارة زراعية:
 🌱 *اسم المزارع:* ${widget.userName}
@@ -151,8 +158,7 @@ class _AiScannerScreenState extends State<AiScannerScreen> {
 📋 *تشخيص المستشار الذكي:*
 $_diagnosis
 """;
-    final uri = Uri.parse(
-        "https://wa.me/$engineerPhone?text=${Uri.encodeComponent(message)}");
+    final uri = Uri.parse("$baseUrl?text=${Uri.encodeComponent(message)}");
     try {
       final opened =
           await launchUrl(uri, mode: LaunchMode.externalApplication);

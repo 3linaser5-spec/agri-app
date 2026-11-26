@@ -9,10 +9,15 @@ import '../../config/app_config.dart';
 class AboutScreen extends StatelessWidget {
   const AboutScreen({super.key});
 
-  Future<void> _openWhatsApp() async {
-    final uri = Uri.parse(AppConfig.whatsappUrl);
+  Future<void> _openWhatsApp(BuildContext context) async {
+    final url = AppConfig.whatsappUrl;
+    if (url == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('رقم التواصل غير متاح في هذه النسخة')));
+      return;
+    }
     try {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
+      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
     } catch (e) {
       debugPrint('تعذر فتح واتساب');
     }
@@ -176,7 +181,7 @@ class AboutScreen extends StatelessWidget {
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton.icon(
-                        onPressed: _openWhatsApp,
+                        onPressed: () => _openWhatsApp(context),
                         icon: const Icon(Icons.chat),
                         label: const Text('تواصل عبر واتساب'),
                         style: ElevatedButton.styleFrom(

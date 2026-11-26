@@ -33,13 +33,19 @@ class Validators {
     return null;
   }
 
-  // التحقق من كلمة المرور
+  // سياسة كلمة المرور عند إنشاء حساب جديد.
   static String? password(String? value) {
     if (value == null || value.isEmpty) {
       return 'من فضلك أدخل كلمة المرور';
     }
-    if (value.length < 8) { // تحسين: 8 أحرف أفضل أمنياً
-      return 'كلمة المرور يجب أن تكون 8 أحرف على الأقل';
+    if (value.trim() != value) {
+      return 'كلمة المرور لا تبدأ أو تنتهي بمسافة';
+    }
+    if (value.length < 10) {
+      return 'كلمة المرور يجب أن تكون 10 أحرف على الأقل';
+    }
+    if (value.length > 128) {
+      return 'كلمة المرور طويلة جدًا (128 حرف كحد أقصى)';
     }
     if (!RegExp(r'[A-Za-z]').hasMatch(value)) {
       return 'يجب أن تحتوي كلمة المرور على حروف على الأقل';
@@ -47,10 +53,30 @@ class Validators {
     if (!RegExp(r'[0-9]').hasMatch(value)) {
       return 'يجب أن تحتوي كلمة المرور على أرقام على الأقل';
     }
-    // تحسين: يفضل لو فيها رمز خاص كمان (اختياري)
-    // if (!RegExp(r'[!@#$%^&*(),.?":{}|<>]').hasMatch(value)) {
-    //   return 'يفضل استخدام رمز خاص (!@#$) لتقوية كلمة المرور';
-    // }
+    if (value.split('').toSet().length < 4) {
+      return 'كلمة المرور ضعيفة، استخدم مزيجًا متنوعًا من الحروف والأرقام';
+    }
+    if (_commonPasswords.contains(value.toLowerCase())) {
+      return 'كلمة المرور شائعة جدًا، اختر كلمة أقوى';
+    }
     return null;
   }
+
+  // عند تسجيل الدخول لا نفرض السياسة الجديدة على حسابات قديمة.
+  static String? loginPassword(String? value) {
+    if (value == null || value.isEmpty) {
+      return 'من فضلك أدخل كلمة المرور';
+    }
+    if (value.length < 6) {
+      return 'كلمة المرور قصيرة جدًا';
+    }
+    return null;
+  }
+
+  static const Set<String> _commonPasswords = {
+    'password', 'password1', 'password123', '123456', '1234567', '12345678',
+    '123456789', '1234567890', 'qwerty', 'qwerty123', '111111', '000000',
+    'iloveyou', 'admin', 'admin123', 'welcome', 'welcome1', 'abc123',
+    'letmein', 'monkey', 'dragon', 'football', 'egypt123', 'agri1234',
+  };
 }

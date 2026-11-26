@@ -167,7 +167,12 @@ class _AuthScreenState extends State<AuthScreen> {
                   TextFormField(
                     controller: _passwordController,
                     obscureText: true,
-                    validator: Validators.password,
+                    validator: isLogin
+                        ? Validators.loginPassword
+                        : Validators.password,
+                    helperText: isLogin
+                        ? null
+                        : '10 أحرف على الأقل، وتحتوي حروفًا وأرقامًا',
                     decoration: InputDecoration(
                       labelText: 'كلمة المرور',
                       prefixIcon: const Icon(Icons.lock),

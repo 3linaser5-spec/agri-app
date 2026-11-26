@@ -1,25 +1,39 @@
 /// إعدادات ثابتة للتطبيق في مكان واحد.
 ///
-/// القيم الافتراضية هي نفس اللي كانت مكتوبة في الكود، ويمكن تغييرها وقت البناء
-/// بدون تعديل الكود، مثلاً:
+/// أرقام التواصل لا تُكتب داخل الكود حتى لا تظهر في المستودع العام.
+/// تُمرَّر وقت البناء عبر --dart-define، مثلاً:
 ///   flutter build apk --dart-define=ENGINEER_PHONE=2010xxxxxxx
+///                     --dart-define=ENGINEER_PHONE_LOCAL=010xxxxxxx
+///
+/// الـ workflow بيقراها من GitHub Secrets (ENGINEER_PHONE و ENGINEER_PHONE_LOCAL).
+/// راجع SECURITY.md. لو السر مش موجود، أزرار التواصل بتختفي من الواجهة.
 class AppConfig {
   AppConfig._(); // منع إنشاء كائن من الكلاس
 
-  /// رقم واتساب المهندس (بصيغة دولية بدون + أو مسافات).
-  static const String engineerPhone =
-      String.fromEnvironment('ENGINEER_PHONE', defaultValue: '201284172047');
+  /// رقم واتساب المهندس (صيغة دولية بدون + أو مسافات). فارغ لو مش مضبوط.
+  static const String engineerPhone = String.fromEnvironment('ENGINEER_PHONE');
 
   /// نفس الرقم بالصيغة المحلية للعرض (في ملفات PDF).
-  static const String engineerPhoneLocal = String.fromEnvironment(
-      'ENGINEER_PHONE_LOCAL',
-      defaultValue: '01284172047');
+  static const String engineerPhoneLocal =
+      String.fromEnvironment('ENGINEER_PHONE_LOCAL');
 
-  /// رابط واتساب آمن (يشيل أي رموز غير أرقام).
-  static String get whatsappUrl {
-    // إزالة أي رموز غير الأرقام (زي + أو مسافات) لضمان سلامة الرابط
-    final safePhone = engineerPhone.replaceAll(RegExp(r'[^0-9]'), '');
-    return 'https://wa.me/$safePhone';
+  /// هل رقم التواصل مضبوط في نسخة البناء الحالية؟
+  static bool get hasEngineerPhone => engineerPhone.trim().isNotEmpty;
+
+  /// الرقم المعروض للمستخدم: المحلي لو موجود وإلا الدولي، وإلا نص فارغ.
+  static String get engineerPhoneDisplay {
+    if (engineerPhoneLocal.trim().isNotEmpty) return engineerPhoneLocal.trim();
+    return engineerPhone.trim();
   }
 
+  /// سطر التواصل في تذييل PDF، ويختفي بالكامل لو الرقم غير مضبوط.
+  static String get pdfContactLine =>
+      engineerPhoneDisplay.isEmpty ? '' : ' | للتواصل: $engineerPhoneDisplay';
+
+  /// رابط واتساب آمن، أو null لو الرقم غير مضبوط في نسخة البناء.
+  static String? get whatsappUrl {
+    final safePhone = engineerPhone.replaceAll(RegExp(r'[^0-9]'), '');
+    if (safePhone.isEmpty) return null;
+    return 'https://wa.me/$safePhone';
+  }
 }
