@@ -114,7 +114,9 @@ class IrrigationCoverageAnalysisService {
     double cellM,
   ) {
     final halfSideM = math.sqrt(math.max(areaM2, 1)) / 2;
-    final steps = (2 * halfSideM / cellM).ceil().clamp(24, 160);
+    // سقف 96 نقطة لكل اتجاه (9216 نقطة) بدل 160×160 = 25600 نقطة، لأن
+    // التحليل بيتنفذ على الـ UI thread و26 ألف حساب يسبب تقطيعًا واضحًا.
+    final steps = (2 * halfSideM / cellM).ceil().clamp(24, 96);
     final stepM = 2 * halfSideM / steps;
     const metersPerDegreeLat = 111320.0;
     final metersPerDegreeLon = math.max(
@@ -171,5 +173,21 @@ class IrrigationCoverageAnalysisService {
     return 2 * earthRadius * math.asin(math.sqrt(h));
   }
 
-  String _cacheKey(IrrigationDesignProject project) => '${project.id}:${project.version}:${project.placements.map((p) => '${p.id}:${p.coordinate.latitude}:${p.coordinate.longitude}:${p.rotationDegrees}').join('|')}';
+  /// مفتاح الكاش لازم يشمل كل ما يدخل في الحساب: حدود الموقع، مساحة المنطقة
+  /// ومعدل تصرفها ونوع الرشّ، ونوع كل عنصر وخريطته ومساره. لو مساحة منطقة
+  /// اتغيرت من غير ما يتغير عدد العناصر، النتيجة القديمة كانت بتفضل معروضة.
+  String _cacheKey(IrrigationDesignProject project) => [
+        project.id,
+        '${project.version.major}.${project.version.minor}.${project.version.patch}',
+        project.siteBoundary.points
+            .map((p) => '${p.latitude},${p.longitude}')
+            .join(';'),
+        project.zones
+            .map((z) => '${z.id}:${z.areaM2}:${z.designFlowLpm}:${z.method}')
+            .join('|'),
+        project.placements
+            .map((p) =>
+                '${p.id}:${p.kind}:${p.zoneId}:${p.coordinate.latitude}:${p.coordinate.longitude}:${p.rotationDegrees}')
+            .join('|'),
+      ].join('#');
 }
