@@ -146,6 +146,67 @@ class AuthService {
     }
   }
 
+  /// تغيير كلمة المرور بعد التأكيد بكلمة المرور الحالية. لا نستخدم رابط
+  /// استعادة بالبريد لأن البريد المستخدم داخلي وهمي ولا يصل إليه شيء.
+  Future<String?> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    final user = _auth.currentUser;
+    if (user == null) return 'سجّل الدخول أولاً.';
+    final email = user.email;
+    if (email == null) return 'تعذر التحقق من الحساب الحالي.';
+    if (newPassword.trim().length < 6) {
+      return 'كلمة المرور الجديدة قصيرة (6 أحرف على الأقل).';
+    }
+    if (newPassword == currentPassword) {
+      return 'كلمة المرور الجديدة مطابقة للقديمة.';
+    }
+    try {
+      await user.reauthenticateWithCredential(
+        EmailAuthProvider.credential(email: email, password: currentPassword),
+      );
+      await user.updatePassword(newPassword);
+      return null;
+    } on FirebaseAuthException catch (e) {
+      return _mapError(e.code);
+    } catch (_) {
+      return 'حدث خطأ غير متوقع، حاول مرة أخرى.';
+    }
+  }
+
+  /// حذف الحساب نهائيًا: تأكيد كلمة المرور، حذف ملف المستخدم، ثم حساب الدخول.
+  /// حذف المستندات الفرعية (تصاميم الري، أجهزة الطقس) يحتاج Cloud Function
+  /// بصلاحيات إدارية؛ هنا نحذف ما يسمح به العميل ويترك الباقي بلا صاحب.
+  Future<String?> deleteAccount({required String password}) async {
+    final user = _auth.currentUser;
+    if (user == null) return 'سجّل الدخول أولاً.';
+    final email = user.email;
+    if (email == null) return 'تعذر التحقق من الحساب الحالي.';
+    try {
+      await user.reauthenticateWithCredential(
+        EmailAuthProvider.credential(email: email, password: password),
+      );
+    } on FirebaseAuthException catch (e) {
+      return _mapError(e.code);
+    } catch (_) {
+      return 'حدث خطأ غير متوقع، حاول مرة أخرى.';
+    }
+    try {
+      await _db.collection('users').doc(user.uid).delete();
+    } catch (_) {
+      return 'تعذر حذف بيانات الحساب. تحقق من الاتصال وحاول مرة أخرى.';
+    }
+    try {
+      await user.delete();
+      return null;
+    } on FirebaseAuthException catch (e) {
+      return _mapError(e.code);
+    } catch (_) {
+      return 'تعذر حذف الحساب، حاول مرة أخرى.';
+    }
+  }
+
   // دالة تسجيل الخروج
   Future<void> logout() => _auth.signOut();
 
@@ -173,6 +234,8 @@ class AuthService {
       case 'wrong-password':
       case 'invalid-credential':
         return 'رقم الموبايل أو كلمة المرور غير صحيحة.';
+      case 'requires-recent-login':
+        return 'انتهت صلاحية الجلسة. سجّل الخروج ثم ادخل وحاول مرة أخرى.';
       case 'too-many-requests':
         return 'محاولات كثيرة، حاول لاحقًا.';
       case 'network-request-failed':
