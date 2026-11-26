@@ -50,6 +50,49 @@ void main() {
     expect(report.warnings, contains('zone_has_no_irrigation_elements'));
   });
 
+  test('does not reuse a cached report after the zone area changes', () {
+    IrrigationDesignProject withArea(double area) => IrrigationDesignProject(
+          id: 'project-cache',
+          siteBoundary: SiteBoundary(
+            id: 'boundary-1',
+            points: const [
+              GeoCoordinate(latitude: 30, longitude: 31),
+              GeoCoordinate(latitude: 30, longitude: 31.01),
+              GeoCoordinate(latitude: 30.01, longitude: 31.01),
+            ],
+          ),
+          zones: [
+            IrrigationZone(
+              id: 'zone-1',
+              method: 'rotor',
+              areaM2: area,
+              designFlowLpm: 30,
+              applicationRateMmH: 8,
+            ),
+          ],
+          pump: Pump(
+            id: 'pump-1',
+            type: 'centrifugal',
+            flowRateLpm: 30,
+            headM: 20,
+            powerKw: 1,
+            efficiency: .7,
+          ),
+          version: DesignVersion(
+            major: 1,
+            minor: 0,
+            patch: 0,
+            createdAt: DateTime(2026, 1, 1),
+          ),
+        );
+
+    final first = const IrrigationCoverageAnalysisService().analyze(withArea(200)).single;
+    final second = const IrrigationCoverageAnalysisService().analyze(withArea(800)).single;
+
+    expect(first.coverage.dryAreaM2, 200);
+    expect(second.coverage.dryAreaM2, 800);
+  });
+
   test('reports coverage for placed irrigation elements', () {
     final report = const IrrigationCoverageAnalysisService().analyze(
       projectWith([
