@@ -390,6 +390,64 @@ class NotificationService {
   // ═══════════════════════════════════════════
   // Firebase Topics
   // ═══════════════════════════════════════════
+  // ═══════════════════════════════════════
+  // ✅ تذكيرات مهام المزرعة (مستقلة عن إشعارات البرامج)
+  // ═══════════════════════════════════════
+  /// معرّف ثابت لكل مهمة حتى يمكن إلغاء تذكيرها أو استبداله.
+  @visibleForTesting
+  static int farmTaskNotificationId(String taskId) =>
+      100000 + (_stableHash('farm_task_$taskId') % 900000);
+
+  static Future<void> scheduleFarmTaskReminder({
+    required String taskId,
+    required String title,
+    required String body,
+    required DateTime at,
+  }) async {
+    final androidImpl = _localNotifications
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
+    bool canExact = true;
+    try {
+      canExact = await androidImpl?.canScheduleExactNotifications() ?? true;
+    } catch (_) {
+      canExact = true;
+    }
+    try {
+      await _localNotifications.zonedSchedule(
+        farmTaskNotificationId(taskId),
+        '🌱 $title',
+        body,
+        tz.TZDateTime.from(at, tz.local),
+        const NotificationDetails(
+          android: AndroidNotificationDetails(
+            'farm_tasks',
+            'مهام المزرعة',
+            channelDescription: 'تذكيرات بمهام المزرعة والري والتسميد',
+            importance: Importance.high,
+            priority: Priority.high,
+            icon: '@mipmap/ic_launcher',
+          ),
+          iOS: DarwinNotificationDetails(),
+        ),
+        androidScheduleMode: canExact
+            ? AndroidScheduleMode.exactAllowWhileIdle
+            : AndroidScheduleMode.inexactAllowWhileIdle,
+      );
+      debugPrint('✅ تم جدولة تذكير المهمة: $title');
+    } catch (e) {
+      debugPrint('❌ فشل جدولة تذكير المهمة: $e');
+    }
+  }
+
+  static Future<void> cancelFarmTaskReminder(String taskId) async {
+    try {
+      await _localNotifications.cancel(farmTaskNotificationId(taskId));
+    } catch (e) {
+      debugPrint('❌ فشل إلغاء تذكير المهمة: $e');
+    }
+  }
+
   static Future<void> subscribeToPestAlerts() async {
     await FirebaseMessaging.instance.subscribeToTopic('pest_alerts');
     debugPrint("✅ تم الاشتراك في تنبيهات الآفات");
