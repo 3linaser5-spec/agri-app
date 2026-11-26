@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 import '../../models/calculator_models.dart';
 import '../../services/calculator_service.dart';
 import 'irrigation_calculator_screen.dart';
+import 'nutrient_calculator_screen.dart';
 import 'section_screen.dart';
 import '../../utils/color_utils.dart';
 
@@ -145,6 +146,34 @@ class _CalculatorHubScreenState extends State<CalculatorHubScreen> {
                           ),
                         ),
                         
+                        const SizedBox(height: 12),
+                        // حاسبة التغذية والمحلول
+                        Card(
+                          color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+                          child: ListTile(
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) =>
+                                      const NutrientCalculatorScreen()),
+                            ),
+                            leading: const Icon(Icons.science,
+                                color: Color(0xFF7C3AED), size: 30),
+                            title: Text('حاسبة التغذية والمحلول',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: isDark ? Colors.white : Colors.black87,
+                                )),
+                            subtitle: Text(
+                                'جرعات N/P/K، تقدير EC، وضبط pH',
+                                style: TextStyle(
+                                  color: isDark ? Colors.grey[400] : Colors.grey[700],
+                                )),
+                            trailing: Icon(Icons.chevron_left,
+                              color: isDark ? Colors.white : Colors.black87),
+                          ),
+                        ),
+
                         const SizedBox(height: 20),
                         Text('الأقسام المتاحة',
                             style: TextStyle(

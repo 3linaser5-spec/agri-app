@@ -601,6 +601,117 @@ service cloud.firestore {
       }
     }
 
+    // ── مساحة عمل المزرعة (مهام، مواقع/قطع، سجل محاصيل) ──
+    // كل مستند مملوك لصاحبه عبر owner_id، والقواعد تمنع الكتابة باسم مستخدم آخر.
+    match /farmTasks/{taskId} {
+      function validTaskShape() {
+        return request.resource.data.keys().hasAll([
+            'owner_id', 'title', 'notes', 'due_at', 'repeat', 'done',
+            'reminder_enabled', 'plot_id', 'last_completed_at'
+          ])
+          && request.resource.data.keys().hasOnly([
+            'owner_id', 'title', 'notes', 'due_at', 'repeat', 'done',
+            'reminder_enabled', 'plot_id', 'last_completed_at', 'created_at'
+          ])
+          && request.resource.data.owner_id is string
+          && request.resource.data.title is string
+          && request.resource.data.title.size() > 0
+          && request.resource.data.title.size() <= 400
+          && request.resource.data.notes is string
+          && request.resource.data.notes.size() <= 2000
+          && request.resource.data.due_at is string
+          && request.resource.data.due_at.size() <= 64
+          && request.resource.data.repeat in
+              ['none', 'daily', 'weekly', 'biweekly', 'monthly']
+          && request.resource.data.done is bool
+          && request.resource.data.reminder_enabled is bool
+          && (request.resource.data.plot_id == null
+            || (request.resource.data.plot_id is string
+              && request.resource.data.plot_id.size() <= 256))
+          && (request.resource.data.last_completed_at == null
+            || request.resource.data.last_completed_at is string);
+      }
+
+      allow read, delete: if signedIn()
+        && request.auth.uid == resource.data.owner_id;
+      allow create: if signedIn()
+        && request.auth.uid == request.resource.data.owner_id
+        && validTaskShape();
+      allow update: if signedIn()
+        && request.auth.uid == resource.data.owner_id
+        && request.resource.data.owner_id == request.auth.uid;
+    }
+
+    match /farmSites/{siteId} {
+      allow read, delete: if signedIn()
+        && request.auth.uid == resource.data.owner_id;
+      allow create, update: if signedIn()
+        && request.auth.uid == request.resource.data.owner_id
+        && request.resource.data.keys().hasAll([
+            'owner_id', 'name', 'governorate', 'notes', 'created_at'
+          ])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 400;
+    }
+
+    match /farmPlots/{plotId} {
+      allow read, delete: if signedIn()
+        && request.auth.uid == resource.data.owner_id;
+      allow create, update: if signedIn()
+        && request.auth.uid == request.resource.data.owner_id
+        && request.resource.data.keys().hasAll([
+            'owner_id', 'site_id', 'name', 'crop', 'area_feddan',
+            'irrigation_method', 'created_at'
+          ])
+        && request.resource.data.site_id is string
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 400
+        && request.resource.data.area_feddan is number
+        && request.resource.data.area_feddan >= 0
+        && request.resource.data.area_feddan <= 1000000;
+    }
+
+    match /cropSeasons/{seasonId} {
+      function validSeasonShape() {
+        return request.resource.data.keys().hasAll([
+            'owner_id', 'crop', 'variety', 'area_feddan', 'planting_date',
+            'harvest_date', 'expected_yield_kg', 'actual_yield_kg',
+            'price_per_kg', 'expenses'
+          ])
+          && request.resource.data.keys().hasOnly([
+            'owner_id', 'crop', 'variety', 'area_feddan', 'planting_date',
+            'harvest_date', 'expected_yield_kg', 'actual_yield_kg',
+            'price_per_kg', 'expenses', 'notes', 'plot_id', 'created_at'
+          ])
+          && request.resource.data.crop is string
+          && request.resource.data.crop.size() > 0
+          && request.resource.data.crop.size() <= 400
+          && request.resource.data.area_feddan is number
+          && request.resource.data.area_feddan >= 0
+          && request.resource.data.expected_yield_kg is number
+          && request.resource.data.expected_yield_kg >= 0
+          && (request.resource.data.actual_yield_kg == null
+            || (request.resource.data.actual_yield_kg is number
+              && request.resource.data.actual_yield_kg >= 0))
+          && request.resource.data.price_per_kg is number
+          && request.resource.data.price_per_kg >= 0
+          && request.resource.data.expenses is list
+          && request.resource.data.expenses.size() <= 200;
+      }
+
+      allow read, delete: if signedIn()
+        && request.auth.uid == resource.data.owner_id;
+      allow create: if signedIn()
+        && request.auth.uid == request.resource.data.owner_id
+        && validSeasonShape();
+      allow update: if signedIn()
+        && request.auth.uid == resource.data.owner_id
+        && request.resource.data.owner_id == request.auth.uid
+        && validSeasonShape();
+    }
+
     match /irrigationCatalog/{itemId} {
       allow read: if signedIn();
       allow create, update, delete: if isAdmin();

@@ -21,6 +21,7 @@ import '../satellite/satellite_access_gate_screen.dart';
 import './profile_screen.dart';
 import './statistics_screen.dart';
 import './home_dashboard_widgets.dart';
+import './farm_home_cards.dart';
 
 
 // ---------------- HomeDashboard ----------------
@@ -866,6 +867,10 @@ class _HomeDashboardState extends State<HomeDashboard> {
               onRefresh: _refreshWeather,
               onTogglePush: _setWeatherPushEnabled,
             ),
+            const SizedBox(height: 12),
+            SmartWeatherAdviceCard(snapshot: _weatherSnapshot),
+            const SizedBox(height: 12),
+            const FarmTodayCard(),
             const SizedBox(height: 16),
             const HomeTipCard(),
             const SizedBox(height: 20),

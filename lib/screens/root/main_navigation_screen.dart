@@ -1,6 +1,11 @@
 import 'package:material_ui/material_ui.dart';
 import '../calculators/calculator_hub_screen.dart';
+import '../calculators/nutrient_calculator_screen.dart';
+import '../farm/crop_log_screen.dart';
+import '../farm/farm_sites_screen.dart';
+import '../farm/farm_tasks_screen.dart';
 import '../farm/my_farm_screen.dart';
+import '../irrigation/design_hub_screen.dart';
 import '../satellite/satellite_access_gate_screen.dart';
 import '../irrigation/irrigation_designer_screen.dart';
 import './home_dashboard.dart';
@@ -106,6 +111,26 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                     _buildActionItem(Icons.info_outline, 'عن التطبيق', const Color(0xFF8B5CF6), () {
                       Navigator.pop(context);
                       Navigator.push(context, MaterialPageRoute(builder: (_) => const AboutScreen()));
+                    }),
+                    _buildActionItem(Icons.task_alt, 'مهام المزرعة', const Color(0xFF059669), () {
+                      Navigator.pop(context);
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => const FarmTasksScreen()));
+                    }),
+                    _buildActionItem(Icons.grass, 'سجل المحاصيل', const Color(0xFF65A30D), () {
+                      Navigator.pop(context);
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => const CropLogScreen()));
+                    }),
+                    _buildActionItem(Icons.map, 'مزارعي وقطع الأرض', const Color(0xFF0D9488), () {
+                      Navigator.pop(context);
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => const FarmSitesScreen()));
+                    }),
+                    _buildActionItem(Icons.design_services, 'تصاميمي والتقارير', const Color(0xFF0891B2), () {
+                      Navigator.pop(context);
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => const DesignHubScreen()));
+                    }),
+                    _buildActionItem(Icons.science, 'حاسبة التغذية', const Color(0xFF7C3AED), () {
+                      Navigator.pop(context);
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => const NutrientCalculatorScreen()));
                     }),
                     _buildActionItem(Icons.person, 'حسابي', Colors.blueGrey, () {
                       Navigator.pop(context);
