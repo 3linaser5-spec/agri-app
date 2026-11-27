@@ -4,6 +4,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_localizations/flutter_localizations.dart'
     hide GlobalMaterialLocalizations, GlobalCupertinoLocalizations;
+import '../config/build_flags.dart';
 import '../services/offline_service.dart';
 import '../services/version_service.dart';
 import '../widgets/update_dialog.dart';
@@ -31,7 +32,10 @@ class _AgriConsultantAppState extends State<AgriConsultantApp> {
   void initState() {
     super.initState();
     _setupConnectivityListener();
-    Future.delayed(const Duration(seconds: 3), () => _checkForUpdate());
+    // نسخة المتجر بتتحدّث من Google Play، فمفيش فحص تحديث ولا شبكة هنا.
+    if (!BuildFlags.storeBuild) {
+      Future.delayed(const Duration(seconds: 3), () => _checkForUpdate());
+    }
   }
 
   void _setupConnectivityListener() {
@@ -45,7 +49,7 @@ class _AgriConsultantAppState extends State<AgriConsultantApp> {
           final synced = await OfflineService.syncPendingDiagnoses();
           if (synced > 0) debugPrint("تمت مزامنة $synced تشخيص");
         }
-        _checkForUpdate();
+        if (!BuildFlags.storeBuild) _checkForUpdate();
       } else {
         debugPrint("انقطع الاتصال بالإنترنت");
       }
