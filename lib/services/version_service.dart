@@ -9,6 +9,7 @@ import 'package:open_filex/open_filex.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:convert';
+import '../config/build_flags.dart';
 
 
 // ---------------- VersionService ----------------
@@ -32,6 +33,8 @@ class VersionService {
   }
 
   static Future<Map<String, dynamic>?> checkUpdate() async {
+    // نسخة المتجر: التحديث بتيجي من Google Play، وممنوع نعرض تنزيل APK.
+    if (BuildFlags.storeBuild) return null;
     try {
       final info = await fetchVersionInfo();
       if (info == null) return null;
@@ -98,6 +101,11 @@ class VersionService {
     required Function(String error) onError,
   }) async {
     try {
+      // نسخة المتجر: لا تنزيل ولا تثبيت APK خارج Google Play.
+      if (BuildFlags.storeBuild) {
+        onError('التحديثات في نسخة المتجر بتتم من Google Play.');
+        return;
+      }
       if (!isTrustedDownloadUrl(url)) {
         onError('رابط التحميل غير موثوق');
         return;
