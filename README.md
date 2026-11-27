@@ -84,10 +84,9 @@ firebase deploy --only functions,firestore:rules,firestore:indexes,storage
 
 ## أرقام التواصل (واتساب)
 
-رقم المهندس لا يُكتب داخل الكود ولا في المستودع. يُمرَّر وقت بناء الـ APK من
-GitHub Secrets: `ENGINEER_PHONE` (صيغة دولية بدون +) و`ENGINEER_PHONE_LOCAL`
-(الصيغة المحلية للعرض في PDF). لو السر غير موجود، أزرار التواصل تختفي من
-الواجهة وتُبنى بقية الميزات بشكل طبيعي.
+رقم التواصل الافتراضي في `lib/config/app_config.dart`، ويمكن تغييره وقت بناء
+الـ APK بدون تعديل الكود عبر `--dart-define=ENGINEER_PHONE` (صيغة دولية بدون +)
+و`--dart-define=ENGINEER_PHONE_LOCAL` (الصيغة المحلية للعرض في PDF).
 
 ## الأمان
 
