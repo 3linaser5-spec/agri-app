@@ -1,11 +1,16 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../../models/farm_team_models.dart';
 import '../../models/farm_workspace_models.dart';
 import '../../services/farm_report_service.dart';
 import '../../services/farm_share_service.dart';
 import '../../services/farm_site_service.dart';
 import '../../services/farm_task_service.dart';
+import '../../services/farm_team_service.dart';
+import '../../services/irrigation_weather_service.dart';
 import '../../services/offline_farm_store.dart';
+import '../../services/smart_irrigation_planner.dart';
 
 /// شاشة مهام المزرعة: إضافة مهام متكررة، تذكيرات، وإنجاز سريع.
 class FarmTasksScreen extends StatefulWidget {
@@ -20,6 +25,9 @@ class _FarmTasksScreenState extends State<FarmTasksScreen> {
 
   List<FarmTask> _tasks = const [];
   List<FarmPlot> _plots = const [];
+  List<FarmMember> _members = const [];
+  List<IrrigationAdjustment> _adjustments = const [];
+  final Set<String> _dismissedAdjustments = <String>{};
   bool _loading = true;
   String? _error;
   int _pendingSync = 0;
@@ -41,11 +49,23 @@ class _FarmTasksScreenState extends State<FarmTasksScreen> {
         FarmSiteService.loadPlots(),
         OfflineFarmStore.pendingCount(),
       ]);
+      final tasks = results[0] as List<FarmTask>;
+      final weather = await IrrigationWeatherService.load();
+      var members = <FarmMember>[];
+      try {
+        members = await FarmTeamService.loadMembers();
+      } catch (_) {
+        members = const [];
+      }
       if (!mounted) return;
       setState(() {
-        _tasks = results[0] as List<FarmTask>;
+        _tasks = tasks;
         _plots = results[1] as List<FarmPlot>;
         _pendingSync = results[2] as int;
+        _members = members;
+        _adjustments = weather == null
+            ? const []
+            : SmartIrrigationPlanner.plan(tasks, weather, DateTime.now());
         _loading = false;
       });
       await FarmTaskService.rescheduleAll();
@@ -62,18 +82,32 @@ class _FarmTasksScreenState extends State<FarmTasksScreen> {
     final result = await showModalBottomSheet<_TaskDraft>(
       context: context,
       isScrollControlled: true,
-      builder: (_) => _TaskEditorSheet(plots: _plots),
+      builder: (_) => _TaskEditorSheet(plots: _plots, members: _members),
     );
     if (result == null) return;
+    String? siteId;
+    for (final plot in _plots) {
+      if (plot.id == result.plotId) {
+        siteId = plot.siteId;
+        break;
+      }
+    }
     final task = await FarmTaskService.addTask(FarmTask(
       id: '',
       ownerId: '',
       plotId: result.plotId,
+      siteId: siteId,
       title: result.title,
       notes: result.notes,
       dueAt: result.dueAt,
       repeat: result.repeat,
+      kind: result.kind,
       reminderEnabled: result.reminderEnabled,
+      assignedToUid: result.assignedToUid,
+      assignedToName: result.assignedToName,
+      assignedByUid: result.assignedToUid == null
+          ? null
+          : FirebaseAuth.instance.currentUser?.uid,
     ));
     if (task == null || !mounted) return;
     await _load();
@@ -109,6 +143,40 @@ class _FarmTasksScreenState extends State<FarmTasksScreen> {
         const SnackBar(content: Text('تعذر تحديث المهمة.')),
       );
       await _load();
+    }
+  }
+
+  Future<void> _applyAdjustment(IrrigationAdjustment adjustment) async {
+    FarmTask? task;
+    for (final item in _tasks) {
+      if (item.id == adjustment.taskId) {
+        task = item;
+        break;
+      }
+    }
+    if (task == null) return;
+    try {
+      await FarmTaskService.applyAdjustment(
+        task,
+        newDueAt: adjustment.suggestedDueAt,
+        note: 'تعديل ذكي حسب الطقس: ${adjustment.headline}.',
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'تم ${adjustment.actionLabel} «${task.title}» إلى '
+            '${_date(adjustment.suggestedDueAt)} '
+            '${adjustment.suggestedDueAt.hour}:00.',
+          ),
+        ),
+      );
+      await _load();
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر تعديل المهمة. حاول مرة أخرى.')),
+      );
     }
   }
 
@@ -196,6 +264,7 @@ class _FarmTasksScreenState extends State<FarmTasksScreen> {
                           const SizedBox(height: 10),
                           _syncBanner(_pendingSync),
                         ],
+                        ..._weatherAdvice(),
                         if (_tasks.isEmpty) ...[
                           const SizedBox(height: 40),
                           _emptyState(),
@@ -271,6 +340,104 @@ class _FarmTasksScreenState extends State<FarmTasksScreen> {
         ],
       ),
     );
+  }
+
+  /// تنبيه الري الذكي: قرار واحد واضح مع زر تطبيق وتفاصيل بقية القرارات.
+  List<Widget> _weatherAdvice() {
+    final visible = _adjustments
+        .where((item) => !_dismissedAdjustments.contains(item.taskId))
+        .toList(growable: false);
+    if (visible.isEmpty) return const [];
+    final top = visible.first;
+    final color = top.severity >= 3
+        ? Colors.red
+        : (top.severity == 2 ? Colors.orange : _green);
+    final saving = SmartIrrigationPlanner.totalWaterSaving(visible);
+    return [
+      const SizedBox(height: 12),
+      Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.07),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: color.withValues(alpha: 0.3)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.water_drop, color: color, size: 18),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'الري الذكي — ${top.headline}',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: color,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'تجاهل',
+                  visualDensity: VisualDensity.compact,
+                  icon: const Icon(Icons.close, size: 16),
+                  onPressed: () => setState(() {
+                    _dismissedAdjustments.add(top.taskId);
+                  }),
+                ),
+              ],
+            ),
+            Text(
+              '«${top.taskTitle}»: من ${_date(top.originalDueAt)} '
+              'إلى ${_date(top.suggestedDueAt)}.',
+              style: const TextStyle(fontSize: 12),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              top.reason,
+              style: const TextStyle(fontSize: 11, color: Colors.grey),
+            ),
+            if (saving > 0)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  'توفير تقديري للمياه: ${saving.toStringAsFixed(1)} مم',
+                  style: TextStyle(fontSize: 11, color: color),
+                ),
+              ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: color,
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                    ),
+                    onPressed: () => _applyAdjustment(top),
+                    icon: const Icon(Icons.water_drop_outlined, size: 16),
+                    label: Text(
+                      'طبّق ${top.actionLabel} المهمة',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ),
+                ),
+                if (visible.length > 1)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: Text(
+                      '+${visible.length - 1} توصية أخرى',
+                      style: const TextStyle(fontSize: 11, color: Colors.grey),
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    ];
   }
 
   Widget _syncBanner(int count) => Container(
@@ -381,8 +548,10 @@ class _FarmTasksScreenState extends State<FarmTasksScreen> {
           ),
         ),
         subtitle: Text(
-          '${_date(task.dueAt)} · ${task.repeat.label}'
+          '${_date(task.dueAt)} · ${task.kind.label}'
+          '${task.repeat == TaskRepeat.none ? '' : ' · ${task.repeat.label}'}'
           '${plotName == null ? '' : ' · $plotName'}'
+          '${task.assignedToUid == null ? '' : ' · مكلّف: ${task.assigneeLabel}'}'
           '${task.notes.isEmpty ? '' : '\n${task.notes}'}',
           style: const TextStyle(fontSize: 11),
         ),
@@ -430,22 +599,30 @@ class _TaskDraft {
   final String notes;
   final DateTime dueAt;
   final TaskRepeat repeat;
+  final TaskKind kind;
   final bool reminderEnabled;
   final String? plotId;
+  final String? assignedToUid;
+  final String? assignedToName;
 
   const _TaskDraft({
     required this.title,
     required this.notes,
     required this.dueAt,
     required this.repeat,
+    this.kind = TaskKind.general,
     required this.reminderEnabled,
     this.plotId,
+    this.assignedToUid,
+    this.assignedToName,
   });
 }
 
 class _TaskEditorSheet extends StatefulWidget {
   final List<FarmPlot> plots;
-  const _TaskEditorSheet({required this.plots});
+  final List<FarmMember> members;
+
+  const _TaskEditorSheet({required this.plots, this.members = const []});
 
   @override
   State<_TaskEditorSheet> createState() => _TaskEditorSheetState();
@@ -456,8 +633,11 @@ class _TaskEditorSheetState extends State<_TaskEditorSheet> {
   final _notes = TextEditingController();
   DateTime _dueAt = DateTime.now().add(const Duration(days: 1));
   TaskRepeat _repeat = TaskRepeat.none;
+  TaskKind _kind = TaskKind.general;
   bool _reminder = true;
   String? _plotId;
+  String? _assigneeUid;
+  String? _assigneeName;
 
   @override
   void dispose() {
@@ -523,6 +703,20 @@ class _TaskEditorSheetState extends State<_TaskEditorSheet> {
                 ),
               ),
               const SizedBox(height: 12),
+              DropdownButtonFormField<TaskKind>(
+                initialValue: _kind,
+                decoration: const InputDecoration(
+                  labelText: 'نوع المهمة (لتحسين توصيات الطقس)',
+                  border: OutlineInputBorder(),
+                ),
+                items: [
+                  for (final kind in TaskKind.values)
+                    DropdownMenuItem(value: kind, child: Text(kind.label)),
+                ],
+                onChanged: (value) =>
+                    setState(() => _kind = value ?? TaskKind.general),
+              ),
+              const SizedBox(height: 12),
               DropdownButtonFormField<TaskRepeat>(
                 initialValue: _repeat,
                 decoration: const InputDecoration(
@@ -536,6 +730,41 @@ class _TaskEditorSheetState extends State<_TaskEditorSheet> {
                 onChanged: (value) =>
                     setState(() => _repeat = value ?? TaskRepeat.none),
               ),
+              if (widget.members.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String?>(
+                  initialValue: _assigneeUid,
+                  decoration: const InputDecoration(
+                    labelText: 'من ينفّذ المهمة؟ (اختياري)',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: [
+                    const DropdownMenuItem(
+                      value: null,
+                      child: Text('أنا (مهمة شخصية)'),
+                    ),
+                    for (final member in widget.members)
+                      DropdownMenuItem(
+                        value: member.memberUid,
+                        child: Text(
+                          '${member.memberName} — ${member.role.label}',
+                        ),
+                      ),
+                  ],
+                  onChanged: (value) {
+                    setState(() {
+                      _assigneeUid = value;
+                      _assigneeName = null;
+                      for (final member in widget.members) {
+                        if (member.memberUid == value) {
+                          _assigneeName = member.memberName;
+                          break;
+                        }
+                      }
+                    });
+                  },
+                ),
+              ],
               if (widget.plots.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String?>(
@@ -576,8 +805,11 @@ class _TaskEditorSheetState extends State<_TaskEditorSheet> {
                         notes: _notes.text.trim(),
                         dueAt: _dueAt,
                         repeat: _repeat,
+                        kind: _kind,
                         reminderEnabled: _reminder,
                         plotId: _plotId,
+                        assignedToUid: _assigneeUid,
+                        assignedToName: _assigneeName,
                       ),
                     );
                   },

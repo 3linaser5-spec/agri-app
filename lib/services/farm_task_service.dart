@@ -32,11 +32,24 @@ class FarmTaskService {
     return OfflineFarmStore.cachedList<FarmTask>(
       key: _cacheKey,
       fetch: () async {
-        final snapshot =
+        // مهامي الشخصية + المهام التي أسندها لي المهندس/المشرف (تنزل على الهرم).
+        final owned =
             await _collection.where('owner_id', isEqualTo: uid).get();
-        final tasks = snapshot.docs
-            .map((doc) => FarmTask.fromMap(doc.id, doc.data()))
-            .toList(growable: false);
+        QuerySnapshot<Map<String, dynamic>> assigned;
+        try {
+          assigned = await _collection
+              .where('member_uids', arrayContains: uid)
+              .get();
+        } catch (error) {
+          // بعض المستندات القديمة بلا عضويات، أو القواعد لم تُحدَّث بعد.
+          debugPrint('تعذر تحميل المهام المسندة: $error');
+          assigned = await _collection.limit(0).get();
+        }
+        final byId = <String, FarmTask>{};
+        for (final doc in [...owned.docs, ...assigned.docs]) {
+          byId[doc.id] = FarmTask.fromMap(doc.id, doc.data());
+        }
+        final tasks = byId.values.toList(growable: false);
         tasks.sort((a, b) => a.dueAt.compareTo(b.dueAt));
         return tasks;
       },
@@ -53,15 +66,27 @@ class FarmTaskService {
     final uid = _uid;
     if (uid == null) return null;
     final reference = _collection.doc();
+    final members = <String>{
+      uid,
+      ...task.memberUids,
+      if (task.assignedToUid != null && task.assignedToUid!.isNotEmpty)
+        task.assignedToUid!,
+    }.toList(growable: false);
     final stored = FarmTask(
       id: reference.id,
       ownerId: uid,
       plotId: task.plotId,
+      siteId: task.siteId,
       title: task.title,
       notes: task.notes,
       dueAt: task.dueAt,
       repeat: task.repeat,
+      kind: task.kind,
       reminderEnabled: task.reminderEnabled,
+      assignedToUid: task.assignedToUid,
+      assignedToName: task.assignedToName,
+      assignedByUid: task.assignedByUid,
+      memberUids: members,
     );
     final written = await OfflineFarmStore.write(
       collection: collectionName,
@@ -111,6 +136,76 @@ class FarmTaskService {
       data: {'done': false},
     );
     if (updated.reminderEnabled) await scheduleReminder(updated);
+    return updated;
+  }
+
+  /// تطبيق تعديل ذكي على موعد المهمة (تأجيل بسبب أمطار أو تقديم بسبب حرارة)،
+  /// مع إعادة جدولة التذكير فورًا.
+  static Future<FarmTask> applyAdjustment(
+    FarmTask task, {
+    required DateTime newDueAt,
+    String? note,
+  }) async {
+    final updated = task.copyWith(
+      dueAt: newDueAt,
+      notes: (note == null || note.trim().isEmpty)
+          ? task.notes
+          : (task.notes.trim().isEmpty
+              ? note.trim()
+              : '${task.notes.trim()}\n${note.trim()}'),
+    );
+    await OfflineFarmStore.write(
+      collection: collectionName,
+      docId: task.id,
+      type: OfflineOperationType.update,
+      data: {
+        'due_at': newDueAt.toIso8601String(),
+        'notes': updated.notes,
+      },
+    );
+    await NotificationService.cancelFarmTaskReminder(task.id);
+    if (updated.reminderEnabled) await scheduleReminder(updated);
+    return updated;
+  }
+
+  /// إسناد مهمة لعضو في فريق المزرعة (أو إلغاء الإسناد بـ null).
+  static Future<FarmTask> assignTask(
+    FarmTask task, {
+    String? memberUid,
+    String? memberName,
+    String? assignedByUid,
+  }) async {
+    final members = <String>{task.ownerId};
+    if (memberUid != null && memberUid.isNotEmpty) members.add(memberUid);
+    final updated = FarmTask(
+      id: task.id,
+      ownerId: task.ownerId,
+      plotId: task.plotId,
+      siteId: task.siteId,
+      title: task.title,
+      notes: task.notes,
+      dueAt: task.dueAt,
+      repeat: task.repeat,
+      kind: task.kind,
+      done: task.done,
+      reminderEnabled: task.reminderEnabled,
+      lastCompletedAt: task.lastCompletedAt,
+      assignedToUid: memberUid,
+      assignedToName: memberName,
+      assignedByUid: assignedByUid,
+      memberUids: members.toList(growable: false),
+    );
+    await OfflineFarmStore.write(
+      collection: collectionName,
+      docId: task.id,
+      type: OfflineOperationType.update,
+      data: {
+        'assigned_to_uid': updated.assignedToUid,
+        'assigned_to_name': updated.assignedToName,
+        'assigned_by_uid': updated.assignedByUid,
+        'member_uids': updated.memberUids,
+      },
+    );
     return updated;
   }
 

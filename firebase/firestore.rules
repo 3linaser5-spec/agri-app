@@ -4,7 +4,7 @@ rules_version = '2';
 // قبل ما تنشره. ما اتجرّبش على مشروعك (agri-dahshory).
 //
 // الأدمن: مستند في collection اسمه admins، ID المستند = uid الأدمن
-// (تنشئه بإيدك من الـ Console بعد ما الأدمن يسجّل دخول مرة). مفيش أي طريقة
+// (تنشئه بإيدك من الـ Console بعد ما الأدمن يسجل دخول مرة). مفيش أي طريقة
 // يعمل بيها مستخدم عادي نفسه أدمن لأن الكتابة على admins ممنوعة بالكامل.
 
 service cloud.firestore {
@@ -181,7 +181,7 @@ service cloud.firestore {
       allow read: if signedIn() && request.auth.uid == uid;
 
       // التسجيل ينشئ المستند بالحقول الأربعة نفسها التي يرسلها AuthService.
-      // serverTimestamp() يُقيَّد بوقت الطلب حتى لا يزوّر العميل تاريخ الإنشاء.
+      // serverTimestamp() يُقيَّد بوقت الطلب حتى لا يزوّر العميل تاريخ الإنشاء.
       allow create: if signedIn()
         && request.auth.uid == uid
         && validUserDocumentShape()
@@ -611,7 +611,9 @@ service cloud.firestore {
           ])
           && request.resource.data.keys().hasOnly([
             'owner_id', 'title', 'notes', 'due_at', 'repeat', 'done',
-            'reminder_enabled', 'plot_id', 'last_completed_at', 'created_at'
+            'reminder_enabled', 'plot_id', 'last_completed_at', 'created_at',
+            'site_id', 'kind', 'assigned_to_uid', 'assigned_to_name',
+            'assigned_by_uid', 'member_uids'
           ])
           && request.resource.data.owner_id is string
           && request.resource.data.title is string
@@ -629,17 +631,37 @@ service cloud.firestore {
             || (request.resource.data.plot_id is string
               && request.resource.data.plot_id.size() <= 256))
           && (request.resource.data.last_completed_at == null
-            || request.resource.data.last_completed_at is string);
+            || request.resource.data.last_completed_at is string)
+          && (!('kind' in request.resource.data.keys())
+            || request.resource.data.kind in
+              ['general', 'irrigation', 'fertilizing', 'spraying', 'harvest'])
+          && (!('site_id' in request.resource.data.keys())
+            || request.resource.data.site_id == null
+            || request.resource.data.site_id is string)
+          && (!('member_uids' in request.resource.data.keys())
+            || (request.resource.data.member_uids is list
+              && request.resource.data.member_uids.size() <= 100));
       }
 
-      allow read, delete: if signedIn()
+      // المهام تصل إلى المالك وإلى من أُسندت إليه/عضوياته عبر member_uids.
+      function isTaskMember() {
+        return request.auth.uid in resource.data.get('member_uids', []);
+      }
+
+      allow read: if signedIn()
+        && (request.auth.uid == resource.data.owner_id || isTaskMember());
+      allow delete: if signedIn()
         && request.auth.uid == resource.data.owner_id;
       allow create: if signedIn()
         && request.auth.uid == request.resource.data.owner_id
         && validTaskShape();
       allow update: if signedIn()
-        && request.auth.uid == resource.data.owner_id
-        && request.resource.data.owner_id == request.auth.uid;
+        && (request.auth.uid == resource.data.owner_id || isTaskMember())
+        && request.resource.data.owner_id == resource.data.owner_id
+        && validTaskShape()
+        && (request.auth.uid == resource.data.owner_id
+          || request.resource.data.get('assigned_to_uid', null)
+            == resource.data.get('assigned_to_uid', null));
     }
 
     match /farmSites/{siteId} {
@@ -710,6 +732,70 @@ service cloud.firestore {
         && request.auth.uid == resource.data.owner_id
         && request.resource.data.owner_id == request.auth.uid
         && validSeasonShape();
+    }
+
+    // ── فريق المزرعة الهرمي (مالك ← مهندس ← مشرف ← عامل) ──
+    // العضوية تُنشأ بالانضمام بكود دعوة، وتُدار من مالك المزرعة فقط.
+    function teamMemberOf(siteId) {
+      return exists(/databases/$(database)/documents/farmMembers/$(siteId + '_' + request.auth.uid));
+    }
+
+    match /farmMembers/{memberId} {
+      allow read: if signedIn()
+        && (resource.data.owner_id == request.auth.uid
+          || teamMemberOf(resource.data.site_id));
+      allow create: if signedIn()
+        && request.resource.data.member_uid == request.auth.uid
+        && request.resource.data.role in
+            ['engineer', 'supervisor', 'worker']
+        && request.resource.data.keys().hasAll([
+            'site_id', 'owner_id', 'member_uid', 'member_name', 'role',
+            'parent_uid', 'joined_at', 'active'
+          ])
+        && request.resource.data.site_id is string
+        && request.resource.data.site_id.size() > 0
+        && request.resource.data.owner_id is string
+        && request.resource.data.member_name is string
+        && request.resource.data.member_name.size() <= 200
+        && request.resource.data.active is bool;
+      allow update, delete: if signedIn()
+        && resource.data.owner_id == request.auth.uid;
+    }
+
+    // الدعوات: تُقرأ بكودها للانضمام، ولا يعدّلها أحد بعد إنشائها.
+    match /farmInvites/{code} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.invited_by_uid == request.auth.uid
+        && request.resource.data.role in
+            ['engineer', 'supervisor', 'worker']
+        && request.resource.data.site_id is string
+        && request.resource.data.owner_id is string
+        && request.resource.data.keys().hasAll([
+            'code', 'site_id', 'site_name', 'owner_id', 'role',
+            'invited_by_uid', 'expires_at'
+          ]);
+      allow delete: if signedIn()
+        && resource.data.invited_by_uid == request.auth.uid;
+      allow update: if false;
+    }
+
+    // البرامج السمادية المشتركة: نسخة ثابتة يراها فريق المزرعة فقط.
+    match /farmProgramShares/{shareId} {
+      allow read: if signedIn()
+        && (resource.data.owner_id == request.auth.uid
+          || resource.data.created_by_uid == request.auth.uid
+          || teamMemberOf(resource.data.site_id));
+      allow create: if signedIn()
+        && request.resource.data.created_by_uid == request.auth.uid
+        && request.resource.data.site_id is string
+        && request.resource.data.owner_id is string
+        && request.resource.data.program_name is string
+        && request.resource.data.stages is list
+        && request.resource.data.stages.size() <= 200;
+      allow delete: if signedIn()
+        && resource.data.created_by_uid == request.auth.uid;
+      allow update: if false;
     }
 
     match /irrigationCatalog/{itemId} {

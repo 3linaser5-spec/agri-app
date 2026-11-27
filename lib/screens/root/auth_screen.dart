@@ -170,11 +170,11 @@ class _AuthScreenState extends State<AuthScreen> {
                     validator: isLogin
                         ? Validators.loginPassword
                         : Validators.password,
-                    helperText: isLogin
-                        ? null
-                        : '10 أحرف على الأقل، وتحتوي حروفًا وأرقامًا',
                     decoration: InputDecoration(
                       labelText: 'كلمة المرور',
+                      helperText: isLogin
+                          ? null
+                          : '10 أحرف على الأقل، وتحتوي حروفًا وأرقامًا',
                       prefixIcon: const Icon(Icons.lock),
                       border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12)),

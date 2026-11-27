@@ -6,6 +6,27 @@
 /// (العمل بدون إنترنت) والاختبارات.
 library;
 
+/// نوع مهمة المزرعة؛ يحدد كيف تتعامل التوصيات الذكية معها (الري مثلًا
+/// يتأجل تلقائيًا عند توقع أمطار، والرش يتجنب الحرارة العالية).
+enum TaskKind {
+  general('عامة'),
+  irrigation('ري'),
+  fertilizing('تسميد'),
+  spraying('رش'),
+  harvest('حصاد');
+
+  const TaskKind(this.label);
+  final String label;
+
+  static TaskKind fromName(Object? value) {
+    final name = value?.toString() ?? '';
+    for (final kind in TaskKind.values) {
+      if (kind.name == name) return kind;
+    }
+    return TaskKind.general;
+  }
+}
+
 /// تكرار مهمة المزرعة.
 enum TaskRepeat {
   none('مرة واحدة'),
@@ -128,74 +149,138 @@ class FarmTask {
   final String id;
   final String ownerId;
   final String? plotId;
+  final String? siteId;
   final String title;
   final String notes;
   final DateTime dueAt;
   final TaskRepeat repeat;
+  final TaskKind kind;
   final bool done;
   final bool reminderEnabled;
   final DateTime? lastCompletedAt;
+
+  /// من أُنشئت له المهمة (عامل/مشرف). فارغ للمهام الشخصية.
+  final String? assignedToUid;
+  final String? assignedToName;
+  final String? assignedByUid;
+
+  /// كل من يحق له رؤية المهمة وتحديثها؛ تشمل المالك والمسنَد إليه.
+  final List<String> memberUids;
 
   const FarmTask({
     required this.id,
     required this.ownerId,
     this.plotId,
+    this.siteId,
     required this.title,
     this.notes = '',
     required this.dueAt,
     this.repeat = TaskRepeat.none,
+    this.kind = TaskKind.general,
     this.done = false,
     this.reminderEnabled = true,
     this.lastCompletedAt,
+    this.assignedToUid,
+    this.assignedToName,
+    this.assignedByUid,
+    this.memberUids = const [],
   });
 
-  factory FarmTask.fromMap(String id, Map<String, dynamic> data) => FarmTask(
-        id: id,
-        ownerId: _asText(data['owner_id']),
-        plotId: _asText(data['plot_id']).isEmpty ? null : _asText(data['plot_id']),
-        title: _asText(data['title'], 'مهمة'),
-        notes: _asText(data['notes']),
-        dueAt: _parseDate(data['due_at']) ?? DateTime.now(),
-        repeat: TaskRepeat.fromName(data['repeat']),
-        done: data['done'] == true,
-        reminderEnabled: data['reminder_enabled'] != false,
-        lastCompletedAt: _parseDate(data['last_completed_at']),
-      );
+  factory FarmTask.fromMap(String id, Map<String, dynamic> data) {
+    final rawMembers = data['member_uids'];
+    return FarmTask(
+      id: id,
+      ownerId: _asText(data['owner_id']),
+      plotId: _asText(data['plot_id']).isEmpty ? null : _asText(data['plot_id']),
+      siteId: _asText(data['site_id']).isEmpty ? null : _asText(data['site_id']),
+      title: _asText(data['title'], 'مهمة'),
+      notes: _asText(data['notes']),
+      dueAt: _parseDate(data['due_at']) ?? DateTime.now(),
+      repeat: TaskRepeat.fromName(data['repeat']),
+      kind: TaskKind.fromName(data['kind']),
+      done: data['done'] == true,
+      reminderEnabled: data['reminder_enabled'] != false,
+      lastCompletedAt: _parseDate(data['last_completed_at']),
+      assignedToUid: _asText(data['assigned_to_uid']).isEmpty
+          ? null
+          : _asText(data['assigned_to_uid']),
+      assignedToName: _asText(data['assigned_to_name']).isEmpty
+          ? null
+          : _asText(data['assigned_to_name']),
+      assignedByUid: _asText(data['assigned_by_uid']).isEmpty
+          ? null
+          : _asText(data['assigned_by_uid']),
+      memberUids: rawMembers is List
+          ? rawMembers
+              .map((value) => value.toString().trim())
+              .where((value) => value.isNotEmpty)
+              .toList(growable: false)
+          : const [],
+    );
+  }
 
   Map<String, dynamic> toMap() => {
         'owner_id': ownerId,
         'plot_id': plotId,
+        'site_id': siteId,
         'title': title,
         'notes': notes,
         'due_at': dueAt.toIso8601String(),
         'repeat': repeat.name,
+        'kind': kind.name,
         'done': done,
         'reminder_enabled': reminderEnabled,
         'last_completed_at': lastCompletedAt?.toIso8601String(),
+        'assigned_to_uid': assignedToUid,
+        'assigned_to_name': assignedToName,
+        'assigned_by_uid': assignedByUid,
+        'member_uids': memberUids,
       };
 
   FarmTask copyWith({
     String? plotId,
+    String? siteId,
     String? title,
     String? notes,
     DateTime? dueAt,
     TaskRepeat? repeat,
+    TaskKind? kind,
     bool? done,
     bool? reminderEnabled,
     DateTime? lastCompletedAt,
+    String? assignedToUid,
+    String? assignedToName,
+    String? assignedByUid,
+    List<String>? memberUids,
   }) =>
       FarmTask(
         id: id,
         ownerId: ownerId,
         plotId: plotId ?? this.plotId,
+        siteId: siteId ?? this.siteId,
         title: title ?? this.title,
         notes: notes ?? this.notes,
         dueAt: dueAt ?? this.dueAt,
         repeat: repeat ?? this.repeat,
+        kind: kind ?? this.kind,
         done: done ?? this.done,
         reminderEnabled: reminderEnabled ?? this.reminderEnabled,
         lastCompletedAt: lastCompletedAt ?? this.lastCompletedAt,
+        assignedToUid: assignedToUid ?? this.assignedToUid,
+        assignedToName: assignedToName ?? this.assignedToName,
+        assignedByUid: assignedByUid ?? this.assignedByUid,
+        memberUids: memberUids ?? this.memberUids,
       );
+
+  /// هل المهمة مسنَدة إلى [uid]؟
+  bool isAssignedTo(String? uid) =>
+      uid != null && uid.isNotEmpty && assignedToUid == uid;
+
+  /// اسم من تُنفذه المهمة، أو «لي» للمهام الشخصية.
+  String get assigneeLabel =>
+      (assignedToName == null || assignedToName!.trim().isEmpty)
+          ? 'مهمة شخصية'
+          : assignedToName!.trim();
 
   bool isOverdue(DateTime now) =>
       !done && dueAt.isBefore(DateTime(now.year, now.month, now.day));
