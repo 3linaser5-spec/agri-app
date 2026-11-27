@@ -22,6 +22,8 @@ import './profile_screen.dart';
 import './statistics_screen.dart';
 import './home_dashboard_widgets.dart';
 import './farm_home_cards.dart';
+import '../farm/weekly_irrigation_schedule_screen.dart';
+import './agri_assistant_screen.dart';
 
 
 // ---------------- HomeDashboard ----------------
@@ -913,6 +915,22 @@ class _HomeDashboardState extends State<HomeDashboard> {
                   title: 'رصد الأقمار',
                   onTap: () => Navigator.push(context, MaterialPageRoute(
                     builder: (_) => const SatelliteMonitoringScreen(),
+                  )),
+                ),
+                HomeQuickActionCard(
+                  icon: Icons.event_note,
+                  color: const Color(0xFF15803D),
+                  title: 'جدول الري',
+                  onTap: () => Navigator.push(context, MaterialPageRoute(
+                    builder: (_) => const WeeklyIrrigationScheduleScreen(),
+                  )),
+                ),
+                HomeQuickActionCard(
+                  icon: Icons.support_agent,
+                  color: const Color(0xFF7C3AED),
+                  title: 'المساعد الزراعي',
+                  onTap: () => Navigator.push(context, MaterialPageRoute(
+                    builder: (_) => const AgriAssistantScreen(),
                   )),
                 ),
               ],
