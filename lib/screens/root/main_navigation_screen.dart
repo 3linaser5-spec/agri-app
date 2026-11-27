@@ -4,6 +4,7 @@ import '../calculators/nutrient_calculator_screen.dart';
 import '../farm/crop_log_screen.dart';
 import '../farm/farm_sites_screen.dart';
 import '../farm/farm_tasks_screen.dart';
+import '../farm/farm_team_screen.dart';
 import '../farm/my_farm_screen.dart';
 import '../irrigation/design_hub_screen.dart';
 import '../satellite/satellite_access_gate_screen.dart';
@@ -123,6 +124,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                     _buildActionItem(Icons.map, 'مزارعي وقطع الأرض', const Color(0xFF0D9488), () {
                       Navigator.pop(context);
                       Navigator.push(context, MaterialPageRoute(builder: (_) => const FarmSitesScreen()));
+                    }),
+                    _buildActionItem(Icons.groups, 'فريق المزرعة', const Color(0xFF7E22CE), () {
+                      Navigator.pop(context);
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => const FarmTeamScreen()));
                     }),
                     _buildActionItem(Icons.design_services, 'تصاميمي والتقارير', const Color(0xFF0891B2), () {
                       Navigator.pop(context);
