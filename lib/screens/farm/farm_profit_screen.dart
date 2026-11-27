@@ -4,6 +4,7 @@ import '../../models/farm_workspace_models.dart';
 import '../../services/crop_log_service.dart';
 import '../../services/farm_report_service.dart';
 import '../../services/farm_share_service.dart';
+import 'season_comparison_screen.dart';
 
 /// لوحة التكاليف والأرباح: إجمالي الموسم، ولكل محصول وقطعة، وأفضل المواسم.
 class FarmProfitScreen extends StatelessWidget {
@@ -40,6 +41,18 @@ class FarmProfitScreen extends StatelessWidget {
         backgroundColor: _green,
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
+          IconButton(
+            tooltip: 'مقارنة المواسم',
+            icon: const Icon(Icons.compare_arrows),
+            onPressed: seasons.isEmpty
+                ? null
+                : () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => SeasonComparisonScreen(seasons: seasons),
+                      ),
+                    ),
+          ),
           IconButton(
             tooltip: 'مشاركة PDF',
             icon: const Icon(Icons.picture_as_pdf),
