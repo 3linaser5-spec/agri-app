@@ -94,6 +94,6 @@ class WeeklyIrrigationSchedule {
 
   int? get totalMinutes {
     if (days.every((day) => day.minutes == null)) return null;
-    return days.fold(0, (sum, day) => sum + (day.minutes ?? 0));
+    return days.fold<int>(0, (sum, day) => sum + (day.minutes ?? 0));
   }
 }
