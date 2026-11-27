@@ -19,6 +19,7 @@ import 'irrigation_network_map_screen.dart';
 import 'irrigation_pipe_route_editor_screen.dart';
 import 'irrigation_satellite_alerts_panel.dart';
 import 'irrigation_3d_preview_screen.dart';
+import 'landscape_planner_screen.dart';
 import 'irrigation_review_view.dart';
 
 /// مصمم شبكة الري واللاندسكيب.
@@ -279,7 +280,7 @@ class _IrrigationDesignerScreenState extends State<IrrigationDesignerScreen> {
     ),
   );
 
-  Widget _stepContent(int i) => Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(switch(i) { 0 => 'حدود الموقع: ${project.siteBoundary.points.length} نقاط — المساحة ${project.siteBoundary.declaredArea?.toStringAsFixed(3) ?? '-'} فدان', 1 => 'عدد النباتات: ${project.plants.length} — Kc: ${project.plants.isEmpty ? '-' : project.plants.first.kc}', 2 => 'المناطق: ${project.zones.length} — عناصر الخريطة: ${project.placements.length} — مسارات المواسير: ${project.pipeRoutes.length}', 3 => 'المضخة: ${project.pump.nameAr} — ${project.pump.headM} m TDH', _ => 'شغّل الفحص ثم صدّر DXF وBOQ وجدول التشغيل.'}), if (i == 0) Align(alignment: Alignment.centerRight, child: OutlinedButton.icon(onPressed: _editBoundary, icon: const Icon(Icons.map), label: const Text('فتح محرر الخريطة'))), if (i == 2) Wrap(spacing: 8, children: [OutlinedButton.icon(onPressed: _editPlacements, icon: const Icon(Icons.water_drop), label: const Text('عناصر الشبكة')), OutlinedButton.icon(onPressed: _addPipeRoute, icon: const Icon(Icons.alt_route), label: const Text('رسم مسار ماسورة'))])] )));
+  Widget _stepContent(int i) => Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(switch(i) { 0 => 'حدود الموقع: ${project.siteBoundary.points.length} نقاط — المساحة ${project.siteBoundary.declaredArea?.toStringAsFixed(3) ?? '-'} فدان', 1 => 'عدد النباتات: ${project.plants.length} — Kc: ${project.plants.isEmpty ? '-' : project.plants.first.kc}', 2 => 'المناطق: ${project.zones.length} — عناصر الخريطة: ${project.placements.length} — مسارات المواسير: ${project.pipeRoutes.length}', 3 => 'المضخة: ${project.pump.nameAr} — ${project.pump.headM} m TDH', _ => 'شغّل الفحص ثم صدّر DXF وBOQ وجدول التشغيل.'}), if (i == 0) Align(alignment: Alignment.centerRight, child: Wrap(spacing: 8, children: [OutlinedButton.icon(onPressed: _editBoundary, icon: const Icon(Icons.map), label: const Text('فتح محرر الخريطة')), FilledButton.tonalIcon(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LandscapePlannerScreen())), icon: const Icon(Icons.landscape_outlined), label: const Text('مصمم اللاندسكيب الجديد'))])), if (i == 2) Wrap(spacing: 8, children: [OutlinedButton.icon(onPressed: _editPlacements, icon: const Icon(Icons.water_drop), label: const Text('عناصر الشبكة')), OutlinedButton.icon(onPressed: _addPipeRoute, icon: const Icon(Icons.alt_route), label: const Text('رسم مسار ماسورة'))])] )));
 
   Widget _satelliteSection() => StreamBuilder<LandscapeSatelliteEntitlement>(
     stream: LandscapeSatelliteAccessService.watchEntitlement(),
