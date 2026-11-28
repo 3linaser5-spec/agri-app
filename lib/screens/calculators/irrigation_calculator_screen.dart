@@ -4,10 +4,13 @@ import 'package:material_ui/material_ui.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../models/irrigation_bom_models.dart';
+import '../../services/irrigation_bom_service.dart';
 import '../../utils/dxf_export.dart';
 import '../../utils/dxf_3d_export.dart';
 import '../../utils/irrigation_calc.dart';
 import '../../utils/number_utils.dart';
+import 'irrigation_bom_screen.dart';
 import 'irrigation_calculator_widgets.dart';
 
 const _blue = Color(0xFF0284C7);
@@ -101,6 +104,7 @@ class _IrrigationCalculatorScreenState
   double _lateralDia = 16;
   final Map<String, TextEditingController> _c = {};
   List<IrrigationResultLine> _results = const [];
+  IrrigationBom? _bom;
   String? _dxf;
   String? _dxf3d;
   bool _isExporting = false;
@@ -238,8 +242,12 @@ class _IrrigationCalculatorScreenState
     final lines = <IrrigationResultLine>[];
     String? dxf;
     double? designFlow;
-    double cost = 0;
-    var bomCost = false;
+    DripResult? dripResult;
+    SprinklerResult? sprinklerResult;
+    SurfaceResult? surfaceResult;
+    PivotResult? pivotResult;
+    PumpResult? pumpResult;
+    PipeChoice? mainPipe;
 
     String? invalid;
     switch (_type) {
@@ -294,12 +302,7 @@ class _IrrigationCalculatorScreenState
                 '${_fmt(r.lateralLossM)} م أكبر من المسموح ${_fmt(r.allowedLateralLossM)} - قصّر الخط أو كبّر القطر'));
           }
           designFlow = r.sectorFlowM3h;
-          lines
-            ..add(const IrrigationResultLine.section('قائمة المواد'))
-            ..add(IrrigationResultLine.row('إجمالي طول الخطوط الفرعية', '${_fmt(r.lateralTotalLengthM, 0)} م'))
-            ..add(IrrigationResultLine.row('عدد النقاطات', _fmt(r.totalEmitters, 0)));
-          bomCost = true;
-          cost += r.lateralTotalLengthM * _v('p2') + r.totalEmitters * _v('p3');
+          dripResult = r;
           dxf = IrrigationDxf.drip(
             widthM: area / _v('latLen'),
             lengthM: _v('latLen'),
@@ -352,11 +355,7 @@ class _IrrigationCalculatorScreenState
                     'أعلى من معدل تسرب التربة - هيحصل جريان سطحي'));
           }
           designFlow = r.sectorFlowM3h;
-          lines
-            ..add(const IrrigationResultLine.section('قائمة المواد'))
-            ..add(IrrigationResultLine.row('عدد الرشاشات', '${r.sprinklers}'));
-          bomCost = true;
-          cost += r.sprinklers * _v('p3');
+          sprinklerResult = r;
           final dims = IrrigationDxf.fieldDims(area, _v('aspect'));
           dxf = IrrigationDxf.sprinkler(
             widthM: dims.width,
@@ -389,6 +388,7 @@ class _IrrigationCalculatorScreenState
           lines.add(r.ok
               ? const IrrigationResultLine.ok('الوقت', 'يكفي في الساعات المتاحة')
               : const IrrigationResultLine.warn('الوقت', 'أكبر من الساعات المتاحة - زوّد التصرف أو قسّم الحقل'));
+          surfaceResult = r;
           final dims = IrrigationDxf.fieldDims(area, _v('aspect'));
           dxf = IrrigationDxf.surface(
             widthM: dims.width,
@@ -422,6 +422,7 @@ class _IrrigationCalculatorScreenState
               ? const IrrigationResultLine.ok('الدورة', 'بتخلص قبل موعد الريّة اللي بعدها')
               : const IrrigationResultLine.warn('الدورة', 'زمن الدورة أطول من الفترة بين الريات'));
           designFlow = r.flowM3h;
+          pivotResult = r;
           dxf = IrrigationDxf.pivot(radiusM: _v('radius'));
         }
         break;
@@ -437,6 +438,7 @@ class _IrrigationCalculatorScreenState
       final mainLen = _v('mainLen');
       final pipe = IrrigationCalc.pickDiameter(
           flowM3h: designFlow, lengthM: mainLen > 0 ? mainLen : 1);
+      mainPipe = pipe;
       lines.add(const IrrigationResultLine.section('الماسورة الرئيسية'));
       if (pipe.ok) {
         lines.add(IrrigationResultLine.ok('القطر المقترح', '${_fmt(pipe.diameterMm, 0)} مم'));
@@ -447,10 +449,7 @@ class _IrrigationCalculatorScreenState
       lines
         ..add(IrrigationResultLine.row('السرعة', '${_fmt(pipe.velocityMs)} م/ث'))
         ..add(IrrigationResultLine.row('فاقد الاحتكاك', '${_fmt(pipe.lossM)} م'));
-      if (bomCost) {
-        lines.add(IrrigationResultLine.row('طول الماسورة الرئيسية', '${_fmt(mainLen, 0)} م'));
-        cost += mainLen * _v('p1');
-      }
+      lines.add(IrrigationResultLine.row('طول الماسورة الرئيسية', '${_fmt(mainLen, 0)} م'));
 
       final pump = IrrigationCalc.pump(
         flowM3h: designFlow,
@@ -462,6 +461,7 @@ class _IrrigationCalculatorScreenState
         pumpEfficiency: _v('pumpEff') / 100,
         motorEfficiency: _v('motorEff') / 100,
       );
+      pumpResult = pump;
       lines.add(const IrrigationResultLine.section('المضخة'));
       if (pump == null) {
         lines.add(const IrrigationResultLine.warn('المضخة', 'تأكد من الكفاءات (1 إلى 100%) وإن الفواقد مش سالبة'));
@@ -476,19 +476,116 @@ class _IrrigationCalculatorScreenState
       }
     }
 
-    if (bomCost && cost > 0) {
+    final bom = _buildBom(
+      drip: dripResult,
+      sprinkler: sprinklerResult,
+      surface: surfaceResult,
+      pivot: pivotResult,
+      pump: pumpResult,
+      mainPipe: mainPipe,
+    );
+    if (bom != null) {
       lines
-        ..add(const IrrigationResultLine.section('التكلفة التقديرية'))
-        ..add(IrrigationResultLine.ok('الإجمالي (مواسير ونقاطات/رشاشات)', '${_fmt(cost, 0)} جنيه'));
+        ..add(const IrrigationResultLine.section('بوليصة المشتريات'))
+        ..add(IrrigationResultLine.row('عدد البنود', '${bom.lines} بند'))
+        ..add(const IrrigationResultLine.ok(
+            'قائمة بدون أسعار', 'اطلب عرض سعر من المورد'));
     }
 
     final dxf3d = dxf == null ? null : _buildDxf3d(designFlow);
 
     setState(() {
       _results = lines;
+      _bom = bom;
       _dxf = dxf;
       _dxf3d = dxf3d;
     });
+  }
+
+  IrrigationBom? _buildBom({
+    required DripResult? drip,
+    required SprinklerResult? sprinkler,
+    required SurfaceResult? surface,
+    required PivotResult? pivot,
+    required PumpResult? pump,
+    required PipeChoice? mainPipe,
+  }) {
+    final mainDiameter = mainPipe?.diameterMm ?? 50;
+    switch (_type) {
+      case IrrigationType.drip:
+        if (drip == null) return null;
+        return IrrigationBomService.buildDrip(
+          areaM2: IrrigationCalc.areaToM2(_v('area'), _unit),
+          lateralTotalLengthM: drip.lateralTotalLengthM,
+          totalEmitters: drip.totalEmitters,
+          emitterLph: _v('emitterLph'),
+          lateralLengthM: _v('latLen'),
+          lateralDiameterMm: _lateralDia,
+          mainLengthM: _v('mainLen'),
+          mainDiameterMm: mainDiameter,
+          sectors: _v('sectors').round(),
+          sectorFlowM3h: drip.sectorFlowM3h,
+          motorKw: pump?.recommendedMotorKw,
+          motorHp: pump?.recommendedMotorHp,
+          totalHeadM: pump?.totalHeadM,
+        );
+      case IrrigationType.sprinkler:
+        if (sprinkler == null) return null;
+        final dims = IrrigationDxf.fieldDims(
+            IrrigationCalc.areaToM2(_v('area'), _unit), _v('aspect'));
+        final perLateral = (dims.length / _v('sAlong')).ceil();
+        final lateralPipe = IrrigationCalc.pickDiameter(
+          flowM3h: perLateral * _v('spr'),
+          lengthM: dims.length,
+        );
+        return IrrigationBomService.buildSprinkler(
+          areaM2: IrrigationCalc.areaToM2(_v('area'), _unit),
+          fieldWidthM: dims.width,
+          fieldLengthM: dims.length,
+          spacingAcrossM: _v('sAcross'),
+          spacingAlongM: _v('sAlong'),
+          sprinklerFlowM3h: _v('spr'),
+          sprinklers: sprinkler.sprinklers,
+          sectors: _v('sectors').round(),
+          sectorFlowM3h: sprinkler.sectorFlowM3h,
+          mainLengthM: _v('mainLen'),
+          mainDiameterMm: mainDiameter,
+          lateralDiameterMm: lateralPipe.diameterMm,
+          motorKw: pump?.recommendedMotorKw,
+          motorHp: pump?.recommendedMotorHp,
+          totalHeadM: pump?.totalHeadM,
+        );
+      case IrrigationType.surface:
+        if (surface == null) return null;
+        final dims = IrrigationDxf.fieldDims(
+            IrrigationCalc.areaToM2(_v('area'), _unit), _v('aspect'));
+        return IrrigationBomService.buildSurface(
+          areaM2: IrrigationCalc.areaToM2(_v('area'), _unit),
+          fieldWidthM: dims.width,
+          furrowSpacingM: _v('furrow'),
+          streamLps: _v('stream'),
+        );
+      case IrrigationType.pivot:
+        if (pivot == null) return null;
+        return IrrigationBomService.buildPivot(
+          radiusM: _v('radius'),
+          flowM3h: pivot.flowM3h,
+          mainLengthM: _v('mainLen'),
+          mainDiameterMm: mainDiameter,
+          motorKw: pump?.recommendedMotorKw,
+          motorHp: pump?.recommendedMotorHp,
+          totalHeadM: pump?.totalHeadM,
+        );
+    }
+  }
+
+  void _openBom() {
+    final bom = _bom;
+    if (bom == null) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => IrrigationBomScreen(bom: bom)),
+    );
   }
 
   String _buildDxf3d(double? designFlow) {
@@ -814,21 +911,6 @@ class _IrrigationCalculatorScreenState
               _gap(),
               _field('motorEff', suffix: '%'),
             ],
-            if (_type == IrrigationType.drip ||
-                _type == IrrigationType.sprinkler) ...[
-              _title('الأسعار (اختياري لحساب التكلفة)'),
-              _field('p1', suffix: 'جنيه', label: 'سعر متر الماسورة الرئيسية'),
-              _gap(),
-              if (_type == IrrigationType.drip) ...[
-                _field('p2', suffix: 'جنيه', label: 'سعر متر الخط الفرعي'),
-                _gap(),
-              ],
-              _field('p3',
-                  suffix: 'جنيه',
-                  label: _type == IrrigationType.drip
-                      ? 'سعر النقاط'
-                      : 'سعر الرشاش'),
-            ],
             const SizedBox(height: 20),
             ElevatedButton.icon(
               onPressed: _calculate,
@@ -845,6 +927,8 @@ class _IrrigationCalculatorScreenState
             if (_results.isNotEmpty)
               IrrigationResultCard(
                 lines: _results,
+                bomReady: _bom != null,
+                onOpenBom: _openBom,
                 dxfReady: _dxf != null,
                 dxf3dReady: _dxf3d != null,
                 exporting: _isExporting,
