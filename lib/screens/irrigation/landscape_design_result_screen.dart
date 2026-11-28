@@ -1,7 +1,9 @@
 import 'package:material_ui/material_ui.dart';
 
 import '../../models/landscape_design_models.dart';
+import '../../services/irrigation_bom_service.dart';
 import '../../services/landscape_hydraulic_design_service.dart';
+import '../calculators/irrigation_bom_screen.dart';
 import 'landscape_3d_view_screen.dart';
 
 /// نتيجة التصميم الهيدروليكي: المناطق ثم الخطوط الفرعية ثم الرئيسي ثم المضخة.
@@ -52,7 +54,7 @@ class LandscapeDesignResultScreen extends StatelessWidget {
                 _zonesTab(),
                 _pipesTab(),
                 _pumpTab(context),
-                _stepsTab(),
+                _stepsTab(context),
               ],
             ),
           ),
@@ -271,7 +273,7 @@ class LandscapeDesignResultScreen extends StatelessWidget {
         ],
       );
 
-  Widget _stepsTab() => ListView(
+  Widget _stepsTab(BuildContext context) => ListView(
         padding: const EdgeInsets.all(12),
         children: [
           const Text('ترتيب الحساب', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
@@ -297,6 +299,28 @@ class LandscapeDesignResultScreen extends StatelessWidget {
                     trailing: Text('${line.quantity.toStringAsFixed(line.quantity % 1 == 0 ? 0 : 1)} ${line.unitAr}'),
                   ),
               ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          ElevatedButton.icon(
+            onPressed: () {
+              final bom = IrrigationBomService.buildFromLandscape(
+                plan: plan,
+                design: design,
+              );
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => IrrigationBomScreen(bom: bom),
+                ),
+              );
+            },
+            icon: const Icon(Icons.receipt_long),
+            label: const Text('قائمة مشتريات كاملة (كميات بدون أسعار)'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF047857),
+              foregroundColor: Colors.white,
+              minimumSize: const Size.fromHeight(48),
             ),
           ),
         ],
