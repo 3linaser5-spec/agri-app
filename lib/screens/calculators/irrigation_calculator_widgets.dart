@@ -104,6 +104,8 @@ class IrrigationResultLineTile extends StatelessWidget {
 /// بطاقة مخرجات الحساب مع أزرار تصدير DXF.
 class IrrigationResultCard extends StatelessWidget {
   final List<IrrigationResultLine> lines;
+  final bool bomReady;
+  final VoidCallback? onOpenBom;
   final bool dxfReady;
   final bool dxf3dReady;
   final bool exporting;
@@ -113,6 +115,8 @@ class IrrigationResultCard extends StatelessWidget {
   const IrrigationResultCard({
     super.key,
     required this.lines,
+    this.bomReady = false,
+    this.onOpenBom,
     required this.dxfReady,
     required this.dxf3dReady,
     required this.exporting,
@@ -130,6 +134,19 @@ class IrrigationResultCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             for (final l in lines) IrrigationResultLineTile(line: l),
+            if (bomReady && onOpenBom != null) ...[
+              const SizedBox(height: 14),
+              ElevatedButton.icon(
+                onPressed: onOpenBom,
+                icon: const Icon(Icons.receipt_long),
+                label: const Text('عرض قائمة المشتريات'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFB45309),
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size.fromHeight(48),
+                ),
+              ),
+            ],
             if (dxfReady) ...[
               const SizedBox(height: 14),
               ElevatedButton.icon(

@@ -1,6 +1,8 @@
 import 'package:material_ui/material_ui.dart';
 
 import '../../services/design_comparison_service.dart';
+import '../../services/irrigation_bom_service.dart';
+import '../calculators/irrigation_bom_screen.dart';
 import '../../services/design_version_service.dart';
 import '../../services/farm_report_service.dart';
 import '../../services/farm_share_service.dart';
@@ -84,6 +86,18 @@ class _DesignHubScreenState extends State<DesignHubScreen> {
     } catch (_) {
       _snack('تعذر تصدير الملف.');
     }
+  }
+
+  /// بوليصة مشتريات بكل خامات التصميم المحفوظ.
+  void _openBom(SavedIrrigationProject design) {
+    final bom = IrrigationBomService.buildFromProject(
+      design.project,
+      name: design.name,
+    );
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => IrrigationBomScreen(bom: bom)),
+    );
   }
 
   Future<void> _shareSummary(SavedIrrigationProject design) async {
@@ -301,6 +315,7 @@ class _DesignHubScreenState extends State<DesignHubScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
             child: Row(
               children: [
+                _action(Icons.receipt_long, 'المشتريات', () => _openBom(design)),
                 _action(Icons.picture_as_pdf, 'PDF',
                     () => FarmShareService.shareDesignPdf(project)),
                 _action(Icons.table_view, 'Excel', () => _exportCsv(design)),
